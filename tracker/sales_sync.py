@@ -187,21 +187,30 @@ def normalize_sales_sync_dates(date_from=None, date_to=None):
     return date_from, date_to
 
 
+def format_sqlserver_date_literal(value):
+    if value is None:
+        return ""
+    return "{d '" + value.isoformat() + "'}"
+
+
 def build_sales_sync_query(date_from=None, date_to=None):
     date_from, date_to = normalize_sales_sync_dates(date_from, date_to)
     query_parts = [SALES_SYNC_SELECT]
-    parameters = []
 
     if date_from:
-        query_parts.append("WHERE CAST(SalMas_Date AS date) >= ?")
-        parameters.append(date_from)
+        query_parts.append(
+            "WHERE CAST(SalMas_Date AS date) >= "
+            f"{format_sqlserver_date_literal(date_from)}"
+        )
     if date_to:
-        where_or_and = "AND" if parameters else "WHERE"
-        query_parts.append(f"{where_or_and} CAST(SalMas_Date AS date) <= ?")
-        parameters.append(date_to)
+        where_or_and = "AND" if date_from else "WHERE"
+        query_parts.append(
+            f"{where_or_and} CAST(SalMas_Date AS date) <= "
+            f"{format_sqlserver_date_literal(date_to)}"
+        )
 
     query_parts.append("ORDER BY SalMas_SNo")
-    return "\n".join(query_parts), parameters
+    return "\n".join(query_parts), []
 
 
 def build_sales_record(row, synced_at):
@@ -284,7 +293,10 @@ def sync_sales_from_sqlserver(date_from=None, date_to=None, batch_size=2000):
 
     try:
         cursor = connection.cursor()
-        cursor.execute(query, parameters)
+        if parameters:
+            cursor.execute(query, parameters)
+        else:
+            cursor.execute(query)
 
         while True:
             rows = cursor.fetchmany(batch_size)

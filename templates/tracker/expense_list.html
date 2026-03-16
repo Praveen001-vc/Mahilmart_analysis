@@ -13,6 +13,7 @@
     </div>
     <div class="hero-actions">
         <a class="primary-button" href="{% url 'expense-add' %}">Add Expense Record</a>
+        <a class="secondary-button" href="{% url 'expense-category-list' %}?next={% url 'expense-list' %}">Manage Categories</a>
         <a class="secondary-button" href="{% url 'daily-settlement' %}">Daily Cash Settlement</a>
         <a class="primary-button expense-dashboard-button" href="{% url 'dashboard' %}">Sales Analytics Dashboard</a>
     </div>

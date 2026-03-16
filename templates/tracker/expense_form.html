@@ -11,6 +11,7 @@
         <p>Register utilities, salaries, rent, supplier purchases, logistics, and every operating cost with clean records.</p>
     </div>
     <div class="hero-actions">
+        <a class="secondary-button" href="{% url 'expense-category-list' %}?next={% url 'expense-add' %}">Manage Categories</a>
         <a class="secondary-button" href="{% url 'supplier-list' %}">View Suppliers</a>
         <a class="secondary-button" href="{% url 'supplier-add' %}">Add Supplier Optional</a>
     </div>
@@ -34,18 +35,24 @@
             </div>
             <div class="entry-card-body">
                 <div class="field-block">
+                    <div class="field-label-row">
+                        <label for="{{ form.category.id_for_label }}">{{ form.category.label }}{% if form.category.field.required %} *{% endif %}</label>
+                        <a class="field-label-action" href="{% url 'expense-category-list' %}?next={% url 'expense-add' %}">+ Add Category</a>
+                    </div>
+                    {{ form.category }}
+                    {% if form.category.errors %}
+                        <div class="field-error">{{ form.category.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
                     <label for="{{ form.title.id_for_label }}">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
                     {{ form.title }}
                     {% if form.title.errors %}
                         <div class="field-error">{{ form.title.errors|join:", " }}</div>
                     {% endif %}
                 </div>
-                <div class="field-block">
-                    <label for="{{ form.category.id_for_label }}">{{ form.category.label }}{% if form.category.field.required %} *{% endif %}</label>
-                    {{ form.category }}
-                    {% if form.category.errors %}
-                        <div class="field-error">{{ form.category.errors|join:", " }}</div>
-                    {% endif %}
+                <div class="entry-inline-note">
+                    {{ category_count }} saved categories are available for this shared role workspace.
                 </div>
             </div>
         </article>
@@ -132,7 +139,8 @@
     </section>
 
     <section class="premium-panel entry-master-tools">
-        <div class="entry-tool-pill">Expense Title</div>
+        <div class="entry-tool-pill">Category Master</div>
+        <div class="entry-tool-pill">Purpose</div>
         <div class="entry-tool-pill">Supplier Link</div>
         <div class="entry-tool-pill">Reference</div>
         <div class="entry-tool-pill">Payment Method</div>

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Expense Categories | Mahilmart{% endblock %}
+{% block body_class %}app-shell entry-master-shell expense-category-shell{% endblock %}
+
+{% block content %}
+<section class="entry-master-hero entry-master-hero-light premium-panel">
+    <div>
+        <span class="eyebrow">Expense Category Master</span>
+        <h1>Manage Expense Categories</h1>
+        <p>Create reusable categories for expenses. These categories are shared by the same role workspace.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="secondary-button" href="{{ next_url }}">Back to Expense</a>
+    </div>
+</section>
+
+<section class="entry-master-grid expense-category-grid">
+    <article class="premium-panel entry-master-card">
+        <div class="entry-card-heading">
+            <h2><span aria-hidden="true">+</span> Add Category</h2>
+        </div>
+        <div class="entry-card-body">
+            <form method="post" class="financial-form category-inline-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ next_url }}">
+                <div class="field-block">
+                    <label for="{{ form.name.id_for_label }}">{{ form.name.label }}{% if form.name.field.required %} *{% endif %}</label>
+                    {{ form.name }}
+                    {% if form.name.help_text %}
+                        <small class="help-text">{{ form.name.help_text }}</small>
+                    {% endif %}
+                    {% if form.name.errors %}
+                        <div class="field-error">{{ form.name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block-actions category-inline-actions">
+                    <span class="filter-action-label" aria-hidden="true">Action</span>
+                    <button type="submit" class="primary-button">Save Category</button>
+                </div>
+            </form>
+        </div>
+    </article>
+
+    <article class="premium-panel entry-master-card entry-master-card-wide">
+        <div class="entry-card-heading">
+            <h2><span aria-hidden="true">&#128203;</span> Saved Categories</h2>
+        </div>
+        <div class="entry-card-body">
+            <div class="entry-inline-note">
+                {{ category_count }} categories available in this shared role workspace.
+            </div>
+            {% if category_records %}
+                <div class="category-master-list">
+                    {% for category in category_records %}
+                        <div class="category-master-item">
+                            <div>
+                                <strong>{{ category.name }}</strong>
+                                <p>Used in {{ category.usage_count }} expense record{{ category.usage_count|pluralize }}.</p>
+                            </div>
+                            <span class="category-master-count">{{ category.usage_count }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">No expense categories available yet.</div>
+            {% endif %}
+        </div>
+    </article>
+</section>
+{% endblock %}

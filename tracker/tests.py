@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from .models import (
     DailyCashSettlement,
+    ExpenseCategory,
     ExpenseRecord,
     IncomeRecord,
     PaymentMethod,
@@ -154,6 +155,44 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Role Shared Supplier")
 
+    def test_expense_add_page_includes_categories_from_same_role(self):
+        peer_admin = get_user_model().objects.create_superuser(
+            username="peer_admin_category",
+            password="PeerPass123!",
+        )
+        ExpenseCategory.objects.create(
+            user=peer_admin,
+            name="Stationery",
+        )
+
+        self.client.force_login(self.admin_user)
+        response = self.client.get(reverse("expense-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Stationery")
+        self.assertContains(response, "Purpose")
+        self.assertContains(response, "+ Add Category")
+
+    def test_expense_category_page_creates_category(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("expense-category-list"),
+            {
+                "name": "Courier Charges",
+                "next": reverse("expense-add"),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("expense-add"))
+        self.assertTrue(
+            ExpenseCategory.objects.filter(
+                user=self.user,
+                name="Courier Charges",
+            ).exists()
+        )
+
     def test_daily_settlement_post_updates_existing_same_role_record(self):
         peer_admin = get_user_model().objects.create_superuser(
             username="peer_admin_settlement",
@@ -190,8 +229,7 @@ class TrackerViewsTests(TestCase):
                 "cash_settled_to": "Shared Counter",
                 "closing_balance": "75.00",
                 "notes": "Updated by another admin account",
-                "start_date": today_value,
-                "end_date": today_value,
+                "selected_date": today_value,
             },
         )
 
@@ -210,6 +248,46 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(settlement.closing_balance, Decimal("50.00"))
         self.assertEqual(settlement.cash_settled_to, "Shared Counter")
         self.assertEqual(settlement.notes, "Updated by another admin account")
+
+    def test_daily_settlement_post_updates_when_form_uses_hidden_selected_date(self):
+        self.client.force_login(self.user)
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=date.today() - timedelta(days=1),
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("700.00"),
+        )
+        settlement = DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=date.today(),
+            opening_balance=Decimal("700.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("700.00"),
+        )
+
+        response = self.client.post(
+            reverse("daily-settlement"),
+            {
+                "selected_date": date.today().isoformat(),
+                "settlement_date": date.today().isoformat(),
+                "gpay_settled": "0.00",
+                "cash_settled": "200.00",
+                "cash_settled_to": "Admin",
+                "closing_balance": "0.00",
+                "notes": "Updated from settlement page",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        settlement.refresh_from_db()
+        self.assertEqual(settlement.cash_settled, Decimal("200.00"))
+        self.assertEqual(settlement.cash_settled_to, "Admin")
+        self.assertEqual(settlement.notes, "Updated from settlement page")
 
     def test_supplier_name_is_shown_on_expense_page(self):
         self.client.force_login(self.user)
@@ -254,6 +332,12 @@ class TrackerViewsTests(TestCase):
         record = ExpenseRecord.objects.get(title="Electricity Bill")
         self.assertEqual(record.vendor, "TNEB")
         self.assertIsNone(record.supplier)
+        self.assertTrue(
+            ExpenseCategory.objects.filter(
+                user=self.user,
+                name="Utilities",
+            ).exists()
+        )
 
     def test_income_add_page_renders_entry_master_layout(self):
         self.client.force_login(self.user)
@@ -733,6 +817,60 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Cash Denomination Total")
         self.assertContains(response, "Cash Denomination")
 
+    def test_daily_settlement_shows_credit_bill_list_for_selected_date(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=4501,
+            bill_no="CREDIT-4501",
+            sale_date=date.today(),
+            customer_name="Credit Party",
+            net_amount=Decimal("1500.00"),
+            received_amount=Decimal("300.00"),
+            balance_amount=Decimal("1200.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=4502,
+            bill_no="CASH-4502",
+            sale_date=date.today(),
+            customer_name="Cash Party",
+            net_amount=Decimal("500.00"),
+            received_amount=Decimal("500.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
+        )
+
+        response = self.client.get(reverse("daily-settlement"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Notes & Credit Bills")
+        self.assertContains(response, "CREDIT-4501")
+        self.assertContains(response, "Credit Party")
+        self.assertEqual(response.context["credit_bill_count"], 1)
+        self.assertEqual(response.context["credit_bill_total"], Decimal("1200.00"))
+
+    def test_daily_settlement_hides_split_paid_credit_bill(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=4503,
+            bill_no="SPLIT-4503",
+            sale_date=date.today(),
+            customer_name="Split Paid Party",
+            net_amount=Decimal("1560.00"),
+            received_amount=Decimal("300.00"),
+            balance_amount=Decimal("1260.00"),
+            split_cash_amount=Decimal("1560.00"),
+            split_card_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+
+        response = self.client.get(reverse("daily-settlement"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "SPLIT-4503")
+        self.assertEqual(response.context["credit_bill_count"], 0)
+        self.assertEqual(response.context["credit_bill_total"], Decimal("0.00"))
+
     def test_daily_settlement_post_creates_record_and_computes_totals(self):
         self.client.force_login(self.user)
         yesterday = date.today() - timedelta(days=1)
@@ -766,8 +904,7 @@ class TrackerViewsTests(TestCase):
                 "expense_amount": "9999.00",
                 "closing_balance": "300.00",
                 "notes": "Shift handover complete",
-                "start_date": today_value,
-                "end_date": today_value,
+                "selected_date": today_value,
             },
         )
 
@@ -816,8 +953,7 @@ class TrackerViewsTests(TestCase):
                 "cash_settled_to": "Admin Counter",
                 "closing_balance": "300.00",
                 "notes": "Saved with denomination popup",
-                "start_date": today_value,
-                "end_date": today_value,
+                "selected_date": today_value,
             },
         )
 
@@ -831,6 +967,9 @@ class TrackerViewsTests(TestCase):
             settlement.cash_denominations,
             {"500": 1, "200": 2, "50": 1},
         )
+        self.assertEqual(settlement.cash_denomination_total, Decimal("950.00"))
+        self.assertEqual(settlement.cash_in_hand, Decimal("541.00"))
+        self.assertEqual(settlement.cash_difference, Decimal("409.00"))
         self.assertEqual(settlement.closing_balance, Decimal("540.00"))
         self.assertEqual(settlement.total_amount, Decimal("1741.00"))
 
@@ -868,8 +1007,7 @@ class TrackerViewsTests(TestCase):
                 "cash_settled_to": "Admin Counter",
                 "closing_balance": "100.00",
                 "notes": "Should use sales ledger gpay",
-                "start_date": today_value,
-                "end_date": today_value,
+                "selected_date": today_value,
             },
         )
 
@@ -880,7 +1018,7 @@ class TrackerViewsTests(TestCase):
         )
         self.assertEqual(settlement.gpay_settled, Decimal("275.00"))
 
-    def test_daily_settlement_filter_range_shows_only_matching_dates(self):
+    def test_daily_settlement_single_date_filter_shows_only_matching_date(self):
         self.client.force_login(self.user)
         target_date = date.today() - timedelta(days=2)
         other_date = date.today()
@@ -908,8 +1046,7 @@ class TrackerViewsTests(TestCase):
         response = self.client.get(
             reverse("daily-settlement"),
             {
-                "start_date": target_date.isoformat(),
-                "end_date": target_date.isoformat(),
+                "selected_date": target_date.isoformat(),
                 "entry_date": target_date.isoformat(),
             },
         )
@@ -919,6 +1056,59 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, target_date.strftime("%d-%m-%Y"))
         self.assertContains(response, "Target Counter")
         self.assertNotContains(response, "Other Counter")
+
+    def test_daily_settlement_filter_restores_saved_counts_and_snapshot(self):
+        self.client.force_login(self.user)
+        target_date = date.today() - timedelta(days=1)
+        settlement = DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=target_date,
+            opening_balance=Decimal("100.00"),
+            gpay_settled=Decimal("250.00"),
+            cash_settled=Decimal("200.00"),
+            cash_denominations={"500": 1, "200": 2},
+            cash_settled_to="Night Admin",
+            expense_amount=Decimal("50.00"),
+            closing_balance=Decimal("650.00"),
+            notes="Saved settlement snapshot",
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Late Expense",
+            vendor="Vendor A",
+            category="General",
+            amount=Decimal("25.00"),
+            transaction_date=target_date,
+        )
+
+        response = self.client.get(
+            reverse("daily-settlement"),
+            {
+                "selected_date": target_date.isoformat(),
+                "entry_date": target_date.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["settlement_preview"]["cash_in_hand"],
+            Decimal("850.00"),
+        )
+        self.assertEqual(
+            response.context["settlement_preview"]["expense_amount"],
+            Decimal("50.00"),
+        )
+        self.assertEqual(response.context["cash_denomination_total"], Decimal("900.00"))
+        self.assertEqual(response.context["cash_difference"], Decimal("50.00"))
+        self.assertEqual(response.context["selected_settlement"].pk, settlement.pk)
+        denomination_counts = {
+            row["value"]: row["count"]
+            for row in response.context["cash_denomination_rows"]
+        }
+        self.assertEqual(denomination_counts[500], 1)
+        self.assertEqual(denomination_counts[200], 2)
+        self.assertContains(response, "Night Admin")
+        self.assertContains(response, "Saved settlement snapshot")
 
     def test_regular_user_cannot_open_user_management_page(self):
         self.client.force_login(self.user)
@@ -1360,6 +1550,63 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["received_total"], Decimal("525.00"))
         self.assertEqual(response.context["balance_total"], Decimal("900.00"))
 
+    def test_sales_list_shows_credit_bill_list_from_sales_records(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=111,
+            bill_no="CREDIT-111",
+            sale_date=date.today(),
+            customer_name="Credit Customer",
+            net_amount=Decimal("900.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("900.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=112,
+            bill_no="CASH-112",
+            sale_date=date.today(),
+            customer_name="Cash Customer",
+            net_amount=Decimal("200.00"),
+            received_amount=Decimal("200.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
+        )
+
+        response = self.client.get(reverse("sales-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Credit Bills")
+        self.assertContains(response, "CREDIT-111")
+        self.assertNotContains(response, "No credit bills in the current sales filter.")
+        self.assertEqual(response.context["credit_bill_count"], 1)
+        self.assertEqual(response.context["credit_bill_total"], Decimal("900.00"))
+
+    def test_sales_list_hides_split_paid_bill_from_credit_history(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=113,
+            bill_no="SPLIT-113",
+            sale_date=date.today(),
+            customer_name="Split Paid Customer",
+            net_amount=Decimal("1560.00"),
+            received_amount=Decimal("300.00"),
+            balance_amount=Decimal("1260.00"),
+            split_cash_amount=Decimal("1560.00"),
+            split_card_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+
+        response = self.client.get(reverse("sales-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "SPLIT-113")
+        self.assertContains(response, "Split Paid Customer")
+        self.assertContains(response, "Rs. 1560.00")
+        self.assertContains(response, "Rs. 0.00")
+        self.assertEqual(response.context["credit_bill_count"], 0)
+        self.assertEqual(response.context["credit_bill_total"], Decimal("0.00"))
+
     def test_sales_list_defaults_to_today_when_no_filters_are_provided(self):
         self.client.force_login(self.user)
         SalesLedgerRecord.objects.create(
@@ -1572,9 +1819,15 @@ class SalesSyncUnitTests(TestCase):
     def test_build_sales_sync_query_defaults_to_today(self):
         query, params = build_sales_sync_query()
 
-        self.assertIn("CAST(SalMas_Date AS date) >= ?", query)
-        self.assertIn("CAST(SalMas_Date AS date) <= ?", query)
-        self.assertEqual(params, [timezone.localdate(), timezone.localdate()])
+        self.assertIn(
+            f"CAST(SalMas_Date AS date) >= {{d '{timezone.localdate().isoformat()}'}}",
+            query,
+        )
+        self.assertIn(
+            f"CAST(SalMas_Date AS date) <= {{d '{timezone.localdate().isoformat()}'}}",
+            query,
+        )
+        self.assertEqual(params, [])
 
     def test_build_sales_sync_query_respects_custom_date_range(self):
         query, params = build_sales_sync_query(
@@ -1583,7 +1836,9 @@ class SalesSyncUnitTests(TestCase):
         )
 
         self.assertIn("ORDER BY SalMas_SNo", query)
-        self.assertEqual(params, [date(2025, 11, 1), date(2025, 11, 9)])
+        self.assertIn("CAST(SalMas_Date AS date) >= {d '2025-11-01'}", query)
+        self.assertIn("CAST(SalMas_Date AS date) <= {d '2025-11-09'}", query)
+        self.assertEqual(params, [])
 
     def test_classify_sales_payment_mode_marks_credit_first(self):
         self.assertEqual(

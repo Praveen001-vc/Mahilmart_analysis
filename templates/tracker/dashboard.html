@@ -7,7 +7,7 @@
 {% block content %}
 <section class="dashboard-command-bar premium-panel">
     <form method="get" action="{% url 'dashboard' %}" class="dashboard-command-form">
-        <div class="dashboard-command-search">
+        <label class="dashboard-command-search" for="dashboard-date-filter">
             <span class="dashboard-command-eyebrow">As of Date</span>
             <input
                 id="dashboard-date-filter"
@@ -17,7 +17,7 @@
                 value="{{ selected_date|date:'Y-m-d' }}"
                 data-dashboard-date-input
             >
-        </div>
+        </label>
         <button type="submit" class="dashboard-command-submit">Apply</button>
     </form>
     <div class="dashboard-command-side">
@@ -49,66 +49,85 @@
     </div>
 </section>
 
-<section class="dashboard-premium-hero premium-panel">
-    <div>
-        <span class="eyebrow">Control Center</span>
-        <h1>Dashboard</h1>
-        <p>Track income, expenses, settlements, and recent movement from one premium operating view.</p>
+<section class="dashboard-stage premium-panel">
+    <div class="dashboard-stage-head">
+        <div class="dashboard-stage-copy">
+            <span class="eyebrow">Operating Console</span>
+            <h1>Dashboard</h1>
+            <p>Track income, expenses, settlements, and daily movement from one shared role workspace.</p>
+        </div>
+        <div class="dashboard-premium-actions">
+            <a class="dashboard-hero-primary" href="{% url 'income-add' %}">Add Income</a>
+            <a class="dashboard-hero-secondary" href="{% url 'daily-settlement' %}">Daily Settlement</a>
+            <a class="dashboard-hero-secondary" href="{% url 'expense-add' %}">Add Expense</a>
+        </div>
     </div>
-    <div class="dashboard-premium-actions">
-        <a class="dashboard-hero-primary" href="{% url 'income-add' %}">Add Income</a>
-        <a class="dashboard-hero-secondary" href="{% url 'daily-settlement' %}">Daily Settlement</a>
-        <a class="dashboard-hero-secondary" href="{% url 'expense-add' %}">Add Expense</a>
+
+    <div class="dashboard-stage-cards">
+        <article class="dashboard-story-card dashboard-story-card-wallet">
+            <span class="dashboard-story-kicker">Opening Balance</span>
+            <h2>Start of Day Cash</h2>
+            <strong>Rs. {{ opening_balance }}</strong>
+            <p>Opening balance for {{ selected_date|date:"d M Y" }} only.</p>
+            <div class="dashboard-story-meta">
+                <span>Income <b>Rs. {{ selected_income }}</b></span>
+                <span>Sales <b>Rs. {{ selected_day_balance }}</b></span>
+            </div>
+        </article>
+
+        <article class="dashboard-story-card dashboard-story-card-savings">
+            <span class="dashboard-story-kicker">Total Expenses</span>
+            <h2>Selected Day Expense</h2>
+            <strong>Rs. {{ selected_expense }}</strong>
+            <p>Only expense entries saved on {{ selected_date|date:"d M Y" }}.</p>
+            <div class="dashboard-story-meta">
+                <span>Opening <b>Rs. {{ opening_balance }}</b></span>
+                <span>Income <b>Rs. {{ selected_income }}</b></span>
+            </div>
+        </article>
+
+        <article class="dashboard-story-card dashboard-story-card-balance">
+            <span class="dashboard-story-kicker">Closing Balance</span>
+            <h2>End of Day Cash</h2>
+            <strong>Rs. {{ closing_balance }}</strong>
+            <p>
+                {% if dashboard_settlement %}
+                    Closing balance saved for {{ selected_date|date:"d-m-Y" }}.
+                {% else %}
+                    Daily settlement not saved yet for {{ selected_date|date:"d-m-Y" }}.
+                {% endif %}
+            </p>
+            <div class="dashboard-story-meta">
+                <span>Expense <b>Rs. {{ selected_expense }}</b></span>
+                <span>Status <b>{% if dashboard_settlement %}Saved{% else %}Pending{% endif %}</b></span>
+            </div>
+        </article>
     </div>
 </section>
 
-<section class="dashboard-kpi-grid">
-    <article class="premium-panel dashboard-kpi-card dashboard-kpi-card-primary">
-        <div class="dashboard-kpi-head">
-            <span>Total Income</span>
-            <span class="dashboard-kpi-badge">Live</span>
-        </div>
-        <strong>Rs. {{ income_total }}</strong>
-        <small>Month to date: Rs. {{ current_month_income }}</small>
+<section class="dashboard-signal-strip premium-panel">
+    <article class="dashboard-signal-card">
+        <span class="dashboard-signal-label">Selected Income</span>
+        <strong class="dashboard-signal-value">Rs. {{ selected_income }}</strong>
+        <small class="dashboard-signal-note">Income for {{ selected_date|date:"d-m-Y" }} only.</small>
     </article>
 
-    <article class="premium-panel dashboard-kpi-card">
-        <div class="dashboard-kpi-head">
-            <span>Total Expenses</span>
-            <span class="dashboard-kpi-arrow">01</span>
-        </div>
-        <strong>Rs. {{ expense_total }}</strong>
-        <small>Month to date: Rs. {{ current_month_expense }}</small>
+    <article class="dashboard-signal-card">
+        <span class="dashboard-signal-label">Total Expenses</span>
+        <strong class="dashboard-signal-value">Rs. {{ selected_expense }}</strong>
+        <small class="dashboard-signal-note">Expenses for {{ selected_date|date:"d-m-Y" }} only.</small>
     </article>
 
-    <article class="premium-panel dashboard-kpi-card">
-        <div class="dashboard-kpi-head">
-            <span>Opening Balance</span>
-            <span class="dashboard-kpi-arrow">02</span>
-        </div>
-        <strong>Rs. {{ opening_balance }}</strong>
-        <small>
-            {% if dashboard_settlement %}
-                Daily Settlement loaded for {{ selected_date|date:"d-m-Y" }}
-            {% else %}
-                Carry forward from {{ previous_date|date:"d-m-Y" }}
-            {% endif %}
-        </small>
+    <article class="dashboard-signal-card">
+        <span class="dashboard-signal-label">Opening Balance</span>
+        <strong class="dashboard-signal-value">Rs. {{ opening_balance }}</strong>
+        <small class="dashboard-signal-note">Selected day opening balance.</small>
     </article>
 
-    <article class="premium-panel dashboard-kpi-card">
-        <div class="dashboard-kpi-head">
-            <span>Closing Balance</span>
-            <span class="dashboard-kpi-arrow">03</span>
-        </div>
-        <strong>Rs. {{ closing_balance }}</strong>
-        <small>
-            {% if dashboard_settlement %}
-                Saved from Daily Settlement
-            {% else %}
-                Save Daily Settlement to lock closing balance
-            {% endif %}
-        </small>
+    <article class="dashboard-signal-card">
+        <span class="dashboard-signal-label">Closing Balance</span>
+        <strong class="dashboard-signal-value">Rs. {{ closing_balance }}</strong>
+        <small class="dashboard-signal-note">{{ selected_date|date:"d M Y" }} end of day balance.</small>
     </article>
 </section>
 
@@ -139,6 +158,12 @@
             <span><i class="legend-dot legend-income"></i> Income</span>
             <span><i class="legend-dot legend-expense"></i> Expense</span>
             <span><i class="legend-dot legend-balance"></i> Balance</span>
+        </div>
+
+        <div class="dashboard-chart-summary">
+            <span>Selected Income: Rs. {{ selected_income }}</span>
+            <span>Selected Expense: Rs. {{ selected_expense }}</span>
+            <span>Net Balance: Rs. {{ balance }}</span>
         </div>
     </article>
 
@@ -171,12 +196,13 @@
         <a class="dashboard-panel-button" href="{% url 'daily-settlement' %}">Open Daily Settlement</a>
     </article>
 
-    <article class="premium-panel dashboard-feed-card">
+    <article class="premium-panel dashboard-feed-card dashboard-span-2">
         <div class="dashboard-card-head">
             <div>
                 <span class="eyebrow">Recent Income</span>
                 <h2>Latest collections</h2>
             </div>
+            <p>Showing the latest saved income records</p>
         </div>
 
         {% if recent_income %}
@@ -197,34 +223,13 @@
         {% endif %}
     </article>
 
-    <article class="premium-panel dashboard-progress-card">
-        <div class="dashboard-card-head">
-            <div>
-                <span class="eyebrow">Performance</span>
-                <h2>Savings progress</h2>
-            </div>
-        </div>
-
-        <div class="dashboard-progress-ring" data-dashboard-progress="{{ savings_rate_meter }}">
-            <div class="dashboard-progress-ring-inner">
-                <strong>{{ savings_rate }}%</strong>
-                <span>Savings Rate</span>
-            </div>
-        </div>
-
-        <div class="dashboard-progress-meta">
-            <span>Selected Day Net: Rs. {{ selected_day_balance }}</span>
-            <span>Suppliers: {{ supplier_count }}</span>
-            <span>Total Balance: Rs. {{ balance }}</span>
-        </div>
-    </article>
-
     <article class="premium-panel dashboard-feed-card">
         <div class="dashboard-card-head">
             <div>
                 <span class="eyebrow">Recent Expenses</span>
                 <h2>Latest spending</h2>
             </div>
+            <p>Most recent expenses in this role workspace</p>
         </div>
 
         {% if recent_expenses %}
@@ -244,6 +249,7 @@
             <div class="empty-state">No expense records yet.</div>
         {% endif %}
     </article>
+
     <article class="premium-panel dashboard-action-board dashboard-span-2">
         <div class="dashboard-card-head">
             <div>
@@ -269,6 +275,28 @@
                 <strong>Open Reports</strong>
                 <p>Review month trends, categories, and totals.</p>
             </a>
+        </div>
+    </article>
+
+    <article class="premium-panel dashboard-progress-card">
+        <div class="dashboard-card-head">
+            <div>
+                <span class="eyebrow">Performance</span>
+                <h2>Savings progress</h2>
+            </div>
+        </div>
+
+        <div class="dashboard-progress-ring" data-dashboard-progress="{{ savings_rate_meter }}">
+            <div class="dashboard-progress-ring-inner">
+                <strong>{{ savings_rate }}%</strong>
+                <span>Savings Rate</span>
+            </div>
+        </div>
+
+        <div class="dashboard-progress-meta">
+            <span>Selected Day Net: Rs. {{ selected_day_balance }}</span>
+            <span>Suppliers: {{ supplier_count }}</span>
+            <span>Total Balance: Rs. {{ balance }}</span>
         </div>
     </article>
 </section>

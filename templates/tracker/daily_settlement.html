@@ -4,439 +4,1067 @@
 {% block body_class %}app-shell daily-settlement-shell{% endblock %}
 
 {% block content %}
-<!-- Premium Header with Gradient -->
-<div class="premium-header">
-    <div class="premium-header-content">
-        <div class="premium-header-title">
-            <div class="premium-icon-wrapper">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="2" y="6" width="20" height="14" rx="2" />
-                    <circle cx="12" cy="13" r="3" />
-                    <path d="M4 6V4h16v2" />
-                </svg>
-            </div>
-            <div>
-                <h1>Daily Settlement</h1>
-                <p class="premium-subtitle">Complete your day-end cash reconciliation</p>
-            </div>
-        </div>
-        <a href="{% url 'expense-list' %}" class="premium-button premium-button-outline">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-            Back to Expenses
-        </a>
-    </div>
+<!-- Simple Header -->
+<div class="header-bar">
+    <h1>Daily Cash Settlement</h1>
+    <a href="{% url 'expense-list' %}" class="back-btn">← Back to Expense</a>
 </div>
 
-<!-- Compact Filter Card -->
-<div class="premium-card premium-card-sm">
-    <div class="premium-card-header">
-        <div class="premium-card-title">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="4" width="18" height="16" rx="2" />
-                <path d="M8 10h8M8 14h5" />
-            </svg>
-            <h3>Date Range</h3>
-        </div>
-        <span class="premium-badge premium-badge-info">{{ settlement_filters.start_date|date:"d-m-Y" }} - {{ settlement_filters.end_date|date:"d-m-Y" }}</span>
+<!-- Date Filter Strip -->
+<div class="date-strip">
+    <div class="date-range">
+        <span class="date-label">{{ settlement_filters.selected_date|date:"d-m-Y" }}</span>
     </div>
-    
-    <form method="get" action="{% url 'daily-settlement' %}" class="premium-filter-form">
-        <div class="premium-filter-grid">
-            <div class="premium-input-group">
-                <label>From</label>
-                <input type="date" name="start_date" class="premium-input" value="{{ settlement_filters.start_date|date:'Y-m-d' }}">
-            </div>
-            <div class="premium-input-group">
-                <label>To</label>
-                <input type="date" name="end_date" class="premium-input" value="{{ settlement_filters.end_date|date:'Y-m-d' }}">
-            </div>
-            <div class="premium-filter-actions">
-                <button type="submit" class="premium-button premium-button-primary">Apply</button>
-                <a href="{% url 'daily-settlement' %}" class="premium-button premium-button-ghost">Reset</a>
-            </div>
-        </div>
+    <form method="get" action="{% url 'daily-settlement' %}" class="date-form">
+        <input type="date" name="selected_date" value="{{ settlement_filters.selected_date|date:'Y-m-d' }}">
+        <button type="submit">Apply</button>
+        <a href="{% url 'daily-settlement' %}">Reset</a>
     </form>
 </div>
 
-<!-- Main Settlement Area - Two Column Layout -->
-<div class="premium-settlement-layout">
-    <!-- Left Column - Settlement Form -->
-    <div class="premium-settlement-main">
-        <div class="premium-card">
-            <div class="premium-card-header">
-                <div class="premium-card-title">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10" />
-                        <path d="M12 6v6l4 2" />
-                    </svg>
-                    <h3>{% if selected_settlement %}Edit Settlement{% else %}New Settlement{% endif %}</h3>
-                </div>
-                <span class="premium-badge premium-badge-success">{{ selected_entry_date|date:"d-m-Y" }}</span>
-            </div>
+<!-- Main Two-Column Layout -->
+<div class="main-layout">
+    <!-- LEFT COLUMN: Settlement Form -->
+    <div class="form-column">
+        <form method="post" action="{% url 'daily-settlement' %}" class="settlement-form" id="daily-settlement-form">
+            {% csrf_token %}
+            <input type="hidden" name="settlement_date" value="{{ selected_entry_date|date:'Y-m-d' }}">
+            <input type="hidden" name="selected_date" value="{{ settlement_filters.selected_date|date:'Y-m-d' }}">
 
-            <form method="post" action="{% url 'daily-settlement' %}" class="premium-form">
-                {% csrf_token %}
-                <input type="hidden" name="start_date" value="{{ settlement_filters.start_date|date:'Y-m-d' }}">
-                <input type="hidden" name="end_date" value="{{ settlement_filters.end_date|date:'Y-m-d' }}">
-
-                <!-- Auto-calculated Values Grid -->
-                <div class="premium-metrics-grid">
-                    <div class="premium-metric-card">
-                        <span class="premium-metric-label">Opening Balance</span>
-                        <span class="premium-metric-value">₹{{ autofill_summary.opening_balance|floatformat:2 }}</span>
-                        <input type="hidden" id="opening-balance-value" value="{{ autofill_summary.opening_balance }}">
-                    </div>
-                    <div class="premium-metric-card">
-                        <span class="premium-metric-label">Sales Cash</span>
-                        <span class="premium-metric-value">₹{{ settlement_preview.sales_ledger_cash|floatformat:2 }}</span>
-                        <input type="hidden" id="sales-ledger-value" value="{{ settlement_preview.sales_ledger_cash }}">
-                    </div>
-                    <div class="premium-metric-card">
-                        <span class="premium-metric-label">Expenses</span>
-                        <span class="premium-metric-value premium-metric-danger">-₹{{ autofill_summary.expense_amount|floatformat:2 }}</span>
-                        <input type="hidden" id="expense-value" value="{{ autofill_summary.expense_amount }}">
-                    </div>
-                    <div class="premium-metric-card">
-                        <span class="premium-metric-label">Cash in Hand</span>
-                        <span class="premium-metric-value premium-metric-success" id="cash-in-hand-display">₹{{ settlement_preview.cash_in_hand|floatformat:2 }}</span>
-                    </div>
-                </div>
-
-                <!-- Main Form Fields -->
-                <div class="premium-form-grid">
-                    <div class="premium-form-field">
-                        <label for="{{ form.settlement_date.id_for_label }}">Settlement Date</label>
-                        {{ form.settlement_date }}
-                        {% if form.settlement_date.errors %}
-                            <span class="premium-error">{{ form.settlement_date.errors|join:", " }}</span>
-                        {% endif %}
-                    </div>
-
-                    <div class="premium-form-field">
-                        <label for="{{ form.gpay_settled.id_for_label }}">Card / UPI Settled</label>
-                        {{ form.gpay_settled }}
-                        {% if form.gpay_settled.errors %}
-                            <span class="premium-error">{{ form.gpay_settled.errors|join:", " }}</span>
-                        {% endif %}
-                    </div>
-
-                    <div class="premium-form-field">
-                        <label for="{{ form.cash_settled.id_for_label }}">Cash Handover</label>
-                        {{ form.cash_settled }}
-                        {% if form.cash_settled.errors %}
-                            <span class="premium-error">{{ form.cash_settled.errors|join:", " }}</span>
-                        {% endif %}
-                    </div>
-
-                    <div class="premium-form-field">
-                        <label for="{{ form.cash_settled_to.id_for_label }}">Handover To</label>
-                        {{ form.cash_settled_to }}
-                        {% if form.cash_settled_to.errors %}
-                            <span class="premium-error">{{ form.cash_settled_to.errors|join:", " }}</span>
-                        {% endif %}
-                    </div>
-
-                    <div class="premium-form-field">
-                        <label for="{{ form.closing_balance.id_for_label }}">Closing Balance</label>
-                        {{ form.closing_balance }}
-                        {% if form.closing_balance.errors %}
-                            <span class="premium-error">{{ form.closing_balance.errors|join:", " }}</span>
-                        {% endif %}
-                    </div>
-
-                    <div class="premium-form-field premium-form-field-full">
-                        <label for="{{ form.notes.id_for_label }}">Notes</label>
-                        {{ form.notes }}
-                    </div>
-                </div>
-
-                <!-- Quick Summary Row -->
-                <div class="premium-summary-row">
-                    <div class="premium-summary-item">
-                        <span>Total Amount</span>
-                        <strong id="total-amount-display">₹{{ settlement_preview.total_amount|floatformat:2 }}</strong>
-                    </div>
-                    <div class="premium-summary-item">
-                        <span>Actual Sales</span>
-                        <strong id="actual-sales-display">₹{{ settlement_preview.actual_sales|floatformat:2 }}</strong>
-                    </div>
-                </div>
-
-                <div class="premium-form-actions">
-                    <a href="{% url 'daily-settlement' %}?entry_date={{ selected_entry_date|date:'Y-m-d' }}&start_date={{ settlement_filters.start_date|date:'Y-m-d' }}&end_date={{ settlement_filters.end_date|date:'Y-m-d' }}" 
-                       class="premium-button premium-button-outline">Clear</a>
-                    <button type="submit" class="premium-button premium-button-primary">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                        {% if selected_settlement %}Update{% else %}Save Settlement{% endif %}
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Right Column - Cash Denomination Calculator -->
-    <div class="premium-settlement-side">
-        <div class="premium-card premium-card-calculator">
-            <div class="premium-card-header">
-                <div class="premium-card-title">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="4" y="4" width="16" height="16" rx="2" />
-                        <path d="M8 8h8M8 12h8M8 16h4" />
-                    </svg>
-                    <h3>Cash Count</h3>
-                </div>
-                <span class="premium-badge premium-badge-soft">Calculator</span>
-            </div>
-
-            <div class="premium-denomination-container">
-                <input type="hidden" id="settlement-cash-denominations" name="cash_denominations" value="{{ cash_denominations_json }}">
-                
-                <div class="premium-denomination-grid">
-                    {% for denomination in cash_denomination_values %}
-                    <div class="premium-denomination-row">
-                        <span class="premium-denomination-label">₹{{ denomination }}</span>
-                        <span class="premium-denomination-multiply">×</span>
-                        <input type="number" min="0" step="1" value="0" 
-                               class="premium-denomination-input" 
-                               data-denomination-value="{{ denomination }}"
-                               data-denomination-input>
-                        <span class="premium-denomination-equals">=</span>
-                        <span class="premium-denomination-total" data-denomination-total="{{ denomination }}">₹0</span>
-                    </div>
+            {% if form.non_field_errors or form.settlement_date.errors %}
+                <div class="field-error">
+                    {% for error in form.non_field_errors %}
+                        <div>{{ error }}</div>
+                    {% endfor %}
+                    {% for error in form.settlement_date.errors %}
+                        <div>{{ error }}</div>
                     {% endfor %}
                 </div>
-
-                <div class="premium-denomination-footer">
-                    <div class="premium-denomination-grand-total">
-                        <span>Counted Total</span>
-                        <strong id="denomination-total-display">₹0.00</strong>
-                    </div>
-                    <button type="button" class="premium-button premium-button-ghost" id="clear-denominations">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                        </svg>
-                        Clear
-                    </button>
+            {% endif %}
+            
+            <!-- Date and Recent Settlements Row -->
+            <div class="date-header">
+                <div class="current-date">
+                    <span class="day">{{ selected_entry_date|date:"l" }}</span>
+                    <span class="full-date">{{ selected_entry_date|date:"d F Y" }}</span>
                 </div>
-                <p class="premium-denomination-hint" id="denomination-summary">
-                    Compare counted cash with cash in hand (₹{{ settlement_preview.cash_in_hand|floatformat:2 }})
-                </p>
+                
+                <!-- Recent Settlements Mini List -->
+                <div class="recent-mini">
+                    <span class="recent-label">Recent:</span>
+                    {% if settlement_records %}
+                        {% for record in settlement_records|slice:":3" %}
+                        <a href="{% url 'daily-settlement' %}?selected_date={{ record.settlement_date|date:'Y-m-d' }}&entry_date={{ record.settlement_date|date:'Y-m-d' }}" 
+                           class="recent-item {% if record.settlement_date == selected_entry_date %}active{% endif %}">
+                            {{ record.settlement_date|date:"d/m" }} ₹{{ record.total_amount|floatformat:0 }}
+                        </a>
+                        {% endfor %}
+                    {% else %}
+                        <span class="no-records">No recent</span>
+                    {% endif %}
+                </div>
             </div>
+            
+            <!-- SECTION I: Daily Summary -->
+            <div class="form-section">
+                <div class="section-head">
+                    <span class="section-num">I</span>
+                    <h2>Daily Summary</h2>
+                </div>
+                
+                <div class="section-body">
+                    <div class="form-row">
+                        <span class="row-label">Opening balance:</span>
+                        <span class="row-value">₹{{ autofill_summary.opening_balance|floatformat:2 }}</span>
+                        <input type="hidden" id="opening-balance" value="{{ settlement_preview.opening_balance }}">
+                    </div>
+                    
+                    <div class="form-row">
+                        <span class="row-label">Sales Ledger Cash:</span>
+                        <span class="row-value">₹{{ settlement_preview.sales_ledger_cash|floatformat:2 }}</span>
+                        <input type="hidden" id="sales-cash" value="{{ settlement_preview.sales_ledger_cash }}">
+                    </div>
+                    
+                    <div class="form-row">
+                        <span class="row-label">Gpay/UPI total:</span>
+                        <input type="number" name="gpay_settled" id="gpay-settled" 
+                               class="row-input row-input-readonly" step="0.01" readonly
+                               value="{{ form.gpay_settled.value|default:'0' }}">
+                    </div>
+                    {% if form.gpay_settled.errors %}
+                        <div class="field-error">{{ form.gpay_settled.errors|join:", " }}</div>
+                    {% endif %}
+                    <div class="row-note">Auto fetched from Sales table card payment and split-card payment.</div>
+                    
+                    <div class="form-row total-row">
+                        <span class="row-label">Total amount:</span>
+                        <span class="row-value highlight" id="total-amount">₹0.00</span>
+                    </div>
+                    
+                    <div class="form-row actual-row">
+                        <span class="row-label">Actual total sale amount:</span>
+                        <span class="row-value highlight" id="actual-sales">₹0.00</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SECTION II: Cash Handling -->
+            <div class="form-section">
+                <div class="section-head">
+                    <span class="section-num">II</span>
+                    <h2>Cash Handling</h2>
+                </div>
+                
+                <div class="section-body">
+                    <div class="form-row">
+                        <span class="row-label">Expense:</span>
+                        <span class="row-value">₹{{ autofill_summary.expense_amount|floatformat:2 }}</span>
+                        <input type="hidden" id="expense-amount" value="{{ settlement_preview.expense_amount }}">
+                    </div>
+                    
+                    <div class="form-row cash-row">
+                        <span class="row-label">Cash in hand:</span>
+                        <span class="row-value highlight" id="cash-in-hand">₹0.00</span>
+                    </div>
+                    
+                    <div class="form-row">
+                        <span class="row-label">Cash settled:</span>
+                        <input type="number" name="cash_settled" id="cash-settled" 
+                               class="row-input" step="0.01" value="{{ form.cash_settled.value|default:'0' }}">
+                    </div>
+                    {% if form.cash_settled.errors %}
+                        <div class="field-error">{{ form.cash_settled.errors|join:", " }}</div>
+                    {% endif %}
+                    
+                    <div class="form-row">
+                        <span class="row-label">Cash settled to:</span>
+                        <input type="text" name="cash_settled_to" id="cash-settled-to" 
+                               class="row-input" value="{{ form.cash_settled_to.value|default:'' }}">
+                    </div>
+                    {% if form.cash_settled_to.errors %}
+                        <div class="field-error">{{ form.cash_settled_to.errors|join:", " }}</div>
+                    {% endif %}
+                    
+                    <div class="form-row">
+                        <span class="row-label">Closure balance:</span>
+                        <input type="number" name="closing_balance" id="closing-balance" 
+                               class="row-input" step="0.01" readonly value="{{ form.closing_balance.value|default:'0' }}">
+                    </div>
+                    {% if form.closing_balance.errors %}
+                        <div class="field-error">{{ form.closing_balance.errors|join:", " }}</div>
+                    {% endif %}
+                    
+                    <div class="form-row diff-row">
+                        <span class="row-label">Diff (Cash Denomination total - Cash in hand):</span>
+                        <span class="row-value diff-neutral" id="difference">₹0.00</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SECTION III: Notes & Credit -->
+            <div class="form-section">
+                <div class="section-head">
+                    <span class="section-num">III</span>
+                    <h2>Notes & Credit Bills</h2>
+                </div>
+                
+                <div class="section-body">
+                    <div class="form-row">
+                        <span class="row-label">Notes:</span>
+                        <textarea name="notes" rows="2" class="row-textarea">{{ form.notes.value|default:'' }}</textarea>
+                    </div>
+                    {% if form.notes.errors %}
+                        <div class="field-error">{{ form.notes.errors|join:", " }}</div>
+                    {% endif %}
+                    
+                    <div class="daily-credit-head">
+                        <strong>Credit bills for {{ selected_entry_date|date:"d-m-Y" }}</strong>
+                        <span>{{ credit_bill_count }} bill{{ credit_bill_count|pluralize }} | Pending Rs. {{ credit_bill_total|floatformat:2 }}</span>
+                    </div>
+
+                    {% if credit_bill_records %}
+                        <div class="table-shell daily-credit-table-shell">
+                            <table class="data-table daily-credit-table">
+                                <thead>
+                                    <tr>
+                                        <th>Bill No</th>
+                                        <th>Customer</th>
+                                        <th>Net Amount</th>
+                                        <th>Received</th>
+                                        <th>Pending</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for record in credit_bill_records %}
+                                        <tr>
+                                            <td>{{ record.bill_no }}</td>
+                                            <td>{{ record.customer_name|default:"-" }}</td>
+                                            <td>Rs. {{ record.net_amount|floatformat:2 }}</td>
+                                            <td>Rs. {{ record.effective_received_amount|floatformat:2 }}</td>
+                                            <td>Rs. {{ record.effective_balance_amount|floatformat:2 }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="daily-credit-empty">
+                            No credit bills found for this date.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Form Buttons -->
+            <div class="form-buttons">
+                <a href="{% url 'daily-settlement' %}?selected_date={{ selected_entry_date|date:'Y-m-d' }}&entry_date={{ selected_entry_date|date:'Y-m-d' }}" class="btn-clear">Clear</a>
+                <button type="submit" class="btn-save">
+                    {% if selected_settlement %}Update{% else %}Save Settlement{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- RIGHT COLUMN: Cash Count Calculator -->
+    <div class="calculator-column">
+        <!-- Cash Count Card -->
+        <div class="cash-count-card">
+            <h3>Cash Denomination</h3>
+            
+            <div class="count-list">
+                <!-- ₹2000 -->
+                <!-- <div class="count-row">
+                    <span class="denom">₹2000</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="2000">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="2000">₹0</span>
+                </div> -->
+                
+                <!-- ₹500 -->
+                <div class="count-row">
+                    <span class="denom">₹500</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="500">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="500">₹0</span>
+                </div>
+                
+                <!-- ₹200 -->
+                <div class="count-row">
+                    <span class="denom">₹200</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="200">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="200">₹0</span>
+                </div>
+                
+                <!-- ₹100 -->
+                <div class="count-row">
+                    <span class="denom">₹100</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="100">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="100">₹0</span>
+                </div>
+                
+                <!-- ₹50 -->
+                <div class="count-row">
+                    <span class="denom">₹50</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="50">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="50">₹0</span>
+                </div>
+                
+                <!-- ₹20 -->
+                <div class="count-row">
+                    <span class="denom">₹20</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="20">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="20">₹0</span>
+                </div>
+                
+                <!-- ₹10 -->
+                <div class="count-row">
+                    <span class="denom">₹10</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="10">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="10">₹0</span>
+                </div>
+                
+                <!-- ₹5 -->
+                <div class="count-row">
+                    <span class="denom">₹5</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="5">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="5">₹0</span>
+                </div>
+                
+                <!-- ₹2 -->
+                <div class="count-row">
+                    <span class="denom">₹2</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="2">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="2">₹0</span>
+                </div>
+                
+                <!-- ₹1 -->
+                <div class="count-row">
+                    <span class="denom">₹1</span>
+                    <span class="symbol">×</span>
+                    <input type="number" min="0" step="1" value="0" class="count-input" data-denom="1">
+                    <span class="symbol">=</span>
+                    <span class="total" data-denom-total="1">₹0</span>
+                </div>
+            </div>
+            
+            <!-- Total Counted -->
+            <div class="count-total">
+                <span>Cash Denomination Total:</span>
+                <strong id="denom-grand-total">₹0.00</strong>
+            </div>
+            
+            <!-- Clear Button -->
+            <button type="button" class="btn-clear-count" id="clear-counts">Clear All</button>
+            
+            <!-- Hidden input for denominations -->
+            <input type="hidden" name="cash_denominations" id="denominations-hidden" value="{{ cash_denominations_json }}" form="daily-settlement-form">
         </div>
-
-        <!-- Settlement History Preview -->
-        <div class="premium-card">
-            <div class="premium-card-header">
-                <div class="premium-card-title">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 7h16M4 12h16M4 17h10" />
-                    </svg>
-                    <h3>Recent Settlements</h3>
-                </div>
-                <span class="premium-badge premium-badge-soft">{{ settlement_count }}</span>
-            </div>
-
+        
+        <!-- Recent Settlements Full List -->
+        <div class="recent-card">
+            <h3>Recent Settlements</h3>
             {% if settlement_records %}
-            <div class="premium-timeline">
-                {% for record in settlement_records|slice:":5" %}
-                <a href="{% url 'daily-settlement' %}?start_date={{ settlement_filters.start_date|date:'Y-m-d' }}&end_date={{ settlement_filters.end_date|date:'Y-m-d' }}&entry_date={{ record.settlement_date|date:'Y-m-d' }}" 
-                   class="premium-timeline-item {% if record.settlement_date == selected_entry_date %}active{% endif %}">
-                    <div class="premium-timeline-date">{{ record.settlement_date|date:"d-m-Y" }}</div>
-                    <div class="premium-timeline-content">
-                        <div class="premium-timeline-row">
-                            <span>Cash: ₹{{ record.cash_settled }}</span>
-                            <span>Card: ₹{{ record.gpay_settled }}</span>
-                        </div>
-                        <div class="premium-timeline-row premium-timeline-total">
-                            <span>Total: ₹{{ record.total_amount }}</span>
-                            <span class="premium-timeline-time">{{ record.updated_at|date:"h:i A" }}</span>
-                        </div>
-                    </div>
-                </a>
-                {% endfor %}
-            </div>
+                <div class="recent-list">
+                    {% for record in settlement_records %}
+                    <a href="{% url 'daily-settlement' %}?selected_date={{ record.settlement_date|date:'Y-m-d' }}&entry_date={{ record.settlement_date|date:'Y-m-d' }}" 
+                       class="recent-record {% if record.settlement_date == selected_entry_date %}active{% endif %}">
+                        <span class="rec-date">{{ record.settlement_date|date:"d/m/Y" }}</span>
+                        <span class="rec-amount">₹{{ record.total_amount|floatformat:2 }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
             {% else %}
-            <div class="premium-empty-state">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 6v6l4 2"/>
-                </svg>
-                <p>No settlements in this range</p>
-            </div>
+                <p class="no-records">No settlements found</p>
             {% endif %}
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_scripts %}
 <script>
-document.addEventListener("DOMContentLoaded", () => {
-    // DOM Elements
-    const elements = {
-        openingBalance: document.querySelector("#opening-balance-value"),
-        salesLedger: document.querySelector("#sales-ledger-value"),
-        expense: document.querySelector("#expense-value"),
-        gpaySettled: document.querySelector("#{{ form.gpay_settled.auto_id }}"),
-        cashSettled: document.querySelector("#{{ form.cash_settled.auto_id }}"),
-        closingBalance: document.querySelector("#{{ form.closing_balance.auto_id }}"),
-        cashInHandDisplay: document.querySelector("#cash-in-hand-display"),
-        totalDisplay: document.querySelector("#total-amount-display"),
-        actualSalesDisplay: document.querySelector("#actual-sales-display"),
-        denominationInputs: Array.from(document.querySelectorAll("[data-denomination-input]")),
-        denominationHidden: document.querySelector("#settlement-cash-denominations"),
-        denominationTotalDisplay: document.querySelector("#denomination-total-display"),
-        denominationSummary: document.querySelector("#denomination-summary"),
-        clearButton: document.querySelector("#clear-denominations")
-    };
-
-    // Helper Functions
-    const toNumber = (value) => {
-        if (!value) return 0;
-        const num = parseFloat(value.toString().replace(/[^\d.-]/g, ''));
+document.addEventListener("DOMContentLoaded", function() {
+    // Get elements
+    const openingBalance = parseFloat(document.querySelector("#opening-balance")?.value || 0);
+    const salesCash = parseFloat(document.querySelector("#sales-cash")?.value || 0);
+    const expense = parseFloat(document.querySelector("#expense-amount")?.value || 0);
+    const gpayInput = document.querySelector("#gpay-settled");
+    const cashSettledInput = document.querySelector("#cash-settled");
+    const closingBalanceInput = document.querySelector("#closing-balance");
+    
+    // Display elements
+    const totalAmountSpan = document.querySelector("#total-amount");
+    const actualSalesSpan = document.querySelector("#actual-sales");
+    const cashInHandSpan = document.querySelector("#cash-in-hand");
+    const differenceSpan = document.querySelector("#difference");
+    
+    // Denomination elements
+    const denomInputs = document.querySelectorAll("[data-denom]");
+    const denomTotals = document.querySelectorAll("[data-denom-total]");
+    const denomGrandTotal = document.querySelector("#denom-grand-total");
+    const denomHidden = document.querySelector("#denominations-hidden");
+    const clearBtn = document.querySelector("#clear-counts");
+    
+    // Helper
+    const toNumber = (val) => {
+        const num = parseFloat(val);
         return isNaN(num) ? 0 : num;
     };
 
-    const getMetricValue = (element) => {
-        return element ? toNumber(element.value) : 0;
+    const formatSignedCurrency = (value) => {
+        if (value > 0) {
+            return `+₹${value.toFixed(2)}`;
+        }
+        if (value < 0) {
+            return `-₹${Math.abs(value).toFixed(2)}`;
+        }
+        return `₹0.00`;
     };
-
-    // Calculate Cash in Hand
+    
+    // Calculate total
+    const calculateTotal = () => {
+        const gpay = toNumber(gpayInput?.value);
+        return openingBalance + salesCash + gpay;
+    };
+    
+    // Calculate cash in hand
     const calculateCashInHand = () => {
-        const opening = getMetricValue(elements.openingBalance);
-        const sales = getMetricValue(elements.salesLedger);
-        const expense = getMetricValue(elements.expense);
-        return opening + sales - expense;
+        return salesCash + openingBalance - expense;
     };
-
-    // Update All Calculations
-    const updateCalculations = () => {
-        const gpay = toNumber(elements.gpaySettled?.value);
-        const cash = toNumber(elements.cashSettled?.value);
-        const cashInHand = calculateCashInHand();
-        const closing = cashInHand - cash;
-        const total = gpay + cash + getMetricValue(elements.expense) + closing;
-        const actualSales = total - getMetricValue(elements.openingBalance);
-
-        // Update displays
-        if (elements.cashInHandDisplay) {
-            elements.cashInHandDisplay.textContent = `₹${cashInHand.toFixed(2)}`;
-        }
-        if (elements.closingBalance) {
-            elements.closingBalance.value = closing.toFixed(2);
-        }
-        if (elements.totalDisplay) {
-            elements.totalDisplay.textContent = `₹${total.toFixed(2)}`;
-        }
-        if (elements.actualSalesDisplay) {
-            elements.actualSalesDisplay.textContent = `₹${actualSales.toFixed(2)}`;
-        }
-
-        // Update denomination hint
-        if (elements.denominationSummary) {
-            const counted = getDenominationTotal();
-            const diff = counted - cashInHand;
-            if (Math.abs(diff) > 0.01) {
-                elements.denominationSummary.innerHTML = `⚠️ Counted cash differs by ₹${Math.abs(diff).toFixed(2)}`;
-                elements.denominationSummary.style.color = diff > 0 ? '#e67e22' : '#e74c3c';
-            } else {
-                elements.denominationSummary.innerHTML = `✓ Counted cash matches cash in hand`;
-                elements.denominationSummary.style.color = '#27ae60';
-            }
-        }
-    };
-
-    // Denomination Calculator Functions
-    const getDenominationTotal = () => {
-        return elements.denominationInputs.reduce((sum, input) => {
-            const denom = parseInt(input.dataset.denominationValue) || 0;
+    
+    // Calculate denomination total
+    const calculateDenomTotal = () => {
+        let total = 0;
+        denomInputs.forEach(input => {
+            const denom = parseFloat(input.dataset.denom);
             const count = parseInt(input.value) || 0;
-            return sum + (denom * count);
-        }, 0);
+            total += denom * count;
+        });
+        return total;
     };
 
-    const updateDenominationDisplay = () => {
-        const total = getDenominationTotal();
+    const loadSavedDenominations = () => {
+        let savedCounts = {};
+        try {
+            savedCounts = JSON.parse(denomHidden?.value || "{}");
+        } catch (error) {
+            savedCounts = {};
+        }
+
+        denomInputs.forEach(input => {
+            const savedCount = parseInt(savedCounts[input.dataset.denom], 10);
+            input.value = Number.isFinite(savedCount) && savedCount > 0 ? savedCount : 0;
+        });
+    };
+    
+    // Update denomination display
+    const updateDenomination = () => {
+        let grandTotal = 0;
+        const denomData = {};
         
-        // Update line totals
-        elements.denominationInputs.forEach(input => {
-            const denom = input.dataset.denominationValue;
+        denomInputs.forEach(input => {
+            const denom = input.dataset.denom;
             const count = parseInt(input.value) || 0;
             const total = denom * count;
-            const totalElement = document.querySelector(`[data-denomination-total="${denom}"]`);
-            if (totalElement) {
-                totalElement.textContent = `₹${total}`;
+            grandTotal += total;
+            
+            // Update individual total
+            const totalSpan = document.querySelector(`[data-denom-total="${denom}"]`);
+            if (totalSpan) {
+                totalSpan.textContent = `₹${total}`;
+            }
+            
+            // Store for hidden input
+            if (count > 0) {
+                denomData[denom] = count;
             }
         });
-
+        
         // Update grand total
-        if (elements.denominationTotalDisplay) {
-            elements.denominationTotalDisplay.textContent = `₹${total.toFixed(2)}`;
+        if (denomGrandTotal) {
+            denomGrandTotal.textContent = `₹${grandTotal.toFixed(2)}`;
         }
-
+        
         // Update hidden input
-        if (elements.denominationHidden) {
-            const payload = {};
-            elements.denominationInputs.forEach(input => {
-                const count = parseInt(input.value) || 0;
-                if (count > 0) {
-                    payload[input.dataset.denominationValue] = count;
-                }
-            });
-            elements.denominationHidden.value = JSON.stringify(payload);
+        if (denomHidden) {
+            denomHidden.value = JSON.stringify(denomData);
         }
 
-        updateCalculations();
+        updateAll();
     };
-
-    const clearDenominations = () => {
-        elements.denominationInputs.forEach(input => {
+    
+    // Update all calculations
+    const updateAll = () => {
+        const total = calculateTotal();
+        const cashInHand = calculateCashInHand();
+        const cashSettled = toNumber(cashSettledInput?.value);
+        const denominationTotal = calculateDenomTotal();
+        const closing = cashInHand - cashSettled;
+        const actualSales = total - openingBalance;
+        const diff = denominationTotal - cashInHand;
+        
+        // Update displays
+        if (totalAmountSpan) totalAmountSpan.textContent = `₹${total.toFixed(2)}`;
+        if (actualSalesSpan) actualSalesSpan.textContent = `₹${actualSales.toFixed(2)}`;
+        if (cashInHandSpan) cashInHandSpan.textContent = `₹${cashInHand.toFixed(2)}`;
+        if (closingBalanceInput) closingBalanceInput.value = closing.toFixed(2);
+        if (differenceSpan) {
+            differenceSpan.textContent = formatSignedCurrency(diff);
+            differenceSpan.classList.remove("diff-positive", "diff-negative", "diff-neutral");
+            if (diff > 0) {
+                differenceSpan.classList.add("diff-positive");
+            } else if (diff < 0) {
+                differenceSpan.classList.add("diff-negative");
+            } else {
+                differenceSpan.classList.add("diff-neutral");
+            }
+        }
+    };
+    
+    // Clear all counts
+    const clearAllCounts = () => {
+        denomInputs.forEach(input => {
             input.value = 0;
         });
-        updateDenominationDisplay();
+        updateDenomination();
     };
-
-    // Event Listeners
-    [elements.gpaySettled, elements.cashSettled].forEach(input => {
-        if (input) {
-            input.addEventListener("input", updateCalculations);
-            input.addEventListener("change", updateCalculations);
-        }
+    
+    // Event listeners
+    if (gpayInput) gpayInput.addEventListener("input", updateAll);
+    if (cashSettledInput) cashSettledInput.addEventListener("input", updateAll);
+    
+    denomInputs.forEach(input => {
+        input.addEventListener("input", () => {
+            updateDenomination();
+        });
     });
-
-    elements.denominationInputs.forEach(input => {
-        input.addEventListener("input", updateDenominationDisplay);
-        input.addEventListener("change", updateDenominationDisplay);
-    });
-
-    if (elements.clearButton) {
-        elements.clearButton.addEventListener("click", clearDenominations);
+    
+    if (clearBtn) {
+        clearBtn.addEventListener("click", clearAllCounts);
     }
-
-    // Load saved denominations
-    if (elements.denominationHidden?.value) {
-        try {
-            const saved = JSON.parse(elements.denominationHidden.value);
-            elements.denominationInputs.forEach(input => {
-                const denom = input.dataset.denominationValue;
-                if (saved[denom]) {
-                    input.value = saved[denom];
-                }
-            });
-            updateDenominationDisplay();
-        } catch (e) {
-            console.error('Failed to parse denominations');
-        }
-    }
-
-    // Initial calculation
-    updateCalculations();
-    updateDenominationDisplay();
+    
+    // Initial update
+    loadSavedDenominations();
+    updateDenomination();
+    updateAll();
 });
 </script>
 
+<style>
+/* Base */
+body {
+    background: #f5f5f5;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Header Bar */
+.header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.header-bar h1 {
+    font-size: 28px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
+}
+
+.back-btn {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 6px;
+    background: #eff6ff;
+}
+
+.back-btn:hover {
+    background: #dbeafe;
+}
+
+/* Date Strip */
+.date-strip {
+    background: white;
+    border-radius: 8px;
+    padding: 12px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.date-range {
+    font-size: 16px;
+    font-weight: 500;
+    color: #334155;
+}
+
+.date-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.date-form input[type="date"] {
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.date-form button {
+    padding: 6px 16px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.date-form a {
+    color: #64748b;
+    text-decoration: none;
+    font-size: 14px;
+    padding: 6px 12px;
+}
+
+/* Main Layout */
+.main-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+}
+
+/* Form Column */
+.form-column {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+/* Date Header */
+.date-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.current-date .day {
+    font-size: 20px;
+    font-weight: 600;
+    color: #0f172a;
+    margin-right: 8px;
+}
+
+.current-date .full-date {
+    color: #64748b;
+    font-size: 16px;
+}
+
+.recent-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.recent-label {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.recent-item {
+    padding: 4px 10px;
+    background: #f1f5f9;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #334155;
+    text-decoration: none;
+}
+
+.recent-item.active {
+    background: #3b82f6;
+    color: white;
+}
+
+/* Form Sections */
+.form-section {
+    margin-bottom: 28px;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.section-num {
+    width: 32px;
+    height: 32px;
+    background: #1e293b;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.section-head h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0;
+}
+
+.section-body {
+    padding-left: 44px;
+}
+
+/* Form Rows */
+.form-row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.form-row:last-child {
+    border-bottom: none;
+}
+
+.row-label {
+    font-weight: 500;
+    color: #475569;
+    font-size: 15px;
+}
+
+.row-value {
+    font-weight: 500;
+    color: #0f172a;
+    font-size: 16px;
+}
+
+.row-value.highlight {
+    font-size: 18px;
+    font-weight: 600;
+    color: #2563eb;
+}
+
+.row-input {
+    width: 200px;
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 15px;
+}
+
+.row-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.row-input-readonly {
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 600;
+}
+
+.row-note {
+    margin: 6px 0 0 160px;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.row-textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.total-row .row-value,
+.actual-row .row-value {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.cash-row .row-value {
+    color: #059669;
+    font-weight: 600;
+}
+
+.diff-row .row-value {
+    font-weight: 500;
+}
+
+.diff-row .row-value.diff-positive {
+    color: #059669;
+}
+
+.diff-row .row-value.diff-negative {
+    color: #dc2626;
+}
+
+.diff-row .row-value.diff-neutral {
+    color: #475569;
+}
+
+/* Credit Block */
+.credit-block {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 12px 0;
+}
+
+.credit-row {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.credit-label {
+    font-weight: 500;
+    color: #475569;
+    font-size: 14px;
+}
+
+.credit-input {
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    width: 200px;
+}
+
+.note-text {
+    padding: 10px 12px;
+    background: #fef9c3;
+    border: 1px solid #fde047;
+    border-radius: 4px;
+    color: #854d0e;
+    font-size: 13px;
+    font-style: italic;
+    margin-top: 12px;
+}
+
+/* Form Buttons */
+.form-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 2px solid #e2e8f0;
+}
+
+.btn-save {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 10px 28px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 15px;
+}
+
+.btn-save:hover {
+    background: #2563eb;
+}
+
+.btn-clear {
+    background: white;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    padding: 10px 28px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 15px;
+}
+
+.btn-clear:hover {
+    background: #f8fafc;
+}
+
+/* Calculator Column */
+.calculator-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Cash Count Card */
+.cash-count-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.cash-count-card h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0 0 16px 0;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.count-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.count-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f8fafc;
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
+.denom {
+    width: 50px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.symbol {
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+.count-input {
+    width: 60px;
+    padding: 4px 6px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.total {
+    width: 60px;
+    text-align: right;
+    font-weight: 500;
+    color: #0f172a;
+}
+
+.count-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-top: 2px solid #e2e8f0;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 16px;
+    font-weight: 600;
+}
+
+.count-total strong {
+    font-size: 18px;
+    color: #059669;
+}
+
+.btn-clear-count {
+    width: 100%;
+    padding: 8px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #475569;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.btn-clear-count:hover {
+    background: #e2e8f0;
+}
+
+/* Recent Card */
+.recent-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.recent-card h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0 0 16px 0;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.recent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.recent-record {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border-radius: 6px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+}
+
+.recent-record:hover {
+    background: #f1f5f9;
+}
+
+.recent-record.active {
+    background: #3b82f6;
+    color: white;
+}
+
+.rec-date {
+    font-weight: 500;
+}
+
+.rec-amount {
+    font-weight: 600;
+}
+
+.no-records {
+    color: #94a3b8;
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .main-layout {
+        grid-template-columns: 1fr;
+    }
+    
+    .date-strip {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+    
+    .row-input {
+        width: 100%;
+    }
+
+    .row-note {
+        margin-left: 0;
+    }
+    
+    .date-header {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+}
+</style>
 {% endblock %}

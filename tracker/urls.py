@@ -5,6 +5,7 @@ from .forms import StyledAuthenticationForm
 from .views import (
     DashboardView,
     DailySettlementView,
+    ExpenseCategoryListView,
     ExpenseCreateView,
     ExpenseListView,
     HomeRedirectView,
@@ -52,6 +53,7 @@ urlpatterns = [
     path("users/<int:pk>/edit/", UserUpdateView.as_view(), name="user-edit"),
     path("expenses/", ExpenseListView.as_view(), name="expense-list"),
     path("expenses/add/", ExpenseCreateView.as_view(), name="expense-add"),
+    path("expenses/categories/", ExpenseCategoryListView.as_view(), name="expense-category-list"),
     path("expenses/settlement/", DailySettlementView.as_view(), name="daily-settlement"),
     path("reports/", ReportsView.as_view(), name="reports"),
 ]

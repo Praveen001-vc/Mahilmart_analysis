@@ -138,6 +138,56 @@
     </form>
 </section>
 
+<section class="premium-panel sales-credit-card">
+    <div class="sales-history-head">
+        <div>
+            <span class="eyebrow">Credit Bills</span>
+            <h2>Pending credit from sales</h2>
+        </div>
+        <p class="muted-text">
+            {{ credit_bill_count }} bill{{ credit_bill_count|pluralize }} |
+            Pending Rs. {{ credit_bill_total }}
+        </p>
+    </div>
+
+    {% if credit_bill_records %}
+        <div class="table-shell">
+            <table class="data-table sales-credit-table">
+                <thead>
+                    <tr>
+                        <th>Bill No</th>
+                        <th>Sale Date</th>
+                        <th>Customer Name</th>
+                        <th>Net Amount</th>
+                        <th>Pending Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for record in credit_bill_records %}
+                        <tr>
+                            <td data-label="Bill No">{{ record.bill_no }}</td>
+                            <td data-label="Sale Date">{{ record.sale_date|date:"d-m-Y" }}</td>
+                            <td data-label="Customer Name">
+                                {% if record.customer_name %}
+                                    {{ record.customer_name }}
+                                {% else %}
+                                    <span class="muted-text">Walk-in Customer</span>
+                                {% endif %}
+                            </td>
+                            <td data-label="Net Amount">Rs. {{ record.net_amount }}</td>
+                            <td data-label="Pending Amount">Rs. {{ record.effective_balance_amount }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state sales-credit-empty">
+            No credit bills in the current sales filter.
+        </div>
+    {% endif %}
+</section>
+
 <section
     class="premium-panel sales-history-card"
     data-auto-load-table
@@ -183,8 +233,8 @@
                                 {% endif %}
                             </td>
                             <td data-label="Net Amount">Rs. {{ record.net_amount }}</td>
-                            <td data-label="Received Amount">Rs. {{ record.received_amount }}</td>
-                            <td data-label="Balance Amount">Rs. {{ record.balance_amount }}</td>
+                            <td data-label="Received Amount">Rs. {{ record.effective_received_amount }}</td>
+                            <td data-label="Balance Amount">Rs. {{ record.effective_balance_amount }}</td>
                             <td data-label="Payment Mode">
                                 <div class="sales-split-form">
                                     <div class="sales-split-top-row">

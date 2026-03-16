@@ -5,12 +5,14 @@ from django.core.exceptions import ValidationError
 
 from .models import (
     DailyCashSettlement,
+    ExpenseCategory,
     ExpenseRecord,
     IncomeRecord,
     PurchaseRecord,
     Supplier,
     UserAccountProfile,
 )
+from .expense_categories import ensure_expense_categories_for_role
 from .user_roles import (
     USER_ROLE_CHOICES,
     USER_ROLE_STAFF,
@@ -74,22 +76,38 @@ class IncomeForm(StyledModelForm):
 
 
 class ExpenseForm(StyledModelForm):
+    category = forms.ChoiceField(
+        choices=(),
+        widget=forms.Select(attrs={"class": "input-control"}),
+    )
+
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         queryset = Supplier.objects.none()
+        category_options = []
         if user is not None:
             queryset = filter_queryset_by_role(Supplier.objects.all(), user)
+            category_options = list(
+                ensure_expense_categories_for_role(user).values_list("name", flat=True)
+            )
         self.fields["supplier"].queryset = queryset
         self.fields["supplier"].empty_label = "No saved supplier"
         self.fields["supplier"].required = False
+        current_category = (self.initial.get("category") or getattr(self.instance, "category", "")).strip()
+        if current_category and current_category not in category_options:
+            category_options.append(current_category)
+        self.fields["category"].choices = [
+            ("", "Select Category"),
+            *[(option, option) for option in category_options],
+        ]
 
     class Meta:
         model = ExpenseRecord
         fields = [
+            "category",
             "title",
             "supplier",
             "vendor",
-            "category",
             "amount",
             "transaction_date",
             "payment_method",
@@ -99,19 +117,40 @@ class ExpenseForm(StyledModelForm):
             "title": StyledModelForm.text_widget,
             "supplier": StyledModelForm.select_widget,
             "vendor": StyledModelForm.text_widget,
-            "category": StyledModelForm.text_widget,
             "amount": StyledModelForm.money_widget,
             "transaction_date": StyledModelForm.date_widget,
             "payment_method": StyledModelForm.select_widget,
             "notes": StyledModelForm.note_widget,
         }
         labels = {
+            "title": "Purpose",
             "supplier": "Saved Supplier",
             "vendor": "Paid To / Reference",
         }
         help_texts = {
             "supplier": "Optional. Choose this only for supplier-related purchases.",
             "vendor": "Optional. Use this for electricity, salary, rent, fuel, courier, or any general expense.",
+        }
+
+
+class ExpenseCategoryForm(StyledModelForm):
+    def clean_name(self):
+        value = " ".join((self.cleaned_data.get("name") or "").strip().split())
+        if not value:
+            raise ValidationError("Category name is required.")
+        return value
+
+    class Meta:
+        model = ExpenseCategory
+        fields = ["name"]
+        widgets = {
+            "name": StyledModelForm.text_widget,
+        }
+        labels = {
+            "name": "Category Name",
+        }
+        help_texts = {
+            "name": "Create a reusable expense category for this shared role workspace.",
         }
 
 

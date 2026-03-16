@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
@@ -21,8 +21,15 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+from .expense_categories import (
+    ensure_expense_categories_for_role,
+    get_expense_category_options as get_saved_expense_category_options,
+    get_or_create_role_expense_category,
+    normalize_expense_category_name,
+)
 from .forms import (
     DailyCashSettlementForm,
+    ExpenseCategoryForm,
     ExpenseForm,
     IncomeForm,
     PurchaseForm,
@@ -32,6 +39,7 @@ from .forms import (
 )
 from .models import (
     DailyCashSettlement,
+    ExpenseCategory,
     ExpenseRecord,
     IncomeRecord,
     PaymentMethod,
@@ -320,20 +328,6 @@ def build_sales_redirect_url(params):
         return reverse("sales-list")
     return f"{reverse('sales-list')}?{urlencode(redirect_params)}"
 
-
-DEFAULT_EXPENSE_CATEGORIES = (
-    "Transport",
-    "Utilities",
-    "Salary",
-    "Rent",
-    "Purchase",
-    "Maintenance",
-    "Delivery",
-    "Fuel",
-    "General",
-)
-
-
 def get_raw_expense_filter_values(request):
     return {
         "start_date": (request.GET.get("start_date") or "").strip(),
@@ -378,25 +372,7 @@ def apply_expense_filters(queryset, filter_values):
 
 
 def get_expense_category_options(user):
-    categories = list(
-        filter_queryset_by_role(ExpenseRecord.objects.all(), user)
-        .exclude(category="")
-        .order_by("category")
-        .values_list("category", flat=True)
-        .distinct()
-    )
-    ordered_categories = []
-    seen = set()
-    for category_name in [*DEFAULT_EXPENSE_CATEGORIES, *categories]:
-        normalized = (category_name or "").strip()
-        if not normalized:
-            continue
-        key = normalized.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        ordered_categories.append(normalized)
-    return ordered_categories
+    return get_saved_expense_category_options(user)
 
 
 def get_expense_redirect_params(params):
@@ -473,10 +449,30 @@ def get_cash_denominations_total(denominations):
     return total
 
 
+def get_cash_difference_amount(cash_denomination_total, cash_in_hand):
+    return parse_money_value(cash_denomination_total) - parse_money_value(cash_in_hand)
+
+
+def build_cash_denomination_rows(denominations):
+    rows = []
+    for denomination in CASH_DENOMINATION_VALUES:
+        count = normalize_count_value(denominations.get(str(denomination)))
+        rows.append(
+            {
+                "value": denomination,
+                "count": count,
+                "total": Decimal(str(denomination)) * Decimal(str(count)),
+            }
+        )
+    return rows
+
+
 def get_effective_sales_payment_amount(record):
-    if record.received_amount > 0:
-        return min(record.net_amount, record.received_amount)
-    return max(record.net_amount, Decimal("0.00"))
+    return record.effective_received_amount
+
+
+def get_effective_sales_balance_amount(record):
+    return record.effective_balance_amount
 
 
 def build_sales_settlement_summary(settlement_date):
@@ -520,13 +516,11 @@ def build_sales_settlement_summary(settlement_date):
 
 
 def get_settlement_filter_values(params):
-    start_date = parse_date((params.get("start_date") or "").strip()) or date.today()
-    end_date = parse_date((params.get("end_date") or "").strip()) or start_date
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
+    selected_date = parse_date(
+        (params.get("selected_date") or params.get("entry_date") or params.get("settlement_date") or "").strip()
+    ) or date.today()
     return {
-        "start_date": start_date,
-        "end_date": end_date,
+        "selected_date": selected_date,
     }
 
 
@@ -1231,7 +1225,9 @@ class ExpenseListView(AutoLoadPaginatedListView):
             transaction_date_value = (
                 transaction_dates[index] if index < len(transaction_dates) else ""
             ).strip()
-            category_value = (categories[index] if index < len(categories) else "").strip()
+            category_value = normalize_expense_category_name(
+                categories[index] if index < len(categories) else ""
+            )
             purpose_value = (purposes[index] if index < len(purposes) else "").strip()
             amount_value = (amounts[index] if index < len(amounts) else "").strip()
             payment_method_value = (
@@ -1280,6 +1276,7 @@ class ExpenseListView(AutoLoadPaginatedListView):
             record.transaction_date = transaction_date
             record.payment_method = payment_method_value
             record.save()
+            get_or_create_role_expense_category(request.user, category_value)
 
         if created_count or updated_count:
             message_bits = []
@@ -1358,6 +1355,60 @@ class ExpenseCreateView(LoginRequiredMixin, CreateView):
             Supplier.objects.all(),
             self.request.user,
         ).count()
+        context["category_count"] = len(get_expense_category_options(self.request.user))
+        return context
+
+
+class ExpenseCategoryListView(LoginRequiredMixin, TemplateView):
+    template_name = "tracker/expense_category_list.html"
+
+    def get_next_url(self):
+        next_url = (self.request.GET.get("next") or self.request.POST.get("next") or "").strip()
+        return next_url or reverse("expense-add")
+
+    def post(self, request, *args, **kwargs):
+        form = ExpenseCategoryForm(request.POST)
+        if form.is_valid():
+            category_name = normalize_expense_category_name(form.cleaned_data["name"])
+            existing = (
+                filter_queryset_by_role(ExpenseCategory.objects.all(), request.user)
+                .filter(name__iexact=category_name)
+                .first()
+            )
+            if existing is not None:
+                messages.info(request, f"{existing.name} already exists in this role workspace.")
+            else:
+                ExpenseCategory.objects.create(
+                    user=request.user,
+                    name=category_name,
+                )
+                messages.success(request, "Expense category created successfully.")
+            return redirect(self.get_next_url())
+        context = self.get_context_data(form=form)
+        return self.render_to_response(context)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        categories = ensure_expense_categories_for_role(self.request.user)
+        usage_lookup = {
+            normalize_expense_category_name(item["category"]).casefold(): item["total"]
+            for item in (
+                filter_queryset_by_role(ExpenseRecord.objects.all(), self.request.user)
+                .exclude(category="")
+                .values("category")
+                .annotate(total=Count("id"))
+            )
+        }
+        context["form"] = kwargs.get("form") or ExpenseCategoryForm()
+        context["category_records"] = [
+            {
+                "name": category.name,
+                "usage_count": usage_lookup.get(category.name.casefold(), 0),
+            }
+            for category in categories
+        ]
+        context["category_count"] = len(context["category_records"])
+        context["next_url"] = self.get_next_url()
         return context
 
 
@@ -1365,7 +1416,7 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
     template_name = "tracker/daily_settlement.html"
 
     def get_selected_entry_date(self, params, filter_values):
-        return get_settlement_entry_date(params, filter_values["end_date"])
+        return get_settlement_entry_date(params, filter_values["selected_date"])
 
     def get_loaded_settlement(self, settlement_date):
         return filter_queryset_by_role(
@@ -1377,10 +1428,24 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
         return filter_queryset_by_role(
             DailyCashSettlement.objects.all(),
             self.request.user,
-        ).filter(
-            settlement_date__gte=filter_values["start_date"],
-            settlement_date__lte=filter_values["end_date"],
-        ).order_by("-settlement_date", "-updated_at", "-pk")
+        ).filter(settlement_date=filter_values["selected_date"]).order_by(
+            "-settlement_date", "-updated_at", "-pk"
+        )
+
+    def get_credit_bill_queryset(self, settlement_date):
+        records = list(
+            SalesLedgerRecord.objects.filter(
+                is_cancelled=False,
+                sale_date=settlement_date,
+            ).order_by("-sale_date", "-source_sale_no")
+        )
+        credit_records = [
+            record for record in records if get_effective_sales_balance_amount(record) > 0
+        ]
+        return sorted(
+            credit_records,
+            key=lambda record: (-record.effective_balance_amount, record.bill_no),
+        )
 
     def build_form(self, selected_entry_date, loaded_settlement, autofill_summary):
         if loaded_settlement:
@@ -1439,12 +1504,15 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
                 "expense_amount": autofill_summary["expense_amount"],
             }
         if loaded_settlement:
+            saved_sales_ledger_cash = (
+                loaded_settlement.actual_sales - loaded_settlement.gpay_settled
+            )
             return {
-                "opening_balance": autofill_summary["opening_balance"],
-                "sales_ledger_cash": autofill_summary["sales_ledger_cash"],
+                "opening_balance": loaded_settlement.opening_balance,
+                "sales_ledger_cash": saved_sales_ledger_cash,
                 "gpay_settled": loaded_settlement.gpay_settled,
                 "cash_settled": loaded_settlement.cash_settled,
-                "expense_amount": autofill_summary["expense_amount"],
+                "expense_amount": loaded_settlement.expense_amount,
             }
         return {
             "opening_balance": autofill_summary["opening_balance"],
@@ -1487,12 +1555,36 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
             form = self.configure_settlement_form(form, autofill_summary)
 
         settlement_records = self.get_settlement_queryset(filter_values)
+        credit_bill_records = self.get_credit_bill_queryset(selected_entry_date)
+        settlement_preview = build_settlement_preview(
+            self.get_preview_source(form, loaded_settlement, autofill_summary)
+        )
+        if loaded_settlement and not form.is_bound:
+            autofill_summary = {
+                **autofill_summary,
+                "opening_balance": loaded_settlement.opening_balance,
+                "expense_amount": loaded_settlement.expense_amount,
+                "gpay_settled": loaded_settlement.gpay_settled,
+                "cash_in_hand": loaded_settlement.cash_in_hand,
+            }
+            cash_denomination_total = loaded_settlement.cash_denomination_total
+            cash_difference = loaded_settlement.cash_difference
+        else:
+            cash_denomination_total = get_cash_denominations_total(cash_denominations)
+            cash_difference = get_cash_difference_amount(
+                cash_denomination_total,
+                settlement_preview["cash_in_hand"],
+            )
         settlement_totals = settlement_records.aggregate(
             gpay_total=Sum("gpay_settled"),
             cash_total=Sum("cash_settled"),
             expense_total=Sum("expense_amount"),
             actual_sales_total=Sum("actual_sales"),
             closing_total=Sum("closing_balance"),
+        )
+        credit_bill_total = sum(
+            (record.effective_balance_amount for record in credit_bill_records),
+            Decimal("0.00"),
         )
 
         context.update(
@@ -1501,9 +1593,7 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
                 "settlement_filters": filter_values,
                 "selected_entry_date": selected_entry_date,
                 "selected_settlement": loaded_settlement,
-                "settlement_preview": build_settlement_preview(
-                    self.get_preview_source(form, loaded_settlement, autofill_summary)
-                ),
+                "settlement_preview": settlement_preview,
                 "settlement_records": settlement_records,
                 "settlement_count": settlement_records.count(),
                 "gpay_total": settlement_totals["gpay_total"] or Decimal("0.00"),
@@ -1515,12 +1605,18 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
                 "autofill_summary": autofill_summary,
                 "cash_denomination_values": CASH_DENOMINATION_VALUES,
                 "cash_denominations": cash_denominations,
+                "cash_denomination_rows": build_cash_denomination_rows(
+                    cash_denominations
+                ),
                 "cash_denominations_json": build_cash_denominations_payload(
                     cash_denominations
                 ),
-                "cash_denomination_total": get_cash_denominations_total(
-                    cash_denominations
-                ),
+                "cash_denomination_total": cash_denomination_total,
+                "cash_difference": cash_difference,
+                "cash_difference_abs": abs(cash_difference),
+                "credit_bill_records": credit_bill_records[:10],
+                "credit_bill_count": len(credit_bill_records),
+                "credit_bill_total": credit_bill_total,
             }
         )
         return context
@@ -1579,7 +1675,7 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
                 f"Daily cash settlement saved for {settlement.settlement_date:%d-%m-%Y}.",
             )
             return redirect(
-                f"{reverse('daily-settlement')}?{urlencode({'start_date': settlement.settlement_date.isoformat(), 'end_date': settlement.settlement_date.isoformat(), 'entry_date': settlement.settlement_date.isoformat()})}"
+                f"{reverse('daily-settlement')}?{urlencode({'selected_date': settlement.settlement_date.isoformat(), 'entry_date': settlement.settlement_date.isoformat()})}"
             )
 
         messages.error(request, "Please correct the highlighted settlement details.")
@@ -1711,20 +1807,37 @@ class SalesListView(AutoLoadPaginatedListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        records = self.get_queryset()
-        aggregates = records.aggregate(
-            total_net=Sum("net_amount"),
-            total_received=Sum("received_amount"),
-            total_balance=Sum("balance_amount"),
+        visible_records = list(context.get("records") or [])
+        filtered_records = list(self.get_queryset())
+        aggregates = self.get_queryset().aggregate(
             total_split_cash=Sum("split_cash_amount"),
             total_split_card=Sum("split_card_amount"),
         )
-        context["page_count"] = records.count()
-        context["page_total"] = aggregates["total_net"] or Decimal("0.00")
-        context["received_total"] = aggregates["total_received"] or Decimal("0.00")
-        context["balance_total"] = aggregates["total_balance"] or Decimal("0.00")
+        credit_records = [
+            record for record in filtered_records if get_effective_sales_balance_amount(record) > 0
+        ]
+        context["records"] = visible_records
+        context["page_count"] = len(filtered_records)
+        context["page_total"] = sum(
+            (record.net_amount for record in filtered_records),
+            Decimal("0.00"),
+        )
+        context["received_total"] = sum(
+            (record.effective_received_amount for record in filtered_records),
+            Decimal("0.00"),
+        )
+        context["balance_total"] = sum(
+            (record.effective_balance_amount for record in filtered_records),
+            Decimal("0.00"),
+        )
         context["split_cash_total"] = aggregates["total_split_cash"] or Decimal("0.00")
         context["split_card_total"] = aggregates["total_split_card"] or Decimal("0.00")
+        context["credit_bill_records"] = credit_records[:10]
+        context["credit_bill_count"] = len(credit_records)
+        context["credit_bill_total"] = sum(
+            (record.effective_balance_amount for record in credit_records),
+            Decimal("0.00"),
+        )
         context["sales_filters"] = get_sales_filter_values(self.request.GET)
         context["has_active_filters"] = any(
             get_raw_sales_filter_values(self.request.GET).values()
