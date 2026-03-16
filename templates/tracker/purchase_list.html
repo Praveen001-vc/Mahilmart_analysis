@@ -1,0 +1,721 @@
+{% extends "base.html" %}
+
+{% block title %}Purchases | Mahilmart{% endblock %}
+{% block body_class %}app-shell purchase-list-shell{% endblock %}
+
+{% block content %}
+<section class="page-heading premium-panel">
+    <div>
+        <span class="eyebrow">Purchase Ledger</span>
+        <h1>Purchase Records</h1>
+        <p>Manual PostgreSQL purchase entries with supplier name, invoice number, paid amount, pending amount, and file download.</p>
+    </div>
+    <a class="primary-button" href="{% url 'purchase-add' %}">Add Purchase</a>
+</section>
+
+<div class="purchase-layout">
+    <aside class="premium-panel filter-panel filter-sidebar">
+        <form method="get" action="{% url 'purchase-list' %}" class="financial-form">
+            <span class="eyebrow">Filter Purchases</span>
+            <h2>Find exact purchase entries</h2>
+            {% if is_default_today_view %}
+                <p class="muted-text">Default view shows only {{ default_view_date|date:"d-m-Y" }} purchase records.</p>
+            {% elif has_active_filters %}
+                <p class="muted-text">Showing filtered purchase records.</p>
+            {% else %}
+                <p class="muted-text">Default view shows only today&apos;s purchase records. Choose a filter below to change it.</p>
+            {% endif %}
+
+            <div class="filter-toggle-row">
+                <button
+                    type="button"
+                    class="secondary-button filter-chip"
+                    data-filter-toggle="supplier_name"
+                >
+                    Supplier Name
+                </button>
+                <button
+                    type="button"
+                    class="secondary-button filter-chip"
+                    data-filter-toggle="invoice_number"
+                >
+                    Invoice Number
+                </button>
+                <button
+                    type="button"
+                    class="secondary-button filter-chip"
+                    data-filter-toggle="saved_by"
+                >
+                    Saved By
+                </button>
+                <button
+                    type="button"
+                    class="secondary-button filter-chip"
+                    data-filter-toggle="pending_amount"
+                >
+                    Pending Amount
+                </button>
+                <button
+                    type="button"
+                    class="secondary-button filter-chip"
+                    data-filter-toggle="date_range"
+                >
+                    Date Range Optional
+                </button>
+            </div>
+
+            <div class="filter-stage" data-filter-stage hidden>
+                <div class="filter-field-card" data-filter-field="supplier_name" hidden>
+                    <div class="field-block">
+                        <label for="filter-supplier-name">Supplier Name</label>
+                        <input
+                            id="filter-supplier-name"
+                            type="text"
+                            name="supplier_name"
+                            class="input-control"
+                            value="{{ purchase_filters.supplier_name }}"
+                            placeholder="Search supplier"
+                        >
+                    </div>
+                </div>
+
+                <div class="filter-field-card" data-filter-field="invoice_number" hidden>
+                    <div class="field-block">
+                        <label for="filter-invoice-number">Invoice Number</label>
+                        <input
+                            id="filter-invoice-number"
+                            type="text"
+                            name="invoice_number"
+                            class="input-control"
+                            value="{{ purchase_filters.invoice_number }}"
+                            placeholder="Search invoice"
+                        >
+                    </div>
+                </div>
+
+                <div class="filter-field-card" data-filter-field="saved_by" hidden>
+                    <div class="field-block">
+                        <label for="filter-saved-by">Saved By</label>
+                        <input
+                            id="filter-saved-by"
+                            type="text"
+                            name="saved_by"
+                            class="input-control"
+                            value="{{ purchase_filters.saved_by }}"
+                            placeholder="Search username"
+                        >
+                    </div>
+                </div>
+
+                <div class="filter-field-card" data-filter-field="pending_amount" hidden>
+                    <div class="field-block">
+                        <label for="filter-pending-amount">Pending Amount</label>
+                        <input
+                            id="filter-pending-amount"
+                            type="number"
+                            name="pending_amount"
+                            class="input-control"
+                            value="{{ purchase_filters.pending_amount }}"
+                            min="0"
+                            step="0.01"
+                            placeholder="Exact pending amount"
+                        >
+                    </div>
+                </div>
+
+                <div class="filter-field-card filter-field-card-wide" data-filter-field="date_range" hidden>
+                    <div class="filter-date-grid">
+                        <div class="field-block">
+                            <label for="filter-date-from">Date From Optional</label>
+                            <input
+                                id="filter-date-from"
+                                type="date"
+                                name="date_from"
+                                class="input-control"
+                                value="{{ purchase_filters.date_from }}"
+                            >
+                        </div>
+                        <div class="field-block">
+                            <label for="filter-date-to">Date To Optional</label>
+                            <input
+                                id="filter-date-to"
+                                type="date"
+                                name="date_to"
+                                class="input-control"
+                                value="{{ purchase_filters.date_to }}"
+                            >
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions filter-form-actions">
+                <button type="submit" class="primary-button">Apply Filters</button>
+                <a class="secondary-button" href="{% url 'purchase-list' %}">Clear Filters</a>
+            </div>
+        </form>
+    </aside>
+
+    <div class="purchase-main">
+        <section class="stats-grid compact-grid compact-grid-3">
+            <article class="stat-card premium-panel">
+                <span>{% if is_default_today_view %}Today&apos;s Purchase Bills{% else %}Total Purchase Bills{% endif %}</span>
+                <strong>{{ page_count }}</strong>
+            </article>
+            <article class="stat-card premium-panel">
+                <span>{% if is_default_today_view %}Today&apos;s Total Amount{% else %}Total Amount{% endif %}</span>
+                <strong>Rs. {{ page_total }}</strong>
+            </article>
+            <article class="stat-card premium-panel">
+                <span>{% if is_default_today_view %}Today&apos;s Paid Amount{% else %}Paid Amount{% endif %}</span>
+                <strong>Rs. {{ paid_total }}</strong>
+            </article>
+            <article class="stat-card premium-panel">
+                <span>{% if is_default_today_view %}Today&apos;s Pending Amount{% else %}Pending Amount{% endif %}</span>
+                <strong>Rs. {{ pending_total }}</strong>
+            </article>
+        </section>
+
+        <section
+            class="premium-panel"
+            data-auto-load-table
+            data-batch-size="50"
+            data-total-count="{{ page_count }}"
+            data-next-url="{{ next_page_url }}"
+        >
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Detailed View</span>
+                    <h2>Purchase table</h2>
+                </div>
+                <p class="muted-text">50 rows load at a time. Scroll down to load more automatically.</p>
+            </div>
+
+            {% if records %}
+                <div class="table-shell">
+                    <table class="data-table purchase-data-table">
+                        <thead>
+                            <tr>
+                                <th>Supplier Name</th>
+                                <th>Type</th>
+                                <th>Invoice Number</th>
+                                <th>Saved By</th>
+                                <th>Saved On</th>
+                                <th>Total Amount</th>
+                                <th>Paid Amount</th>
+                                <th>Pending Amount</th>
+                                <th>File</th>
+                                <th>Invoice</th>
+                                <th>Pay</th>
+                            </tr>
+                        </thead>
+                        <tbody data-table-body>
+                            {% for record in records %}
+                                <tr>
+                                    <td data-label="Supplier Name">{{ record.supplier_name }}</td>
+                                    <td data-label="Type">{{ record.purchase_type }}</td>
+                                    <td data-label="Invoice Number">
+                                        <button
+                                            type="button"
+                                            class="table-link table-button invoice-number-link"
+                                            data-purchase-trigger
+                                            data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
+                                        >
+                                            {{ record.invoice_number }}
+                                        </button>
+                                    </td>
+                                    <td data-label="Saved By">{{ record.user.username }}</td>
+                                    <td data-label="Saved On">{{ record.created_at|date:"d-m-Y h:i A" }}</td>
+                                    <td data-label="Total Amount">Rs. {{ record.total_amount }}</td>
+                                    <td data-label="Paid Amount" class="positive">Rs. {{ record.paid_amount }}</td>
+                                    <td data-label="Pending Amount" class="negative">Rs. {{ record.pending_amount }}</td>
+                                    <td data-label="File">
+                                        {% if record.attachment %}
+                                            <a class="table-link" href="{{ record.attachment.url }}" download>Download File</a>
+                                        {% else %}
+                                            <span class="muted-text">No file</span>
+                                        {% endif %}
+                                    </td>
+                                    <td data-label="Invoice">
+                                        <a class="table-link" href="{% url 'purchase-invoice' record.pk %}">Download Invoice</a>
+                                    </td>
+                                    <td data-label="Pay">
+                                        {% if record.pending_amount > 0 %}
+                                            <button
+                                                type="button"
+                                                class="secondary-button table-pay-button"
+                                                data-purchase-pay-trigger
+                                                data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
+                                            >
+                                                Pay
+                                            </button>
+                                        {% else %}
+                                            <span class="muted-text">Paid</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="auto-load-footer">
+                    <div class="auto-load-status" data-load-status>
+                        Showing {{ visible_count }} of {{ page_count }} records.
+                    </div>
+                    {% if next_page_url %}
+                        <a class="secondary-button auto-load-link" data-next-link href="{{ next_page_url }}">
+                            Load next 50
+                        </a>
+                    {% endif %}
+                    <div class="auto-load-sentinel" data-load-sentinel aria-hidden="true"></div>
+                </div>
+            {% else %}
+                <div class="empty-state">No purchase records available yet. Add your first purchase entry.</div>
+            {% endif %}
+        </section>
+    </div>
+</div>
+
+<section class="modal-overlay" data-modal-overlay data-purchase-detail-modal hidden>
+    <div class="modal-card premium-panel" role="dialog" aria-modal="true" aria-labelledby="purchase-detail-title">
+        <div class="modal-header">
+            <div>
+                <span class="eyebrow">Invoice Detail</span>
+                <h2 id="purchase-detail-title">Purchase Invoice</h2>
+                <p class="muted-text" data-detail-subtitle>Loading purchase details.</p>
+            </div>
+            <button type="button" class="ghost-button" data-modal-close>Close</button>
+        </div>
+
+        <div class="empty-state" data-detail-loading>
+            Loading invoice, payment dates, and balance details.
+        </div>
+
+        <div class="empty-state" data-detail-error hidden>
+            Could not load the purchase details right now.
+        </div>
+
+        <div data-detail-content hidden>
+            <div class="modal-summary-grid">
+                <article class="stat-card">
+                    <span>Total Amount</span>
+                    <strong data-detail-total>Rs. 0.00</strong>
+                </article>
+                <article class="stat-card">
+                    <span>Paid Amount</span>
+                    <strong class="positive" data-detail-paid>Rs. 0.00</strong>
+                </article>
+                <article class="stat-card">
+                    <span>Pending Amount</span>
+                    <strong class="negative" data-detail-pending>Rs. 0.00</strong>
+                </article>
+                <article class="stat-card">
+                    <span>Last Payment Date</span>
+                    <strong data-detail-last-payment>-</strong>
+                </article>
+            </div>
+
+            <div class="detail-grid">
+                <div class="detail-card">
+                    <span>Supplier</span>
+                    <strong data-detail-supplier>-</strong>
+                </div>
+                <div class="detail-card">
+                    <span>Type</span>
+                    <strong data-detail-type>-</strong>
+                </div>
+                <div class="detail-card">
+                    <span>Saved By</span>
+                    <strong data-detail-saved-by>-</strong>
+                </div>
+                <div class="detail-card">
+                    <span>Saved On</span>
+                    <strong data-detail-saved-on>-</strong>
+                </div>
+                <div class="detail-card">
+                    <span>Purchase Date</span>
+                    <strong data-detail-purchase-date>-</strong>
+                </div>
+                <div class="detail-card">
+                    <span>Invoice Number</span>
+                    <strong data-detail-invoice-number>-</strong>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <a class="secondary-button" data-detail-file href="#" hidden>Download File</a>
+                <a class="primary-button" data-detail-invoice href="#">Download Invoice</a>
+                <button type="button" class="secondary-button" data-open-pay-modal hidden>Pay Now</button>
+            </div>
+
+            <div class="panel-heading payment-history-heading">
+                <div>
+                    <span class="eyebrow">Payment Timeline</span>
+                    <h3>Purchase And Payment Details</h3>
+                </div>
+            </div>
+            <div class="payment-history-list" data-detail-history></div>
+        </div>
+    </div>
+</section>
+
+<section class="modal-overlay" data-modal-overlay data-purchase-pay-modal hidden>
+    <div class="modal-card modal-card-narrow premium-panel" role="dialog" aria-modal="true" aria-labelledby="purchase-pay-title">
+        <div class="modal-header">
+            <div>
+                <span class="eyebrow">Record Payment</span>
+                <h2 id="purchase-pay-title">Today Payment Entry</h2>
+                <p class="muted-text">Payment date is saved automatically as today.</p>
+            </div>
+            <button type="button" class="ghost-button" data-modal-close>Close</button>
+        </div>
+
+        <div class="detail-grid compact-detail-grid">
+            <div class="detail-card">
+                <span>Invoice Number</span>
+                <strong data-pay-invoice-number>-</strong>
+            </div>
+            <div class="detail-card">
+                <span>Pending Amount</span>
+                <strong class="negative" data-pay-pending-amount>Rs. 0.00</strong>
+            </div>
+        </div>
+
+        <form method="post" data-pay-form class="financial-form">
+            {% csrf_token %}
+            <div class="form-grid">
+                <div class="field-block">
+                    <label for="purchase-pay-amount">Amount</label>
+                    <input
+                        id="purchase-pay-amount"
+                        type="number"
+                        name="amount"
+                        class="input-control"
+                        min="0.01"
+                        step="0.01"
+                        required
+                    >
+                </div>
+                <div class="field-block span-2">
+                    <label for="purchase-pay-notes">Notes</label>
+                    <textarea
+                        id="purchase-pay-notes"
+                        name="notes"
+                        class="input-control textarea-control"
+                        rows="3"
+                        placeholder="Optional note for this payment"
+                    ></textarea>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="secondary-button" data-modal-close>Cancel</button>
+                <button type="submit" class="primary-button">Save Payment</button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const filterButtons = Array.from(document.querySelectorAll("[data-filter-toggle]"));
+    const filterFields = Array.from(document.querySelectorAll("[data-filter-field]"));
+    const filterStage = document.querySelector("[data-filter-stage]");
+    const detailModal = document.querySelector("[data-purchase-detail-modal]");
+    const payModal = document.querySelector("[data-purchase-pay-modal]");
+    const detailLoading = detailModal.querySelector("[data-detail-loading]");
+    const detailError = detailModal.querySelector("[data-detail-error]");
+    const detailContent = detailModal.querySelector("[data-detail-content]");
+    const detailSubtitle = detailModal.querySelector("[data-detail-subtitle]");
+    const detailHistory = detailModal.querySelector("[data-detail-history]");
+    const detailInvoiceLink = detailModal.querySelector("[data-detail-invoice]");
+    const detailFileLink = detailModal.querySelector("[data-detail-file]");
+    const openPayButton = detailModal.querySelector("[data-open-pay-modal]");
+    const payForm = payModal.querySelector("[data-pay-form]");
+    const payAmountInput = payForm.querySelector('input[name="amount"]');
+    const payNotesInput = payForm.querySelector('textarea[name="notes"]');
+    let currentPurchase = null;
+
+    const updateFilterButtonState = () => {
+        filterButtons.forEach((button) => {
+            const targetKey = button.dataset.filterToggle;
+            const field = document.querySelector(`[data-filter-field="${targetKey}"]`);
+            const inputs = field ? Array.from(field.querySelectorAll("input")) : [];
+            const hasValue = inputs.some((input) => (input.value || "").trim() !== "");
+            button.classList.toggle("has-value", hasValue);
+        });
+    };
+
+    const openFilterField = (targetKey = "") => {
+        let opened = false;
+        const showOptionalDateRange = targetKey && targetKey !== "date_range";
+        let focusTarget = null;
+
+        filterFields.forEach((field) => {
+            const fieldKey = field.dataset.filterField;
+            const isTarget = fieldKey === targetKey;
+            const shouldShow = isTarget || (showOptionalDateRange && fieldKey === "date_range");
+
+            field.hidden = !shouldShow;
+            if (shouldShow) {
+                opened = true;
+                if (isTarget) {
+                    focusTarget = field.querySelector("input");
+                }
+            }
+        });
+
+        if (focusTarget) {
+            focusTarget.focus();
+        }
+
+        filterButtons.forEach((button) => {
+            button.classList.toggle("is-active", button.dataset.filterToggle === targetKey);
+        });
+
+        if (filterStage) {
+            filterStage.hidden = !opened;
+        }
+    };
+
+    const getInitialFilterTarget = () => {
+        const filledButton = filterButtons.find((button) => {
+            const field = document.querySelector(`[data-filter-field="${button.dataset.filterToggle}"]`);
+            if (!field) {
+                return false;
+            }
+            return Array.from(field.querySelectorAll("input")).some(
+                (input) => (input.value || "").trim() !== ""
+            );
+        });
+
+        return filledButton ? filledButton.dataset.filterToggle : "";
+    };
+
+    filterButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            const targetKey = button.dataset.filterToggle;
+            const isAlreadyOpen = button.classList.contains("is-active");
+            openFilterField(isAlreadyOpen ? "" : targetKey);
+        });
+    });
+
+    filterFields.forEach((field) => {
+        field.querySelectorAll("input").forEach((input) => {
+            input.addEventListener("input", updateFilterButtonState);
+            input.addEventListener("change", updateFilterButtonState);
+        });
+    });
+
+    updateFilterButtonState();
+    openFilterField(getInitialFilterTarget());
+
+    const escapeHtml = (value) => {
+        const div = document.createElement("div");
+        div.textContent = value ?? "";
+        return div.innerHTML;
+    };
+
+    const setBodyScroll = () => {
+        const hasOpenModal = [detailModal, payModal].some((modal) => !modal.hidden);
+        document.body.classList.toggle("modal-open", hasOpenModal);
+    };
+
+    const openModal = (modal) => {
+        modal.hidden = false;
+        setBodyScroll();
+    };
+
+    const closeModal = (modal) => {
+        modal.hidden = true;
+        setBodyScroll();
+    };
+
+    const fillText = (selector, value, prefix = "") => {
+        const target = detailModal.querySelector(selector);
+        if (target) {
+            target.textContent = `${prefix}${value ?? "-"}`;
+        }
+    };
+
+    const renderPaymentHistory = (payments) => {
+        if (!payments.length) {
+            detailHistory.innerHTML = '<div class="empty-state">No payment entries saved for this purchase yet.</div>';
+            return;
+        }
+
+        detailHistory.innerHTML = payments
+            .map((payment) => {
+                const noteMarkup = payment.notes
+                    ? `<p>${escapeHtml(payment.notes)}</p>`
+                    : '<p class="muted-text">No note added.</p>';
+
+                return `
+                    <article class="payment-entry-card">
+                        <div class="payment-entry-head">
+                            <div>
+                                <span>${escapeHtml(payment.label)}</span>
+                                <strong>Rs. ${escapeHtml(payment.amount)}</strong>
+                            </div>
+                            <div class="payment-entry-meta">
+                                <span>${escapeHtml(payment.payment_date)}</span>
+                                <small>Recorded ${escapeHtml(payment.recorded_on)}</small>
+                            </div>
+                        </div>
+                        <div class="payment-entry-body">
+                            <small>Saved by ${escapeHtml(payment.recorded_by)}</small>
+                            <div class="payment-progress-row">
+                                <span>Paid Till This Entry: Rs. ${escapeHtml(payment.running_paid)}</span>
+                                <span>Balance After This Entry: Rs. ${escapeHtml(payment.running_pending)}</span>
+                            </div>
+                            ${noteMarkup}
+                        </div>
+                    </article>
+                `;
+            })
+            .join("");
+    };
+
+    const populateDetailModal = (data) => {
+        currentPurchase = data;
+        detailSubtitle.textContent = `Invoice ${data.invoice_number} for ${data.supplier_name}`;
+        fillText("[data-detail-total]", data.total_amount, "Rs. ");
+        fillText("[data-detail-paid]", data.paid_amount, "Rs. ");
+        fillText("[data-detail-pending]", data.pending_amount, "Rs. ");
+        fillText("[data-detail-last-payment]", data.last_payment_date);
+        fillText("[data-detail-supplier]", data.supplier_name);
+        fillText("[data-detail-type]", data.purchase_type);
+        fillText("[data-detail-saved-by]", data.saved_by);
+        fillText("[data-detail-saved-on]", data.saved_on);
+        fillText("[data-detail-purchase-date]", data.purchase_date);
+        fillText("[data-detail-invoice-number]", data.invoice_number);
+
+        detailInvoiceLink.href = data.invoice_url;
+        if (data.attachment_url) {
+            detailFileLink.href = data.attachment_url;
+            detailFileLink.hidden = false;
+        } else {
+            detailFileLink.hidden = true;
+            detailFileLink.removeAttribute("href");
+        }
+
+        openPayButton.hidden = !data.can_pay;
+        renderPaymentHistory(data.payment_history || []);
+    };
+
+    const resetDetailState = () => {
+        detailLoading.hidden = false;
+        detailError.hidden = true;
+        detailContent.hidden = true;
+        detailSubtitle.textContent = "Loading purchase details.";
+        detailHistory.innerHTML = "";
+        currentPurchase = null;
+    };
+
+    const openPaymentModal = () => {
+        if (!currentPurchase) {
+            return;
+        }
+
+        payModal.querySelector("[data-pay-invoice-number]").textContent = currentPurchase.invoice_number;
+        payModal.querySelector("[data-pay-pending-amount]").textContent = `Rs. ${currentPurchase.pending_amount}`;
+        payForm.action = currentPurchase.pay_url;
+        payAmountInput.max = currentPurchase.pending_amount;
+        payAmountInput.value = "";
+        payNotesInput.value = "";
+        closeModal(detailModal);
+        openModal(payModal);
+        payAmountInput.focus();
+    };
+
+    document.addEventListener("click", async (event) => {
+        const trigger = event.target.closest("[data-purchase-trigger]");
+        if (trigger) {
+            resetDetailState();
+            openModal(detailModal);
+
+            try {
+                const response = await fetch(trigger.dataset.purchaseDetailUrl, {
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
+
+                const data = await response.json();
+                populateDetailModal(data);
+                detailLoading.hidden = true;
+                detailContent.hidden = false;
+            } catch (error) {
+                detailLoading.hidden = true;
+                detailError.hidden = false;
+            }
+            return;
+        }
+
+        const payTrigger = event.target.closest("[data-purchase-pay-trigger]");
+        if (payTrigger) {
+            try {
+                const response = await fetch(payTrigger.dataset.purchaseDetailUrl, {
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
+
+                const data = await response.json();
+                currentPurchase = data;
+                openPaymentModal();
+            } catch (error) {
+                resetDetailState();
+                detailLoading.hidden = true;
+                detailError.hidden = false;
+                openModal(detailModal);
+            }
+            return;
+        }
+
+        if (event.target.closest("[data-open-pay-modal]")) {
+            openPaymentModal();
+            return;
+        }
+
+        const closeButton = event.target.closest("[data-modal-close]");
+        if (closeButton) {
+            const modal = closeButton.closest("[data-purchase-detail-modal], [data-purchase-pay-modal]");
+            if (modal) {
+                closeModal(modal);
+            }
+            return;
+        }
+
+        const overlay = event.target.closest("[data-modal-overlay]");
+        if (overlay && event.target === overlay) {
+            closeModal(overlay);
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") {
+            return;
+        }
+
+        if (!payModal.hidden) {
+            closeModal(payModal);
+            return;
+        }
+
+        if (!detailModal.hidden) {
+            closeModal(detailModal);
+        }
+    });
+});
+</script>
+{% endblock %}

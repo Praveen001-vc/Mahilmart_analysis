@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Expense Records | Mahilmart{% endblock %}
+{% block body_class %}app-shell expense-ledger-shell{% endblock %}
+
+{% block content %}
+<section class="expense-hero">
+    <div class="expense-hero-brand">
+        <span class="expense-hero-icon" aria-hidden="true">&#128196;</span>
+        <div>
+            <h1>Expense Tracker</h1>
+        </div>
+    </div>
+    <div class="hero-actions">
+        <a class="primary-button" href="{% url 'expense-add' %}">Add Expense Record</a>
+        <a class="secondary-button" href="{% url 'daily-settlement' %}">Daily Cash Settlement</a>
+        <a class="primary-button expense-dashboard-button" href="{% url 'dashboard' %}">Sales Analytics Dashboard</a>
+    </div>
+</section>
+
+<section class="expense-summary-grid">
+    <article class="premium-panel expense-summary-card">
+        <h2>This Month</h2>
+        <div class="expense-summary-row">
+            <span>Paid Amount</span>
+            <strong>Rs {{ month_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Credit Amount</span>
+            <strong class="expense-credit-amount">Rs 0.0</strong>
+        </div>
+        <div class="expense-summary-row expense-summary-total">
+            <span>Total</span>
+            <strong>Rs {{ month_total }}</strong>
+        </div>
+    </article>
+    <article class="premium-panel expense-summary-card">
+        <h2>Today</h2>
+        <div class="expense-summary-row">
+            <span>Paid Amount</span>
+            <strong>Rs {{ today_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Credit Amount</span>
+            <strong class="expense-credit-amount">Rs 0.0</strong>
+        </div>
+        <div class="expense-summary-row expense-summary-total">
+            <span>Total</span>
+            <strong>Rs {{ today_total }}</strong>
+        </div>
+    </article>
+    <article class="premium-panel expense-summary-card">
+        <h2>Filtered</h2>
+        <div class="expense-summary-row">
+            <span>Paid Amount</span>
+            <strong class="negative">Rs {{ filtered_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Credit Amount</span>
+            <strong class="expense-credit-amount">Rs 0.0</strong>
+        </div>
+        <div class="expense-summary-row expense-summary-total">
+            <span>Total</span>
+            <strong>Rs {{ filtered_total }}</strong>
+        </div>
+    </article>
+</section>
+
+{% if editing_record %}
+<section class="premium-panel expense-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#10010;</span> Edit Expense</h2>
+        <a class="secondary-button" href="{% url 'expense-list' %}{% if filter_query %}?{{ filter_query }}{% endif %}">Cancel Edit</a>
+    </div>
+
+        <form method="post" action="{% url 'expense-list' %}" class="financial-form" data-expense-entry-form>
+            {% csrf_token %}
+            <input type="hidden" name="start_date" value="{{ expense_filters.start_date }}">
+            <input type="hidden" name="end_date" value="{{ expense_filters.end_date }}">
+            <input type="hidden" name="category" value="{{ expense_filters.category }}">
+            <input type="hidden" name="payment_method" value="{{ expense_filters.payment_method }}">
+
+            <div class="expense-entry-rows">
+                {% for row in entry_rows %}
+                    <div class="expense-entry-row">
+                        <input type="hidden" name="entry_id" value="{{ row.id }}">
+                        <input
+                            type="date"
+                            name="entry_date"
+                            class="input-control"
+                            value="{{ row.transaction_date }}"
+                        >
+                        <select name="entry_category" class="input-control">
+                            <option value="">Select Category</option>
+                            {% for option in category_options %}
+                                <option value="{{ option }}"{% if option == row.category %} selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                        <input
+                            type="text"
+                            name="entry_purpose"
+                            class="input-control"
+                            value="{{ row.purpose }}"
+                            placeholder="Purpose"
+                        >
+                        <input
+                            type="number"
+                            name="entry_amount"
+                            class="input-control"
+                            value="{{ row.amount }}"
+                            min="0"
+                            step="0.01"
+                            placeholder="Amount"
+                        >
+                        <select name="entry_payment_method" class="input-control">
+                            {% for option_value, option_label in payment_method_options %}
+                                <option value="{{ option_value }}"{% if option_value == row.payment_method %} selected{% endif %}>{{ option_label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <div class="expense-entry-actions">
+                <button type="submit" class="primary-button">Update Expense</button>
+            </div>
+        </form>
+</section>
+{% endif %}
+
+<section class="premium-panel expense-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128269;</span> Filter{% if is_default_today_view %} (By Default Today){% endif %}</h2>
+    </div>
+
+    <form method="get" action="{% url 'expense-list' %}" class="financial-form">
+        <div class="expense-filter-grid">
+            <div class="field-block">
+                <label for="expense-start-date">Start Date</label>
+                <input
+                    id="expense-start-date"
+                    type="date"
+                    name="start_date"
+                    class="input-control"
+                    value="{{ expense_filters.start_date }}"
+                >
+            </div>
+            <div class="field-block">
+                <label for="expense-end-date">End Date</label>
+                <input
+                    id="expense-end-date"
+                    type="date"
+                    name="end_date"
+                    class="input-control"
+                    value="{{ expense_filters.end_date }}"
+                >
+            </div>
+            <div class="field-block">
+                <label for="expense-category-filter">Category</label>
+                <select id="expense-category-filter" name="category" class="input-control">
+                    <option value="">All</option>
+                    {% for option in category_options %}
+                        <option value="{{ option }}"{% if option == expense_filters.category %} selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field-block">
+                <label for="expense-payment-filter">Payment Type</label>
+                <select id="expense-payment-filter" name="payment_method" class="input-control">
+                    <option value="">All</option>
+                    {% for option_value, option_label in payment_method_options %}
+                        <option value="{{ option_value }}"{% if option_value == expense_filters.payment_method %} selected{% endif %}>{{ option_label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="expense-filter-actions">
+            <button type="submit" class="primary-button">Apply</button>
+            <a class="secondary-button" href="{% url 'expense-list' %}">Reset</a>
+        </div>
+    </form>
+</section>
+
+<section class="expense-filter-banner">
+    <strong>Applied Filters:</strong>
+    <span>From {{ expense_filters.start_date }} To {{ expense_filters.end_date }}</span>
+    {% if expense_filters.category %}
+        <span>| Category: {{ expense_filters.category }}</span>
+    {% endif %}
+    {% if expense_filters.payment_method %}
+        <span>| Payment: {{ expense_filters.payment_method }}</span>
+    {% endif %}
+</section>
+
+<section
+    class="premium-panel expense-card"
+    data-auto-load-table
+    data-batch-size="50"
+    data-total-count="{{ page_count }}"
+    data-next-url="{{ next_page_url }}"
+>
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128203;</span> Expense History</h2>
+    </div>
+
+    {% if records %}
+        <div class="table-shell">
+            <table class="data-table expense-history-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Category</th>
+                        <th>Purpose</th>
+                        <th>Payment</th>
+                        <th>Amount</th>
+                        <th>Paid Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody data-table-body>
+                    {% for record in records %}
+                        <tr>
+                            <td>{{ record.transaction_date|date:"Y-m-d" }}</td>
+                            <td>{{ record.category }}</td>
+                            <td>
+                                <strong>{{ record.title }}</strong>
+                                {% if record.supplier_display and record.supplier_display != record.title %}
+                                    <div class="expense-table-note">{{ record.supplier_display }}</div>
+                                {% endif %}
+                            </td>
+                            <td>{{ record.payment_method }}</td>
+                            <td>Rs {{ record.amount }}</td>
+                            <td>{{ record.transaction_date|date:"Y-m-d" }}</td>
+                            <td>
+                                <div class="expense-history-actions">
+                                    <a
+                                        class="expense-action-button expense-action-edit"
+                                        href="{% url 'expense-list' %}{% if filter_query %}?{{ filter_query }}&edit={{ record.pk }}{% else %}?edit={{ record.pk }}{% endif %}"
+                                    >
+                                        Edit
+                                    </a>
+                                    <form method="post" action="{% url 'expense-list' %}" class="expense-inline-form">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="record_id" value="{{ record.pk }}">
+                                        <input type="hidden" name="start_date" value="{{ expense_filters.start_date }}">
+                                        <input type="hidden" name="end_date" value="{{ expense_filters.end_date }}">
+                                        <input type="hidden" name="category" value="{{ expense_filters.category }}">
+                                        <input type="hidden" name="payment_method" value="{{ expense_filters.payment_method }}">
+                                        <button type="submit" class="expense-action-button expense-action-delete">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="auto-load-footer">
+            <div class="auto-load-status" data-load-status>
+                Showing {{ visible_count }} of {{ page_count }} records.
+            </div>
+            {% if next_page_url %}
+                <a class="secondary-button auto-load-link" data-next-link href="{{ next_page_url }}">
+                    Load next 50
+                </a>
+            {% endif %}
+            <div class="auto-load-sentinel" data-load-sentinel aria-hidden="true"></div>
+        </div>
+    {% else %}
+        <div class="empty-state">No expense records available for the selected filters.</div>
+    {% endif %}
+</section>
+{% endblock %}

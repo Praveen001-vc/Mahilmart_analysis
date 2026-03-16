@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Add Income | Mahilmart{% endblock %}
+{% block body_class %}app-shell entry-master-shell{% endblock %}
+
+{% block content %}
+<section class="entry-master-hero entry-master-hero-light premium-panel">
+    <div>
+        <span class="eyebrow">New Income Entry</span>
+        <h1>Add Income Record</h1>
+        <p>Store every payment, order collection, or other revenue source in a structured format.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="secondary-button" href="{% url 'income-list' %}">Back to Income</a>
+    </div>
+</section>
+
+<form method="post" class="financial-form entry-master-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="form-error">
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <section class="entry-master-grid">
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128176;</span> Revenue Details</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.title.id_for_label }}">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
+                    {{ form.title }}
+                    {% if form.title.errors %}
+                        <div class="field-error">{{ form.title.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.source.id_for_label }}">{{ form.source.label }}{% if form.source.field.required %} *{% endif %}</label>
+                    {{ form.source }}
+                    {% if form.source.errors %}
+                        <div class="field-error">{{ form.source.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128203;</span> Classification & Amount</h2>
+            </div>
+            <div class="entry-card-body entry-card-grid">
+                <div class="field-block">
+                    <label for="{{ form.category.id_for_label }}">{{ form.category.label }}{% if form.category.field.required %} *{% endif %}</label>
+                    {{ form.category }}
+                    {% if form.category.errors %}
+                        <div class="field-error">{{ form.category.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.amount.id_for_label }}">{{ form.amount.label }}{% if form.amount.field.required %} *{% endif %}</label>
+                    {{ form.amount }}
+                    {% if form.amount.errors %}
+                        <div class="field-error">{{ form.amount.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block entry-field-full">
+                    <label for="{{ form.payment_method.id_for_label }}">{{ form.payment_method.label }}{% if form.payment_method.field.required %} *{% endif %}</label>
+                    {{ form.payment_method }}
+                    {% if form.payment_method.errors %}
+                        <div class="field-error">{{ form.payment_method.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card entry-master-card-wide">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128197;</span> Transaction & Notes</h2>
+            </div>
+            <div class="entry-card-body entry-card-grid">
+                <div class="field-block">
+                    <label for="{{ form.transaction_date.id_for_label }}">{{ form.transaction_date.label }}{% if form.transaction_date.field.required %} *{% endif %}</label>
+                    {{ form.transaction_date }}
+                    {% if form.transaction_date.errors %}
+                        <div class="field-error">{{ form.transaction_date.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block entry-field-full entry-field-tall">
+                    <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}{% if form.notes.field.required %} *{% endif %}</label>
+                    {{ form.notes }}
+                    {% if form.notes.help_text %}
+                        <small class="help-text">{{ form.notes.help_text }}</small>
+                    {% endif %}
+                    {% if form.notes.errors %}
+                        <div class="field-error">{{ form.notes.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="premium-panel entry-master-tools">
+        <div class="entry-tool-pill">Revenue Title</div>
+        <div class="entry-tool-pill">Source</div>
+        <div class="entry-tool-pill">Category</div>
+        <div class="entry-tool-pill">Payment Method</div>
+        <div class="entry-tool-pill">Notes</div>
+    </section>
+
+    <div class="entry-master-actions">
+        <button type="submit" class="primary-button">Save Income</button>
+        <a class="secondary-button" href="{% url 'income-list' %}">Cancel</a>
+        <button type="reset" class="secondary-button">Reset</button>
+    </div>
+</form>
+{% endblock %}

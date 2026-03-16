@@ -1,0 +1,74 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Mahilmart Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'tracker/styles.css' %}">
+</head>
+<body class="{% block body_class %}app-shell{% endblock %}">
+    <div class="background-scene" aria-hidden="true">
+        <span class="sky-bird"></span>
+        <span class="sky-bird"></span>
+        <span class="sky-bird"></span>
+        <span class="sky-bird"></span>
+        <span class="sky-bird"></span>
+        <span class="sky-bird"></span>
+        <span class="sky-bird"></span>
+    </div>
+    {% if request.user.is_authenticated %}
+        <header class="shell-header">
+            <div class="brand-lockup">
+                <span class="brand-mark">M</span>
+                <div>
+                    <p class="brand-name">Mahilmart</p>
+                    <p class="brand-subtitle">Income and Expenditure Tracking</p>
+                </div>
+            </div>
+            <nav class="shell-nav">
+                <a href="{% url 'dashboard' %}">Dashboard</a>
+                <a href="{% url 'sales-list' %}">Sales</a>
+                <a href="{% url 'daily-settlement' %}">Daily Settlement</a>
+                <a href="{% url 'income-list' %}">Income</a>
+                <a href="{% url 'purchase-list' %}">Purchases</a>
+                <a href="{% url 'supplier-list' %}">Suppliers</a>
+                <a href="{% url 'expense-list' %}">Expenses</a>
+                <a href="{% url 'reports' %}">Reports</a>
+                {% if request.user.is_superuser %}
+                    <a href="{% url 'user-list' %}">Users</a>
+                {% endif %}
+            </nav>
+            <div class="header-actions">
+                <span class="user-pill">
+                    {% if request.user.is_superuser %}
+                        Admin Role
+                    {% elif request.user.is_staff %}
+                        Store Admin Role
+                    {% else %}
+                        Staff Role
+                    {% endif %}
+                </span>
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="ghost-button">Logout</button>
+                </form>
+            </div>
+        </header>
+    {% endif %}
+
+    <main class="page-shell">
+        {% if messages %}
+            <section class="message-stack">
+                {% for message in messages %}
+                    <div class="message-card {{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            </section>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+    <script src="{% static 'tracker/auto_load.js' %}" defer></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

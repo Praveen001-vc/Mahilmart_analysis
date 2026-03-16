@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Dashboard | Mahilmart{% endblock %}
+{% block body_class %}app-shell dashboard-premium-shell{% endblock %}
+
+{% block content %}
+<section class="dashboard-command-bar premium-panel">
+    <form method="get" action="{% url 'dashboard' %}" class="dashboard-command-form">
+        <div class="dashboard-command-search">
+            <span class="dashboard-command-eyebrow">As of Date</span>
+            <input
+                id="dashboard-date-filter"
+                type="date"
+                name="as_of_date"
+                class="input-control dashboard-date-control"
+                value="{{ selected_date|date:'Y-m-d' }}"
+                data-dashboard-date-input
+            >
+        </div>
+        <button type="submit" class="dashboard-command-submit">Apply</button>
+    </form>
+    <div class="dashboard-command-side">
+        <a class="dashboard-mini-link" href="{% url 'reports' %}">Reports</a>
+        <a class="dashboard-mini-link" href="{% url 'dashboard' %}">Today</a>
+        <div class="dashboard-profile-pill">
+            <span class="dashboard-avatar">
+                {% if request.user.is_superuser %}
+                    A
+                {% elif request.user.is_staff %}
+                    M
+                {% else %}
+                    S
+                {% endif %}
+            </span>
+            <div>
+                <strong>
+                    {% if request.user.is_superuser %}
+                        Admin Role
+                    {% elif request.user.is_staff %}
+                        Store Admin Role
+                    {% else %}
+                        Staff Role
+                    {% endif %}
+                </strong>
+                <span>Shared role workspace</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="dashboard-premium-hero premium-panel">
+    <div>
+        <span class="eyebrow">Control Center</span>
+        <h1>Dashboard</h1>
+        <p>Track income, expenses, settlements, and recent movement from one premium operating view.</p>
+    </div>
+    <div class="dashboard-premium-actions">
+        <a class="dashboard-hero-primary" href="{% url 'income-add' %}">Add Income</a>
+        <a class="dashboard-hero-secondary" href="{% url 'daily-settlement' %}">Daily Settlement</a>
+        <a class="dashboard-hero-secondary" href="{% url 'expense-add' %}">Add Expense</a>
+    </div>
+</section>
+
+<section class="dashboard-kpi-grid">
+    <article class="premium-panel dashboard-kpi-card dashboard-kpi-card-primary">
+        <div class="dashboard-kpi-head">
+            <span>Total Income</span>
+            <span class="dashboard-kpi-badge">Live</span>
+        </div>
+        <strong>Rs. {{ income_total }}</strong>
+        <small>Month to date: Rs. {{ current_month_income }}</small>
+    </article>
+
+    <article class="premium-panel dashboard-kpi-card">
+        <div class="dashboard-kpi-head">
+            <span>Total Expenses</span>
+            <span class="dashboard-kpi-arrow">01</span>
+        </div>
+        <strong>Rs. {{ expense_total }}</strong>
+        <small>Month to date: Rs. {{ current_month_expense }}</small>
+    </article>
+
+    <article class="premium-panel dashboard-kpi-card">
+        <div class="dashboard-kpi-head">
+            <span>Opening Balance</span>
+            <span class="dashboard-kpi-arrow">02</span>
+        </div>
+        <strong>Rs. {{ opening_balance }}</strong>
+        <small>
+            {% if dashboard_settlement %}
+                Daily Settlement loaded for {{ selected_date|date:"d-m-Y" }}
+            {% else %}
+                Carry forward from {{ previous_date|date:"d-m-Y" }}
+            {% endif %}
+        </small>
+    </article>
+
+    <article class="premium-panel dashboard-kpi-card">
+        <div class="dashboard-kpi-head">
+            <span>Closing Balance</span>
+            <span class="dashboard-kpi-arrow">03</span>
+        </div>
+        <strong>Rs. {{ closing_balance }}</strong>
+        <small>
+            {% if dashboard_settlement %}
+                Saved from Daily Settlement
+            {% else %}
+                Save Daily Settlement to lock closing balance
+            {% endif %}
+        </small>
+    </article>
+</section>
+
+<section class="dashboard-premium-grid">
+    <article class="premium-panel dashboard-analytics-card dashboard-span-2">
+        <div class="dashboard-card-head">
+            <div>
+                <span class="eyebrow">Cash Flow Analytics</span>
+                <h2>Monthly sales and spending pulse</h2>
+            </div>
+            <p>{{ selected_date|date:"d M Y" }}</p>
+        </div>
+
+        <div class="dashboard-chart-area">
+            {% for month in monthly_overview %}
+                <div class="dashboard-chart-column">
+                    <div class="dashboard-chart-track">
+                        <span class="dashboard-chart-income" data-dashboard-income-height="{{ month.income_width }}"></span>
+                        <span class="dashboard-chart-expense" data-dashboard-expense-height="{{ month.expense_width }}"></span>
+                    </div>
+                    <strong>{{ month.label|slice:":3" }}</strong>
+                    <small>Rs. {{ month.balance }}</small>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="dashboard-chart-legend">
+            <span><i class="legend-dot legend-income"></i> Income</span>
+            <span><i class="legend-dot legend-expense"></i> Expense</span>
+            <span><i class="legend-dot legend-balance"></i> Balance</span>
+        </div>
+    </article>
+
+    <article class="premium-panel dashboard-spotlight-card">
+        <div class="dashboard-card-head">
+            <div>
+                <span class="eyebrow">Settlement Status</span>
+                <h2>Daily cash view</h2>
+            </div>
+        </div>
+
+        {% if dashboard_settlement %}
+            <div class="dashboard-spotlight-value positive">Saved for {{ selected_date|date:"d-m-Y" }}</div>
+            <p>Actual Sales: Rs. {{ selected_day_balance }}</p>
+            <div class="dashboard-spotlight-metrics">
+                <span>Income: Rs. {{ selected_income }}</span>
+                <span>Expense: Rs. {{ selected_expense }}</span>
+                <span>Closing: Rs. {{ closing_balance }}</span>
+            </div>
+        {% else %}
+            <div class="dashboard-spotlight-value negative">Pending for {{ selected_date|date:"d-m-Y" }}</div>
+            <p>Daily Settlement is not saved yet for this date.</p>
+            <div class="dashboard-spotlight-metrics">
+                <span>Income: Rs. {{ selected_income }}</span>
+                <span>Expense: Rs. {{ selected_expense }}</span>
+                <span>Opening: Rs. {{ opening_balance }}</span>
+            </div>
+        {% endif %}
+
+        <a class="dashboard-panel-button" href="{% url 'daily-settlement' %}">Open Daily Settlement</a>
+    </article>
+
+    <article class="premium-panel dashboard-feed-card">
+        <div class="dashboard-card-head">
+            <div>
+                <span class="eyebrow">Recent Income</span>
+                <h2>Latest collections</h2>
+            </div>
+        </div>
+
+        {% if recent_income %}
+            <div class="dashboard-feed-list">
+                {% for record in recent_income %}
+                    <div class="dashboard-feed-item">
+                        <span class="dashboard-feed-avatar">{{ record.title|slice:":1"|upper }}</span>
+                        <div>
+                            <strong>{{ record.title }}</strong>
+                            <p>{{ record.source }} | {{ record.category }}</p>
+                        </div>
+                        <span class="dashboard-feed-amount positive">Rs. {{ record.amount }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">No income records yet.</div>
+        {% endif %}
+    </article>
+
+    <article class="premium-panel dashboard-progress-card">
+        <div class="dashboard-card-head">
+            <div>
+                <span class="eyebrow">Performance</span>
+                <h2>Savings progress</h2>
+            </div>
+        </div>
+
+        <div class="dashboard-progress-ring" data-dashboard-progress="{{ savings_rate_meter }}">
+            <div class="dashboard-progress-ring-inner">
+                <strong>{{ savings_rate }}%</strong>
+                <span>Savings Rate</span>
+            </div>
+        </div>
+
+        <div class="dashboard-progress-meta">
+            <span>Selected Day Net: Rs. {{ selected_day_balance }}</span>
+            <span>Suppliers: {{ supplier_count }}</span>
+            <span>Total Balance: Rs. {{ balance }}</span>
+        </div>
+    </article>
+
+    <article class="premium-panel dashboard-feed-card">
+        <div class="dashboard-card-head">
+            <div>
+                <span class="eyebrow">Recent Expenses</span>
+                <h2>Latest spending</h2>
+            </div>
+        </div>
+
+        {% if recent_expenses %}
+            <div class="dashboard-feed-list">
+                {% for record in recent_expenses %}
+                    <div class="dashboard-feed-item">
+                        <span class="dashboard-feed-avatar dashboard-feed-avatar-expense">{{ record.title|slice:":1"|upper }}</span>
+                        <div>
+                            <strong>{{ record.title }}</strong>
+                            <p>{{ record.supplier_display }} | {{ record.category }}</p>
+                        </div>
+                        <span class="dashboard-feed-amount negative">Rs. {{ record.amount }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">No expense records yet.</div>
+        {% endif %}
+    </article>
+    <article class="premium-panel dashboard-action-board dashboard-span-2">
+        <div class="dashboard-card-head">
+            <div>
+                <span class="eyebrow">Quick Moves</span>
+                <h2>Operations at a glance</h2>
+            </div>
+        </div>
+
+        <div class="dashboard-action-grid">
+            <a class="dashboard-action-tile" href="{% url 'income-add' %}">
+                <strong>Record Income</strong>
+                <p>Add sales, orders, and other collections.</p>
+            </a>
+            <a class="dashboard-action-tile" href="{% url 'expense-add' %}">
+                <strong>Capture Expense</strong>
+                <p>Save operating costs and supplier payments.</p>
+            </a>
+            <a class="dashboard-action-tile" href="{% url 'supplier-add' %}">
+                <strong>Add Supplier</strong>
+                <p>Create a new supplier profile and compliance record.</p>
+            </a>
+            <a class="dashboard-action-tile" href="{% url 'reports' %}">
+                <strong>Open Reports</strong>
+                <p>Review month trends, categories, and totals.</p>
+            </a>
+        </div>
+    </article>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'tracker/dashboard.js' %}" defer></script>
+{% endblock %}

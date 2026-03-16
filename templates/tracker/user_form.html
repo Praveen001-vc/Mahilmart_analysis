@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }} | Mahilmart{% endblock %}
+
+{% block content %}
+<section class="form-page premium-panel">
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">{{ page_eyebrow }}</span>
+            <h1>{{ page_title }}</h1>
+            <p>{{ page_description }}</p>
+        </div>
+    </div>
+
+    <form method="post" class="financial-form">
+        {% csrf_token %}
+        <div class="form-grid">
+            {% for field in form %}
+                <div class="field-block">
+                    <label for="{{ field.id_for_label }}">
+                        {{ field.label }}{% if field.field.required %} *{% endif %}
+                    </label>
+                    {{ field }}
+                    {% if field.help_text %}
+                        <small class="help-text">{{ field.help_text }}</small>
+                    {% endif %}
+                    {% if field.errors %}
+                        <div class="field-error">{{ field.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+        <div class="form-actions">
+            <a class="secondary-button" href="{% url 'user-list' %}">Back to Users</a>
+            <button type="submit" class="primary-button">{{ submit_label }}</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

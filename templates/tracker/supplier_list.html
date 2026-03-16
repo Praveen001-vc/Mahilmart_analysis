@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Suppliers | Mahilmart{% endblock %}
+
+{% block content %}
+<section class="page-heading premium-panel">
+    <div>
+        <span class="eyebrow">Supplier Master</span>
+        <h1>Supplier Details</h1>
+        <p>Store supplier code, contact details, tax information, and account details in one place.</p>
+    </div>
+    <a class="primary-button" href="{% url 'supplier-add' %}">Add Supplier</a>
+</section>
+
+<section class="stats-grid compact-grid">
+    <article class="stat-card premium-panel">
+        <span>Total Suppliers</span>
+        <strong>{{ page_count }}</strong>
+    </article>
+</section>
+
+<section class="premium-panel">
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">Database Records</span>
+            <h2>Supplier table</h2>
+        </div>
+    </div>
+
+    {% if suppliers %}
+        <div class="table-shell">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Supplier ID</th>
+                        <th>Supplier Name</th>
+                        <th>Contact Person</th>
+                        <th>Phone Number</th>
+                        <th>Status</th>
+                        <th>Opening Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for supplier in suppliers %}
+                        <tr>
+                            <td>{{ supplier.supplier_code|default:"Pending" }}</td>
+                            <td>{{ supplier.name }}</td>
+                            <td>{{ supplier.contact_person }}</td>
+                            <td>{{ supplier.phone_number }}</td>
+                            <td>{{ supplier.status }}</td>
+                            <td>Rs. {{ supplier.opening_balance }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">No supplier details saved yet. Add your first supplier record.</div>
+    {% endif %}
+</section>
+{% endblock %}

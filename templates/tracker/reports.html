@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Reports | Mahilmart{% endblock %}
+
+{% block content %}
+<section class="page-heading premium-panel">
+    <div>
+        <span class="eyebrow">Financial Reports</span>
+        <h1>Analytics and Category Insights</h1>
+        <p>Review performance month by month and identify where money comes from and where it goes.</p>
+    </div>
+</section>
+
+<section class="content-grid">
+    <article class="premium-panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Monthly Performance</span>
+                <h2>6 month summary</h2>
+            </div>
+        </div>
+
+        <div class="table-shell">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>Total Income</th>
+                        <th>Total Expense</th>
+                        <th>Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in monthly_overview %}
+                        <tr>
+                            <td>{{ row.label }}</td>
+                            <td class="positive">Rs. {{ row.income }}</td>
+                            <td class="negative">Rs. {{ row.expense }}</td>
+                            <td>Rs. {{ row.balance }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="premium-panel">
+        <div class="panel-heading">
+            <div>
+                <span class="eyebrow">Category Leaders</span>
+                <h2>Top categories</h2>
+            </div>
+        </div>
+
+        <div class="insight-columns">
+            <div>
+                <h3>Income Categories</h3>
+                {% if top_income_categories %}
+                    <div class="category-stack">
+                        {% for item in top_income_categories %}
+                            <div class="category-card">
+                                <span>{{ item.category }}</span>
+                                <strong class="positive">Rs. {{ item.total }}</strong>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state">No income category data yet.</div>
+                {% endif %}
+            </div>
+
+            <div>
+                <h3>Expense Categories</h3>
+                {% if top_expense_categories %}
+                    <div class="category-stack">
+                        {% for item in top_expense_categories %}
+                            <div class="category-card">
+                                <span>{{ item.category }}</span>
+                                <strong class="negative">Rs. {{ item.total }}</strong>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state">No expense category data yet.</div>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+</section>
+{% endblock %}

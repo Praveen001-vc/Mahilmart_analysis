@@ -1,0 +1,442 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Cash Settlement | Mahilmart{% endblock %}
+{% block body_class %}app-shell daily-settlement-shell{% endblock %}
+
+{% block content %}
+<!-- Premium Header with Gradient -->
+<div class="premium-header">
+    <div class="premium-header-content">
+        <div class="premium-header-title">
+            <div class="premium-icon-wrapper">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="6" width="20" height="14" rx="2" />
+                    <circle cx="12" cy="13" r="3" />
+                    <path d="M4 6V4h16v2" />
+                </svg>
+            </div>
+            <div>
+                <h1>Daily Settlement</h1>
+                <p class="premium-subtitle">Complete your day-end cash reconciliation</p>
+            </div>
+        </div>
+        <a href="{% url 'expense-list' %}" class="premium-button premium-button-outline">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back to Expenses
+        </a>
+    </div>
+</div>
+
+<!-- Compact Filter Card -->
+<div class="premium-card premium-card-sm">
+    <div class="premium-card-header">
+        <div class="premium-card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M8 10h8M8 14h5" />
+            </svg>
+            <h3>Date Range</h3>
+        </div>
+        <span class="premium-badge premium-badge-info">{{ settlement_filters.start_date|date:"d-m-Y" }} - {{ settlement_filters.end_date|date:"d-m-Y" }}</span>
+    </div>
+    
+    <form method="get" action="{% url 'daily-settlement' %}" class="premium-filter-form">
+        <div class="premium-filter-grid">
+            <div class="premium-input-group">
+                <label>From</label>
+                <input type="date" name="start_date" class="premium-input" value="{{ settlement_filters.start_date|date:'Y-m-d' }}">
+            </div>
+            <div class="premium-input-group">
+                <label>To</label>
+                <input type="date" name="end_date" class="premium-input" value="{{ settlement_filters.end_date|date:'Y-m-d' }}">
+            </div>
+            <div class="premium-filter-actions">
+                <button type="submit" class="premium-button premium-button-primary">Apply</button>
+                <a href="{% url 'daily-settlement' %}" class="premium-button premium-button-ghost">Reset</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Main Settlement Area - Two Column Layout -->
+<div class="premium-settlement-layout">
+    <!-- Left Column - Settlement Form -->
+    <div class="premium-settlement-main">
+        <div class="premium-card">
+            <div class="premium-card-header">
+                <div class="premium-card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
+                    </svg>
+                    <h3>{% if selected_settlement %}Edit Settlement{% else %}New Settlement{% endif %}</h3>
+                </div>
+                <span class="premium-badge premium-badge-success">{{ selected_entry_date|date:"d-m-Y" }}</span>
+            </div>
+
+            <form method="post" action="{% url 'daily-settlement' %}" class="premium-form">
+                {% csrf_token %}
+                <input type="hidden" name="start_date" value="{{ settlement_filters.start_date|date:'Y-m-d' }}">
+                <input type="hidden" name="end_date" value="{{ settlement_filters.end_date|date:'Y-m-d' }}">
+
+                <!-- Auto-calculated Values Grid -->
+                <div class="premium-metrics-grid">
+                    <div class="premium-metric-card">
+                        <span class="premium-metric-label">Opening Balance</span>
+                        <span class="premium-metric-value">₹{{ autofill_summary.opening_balance|floatformat:2 }}</span>
+                        <input type="hidden" id="opening-balance-value" value="{{ autofill_summary.opening_balance }}">
+                    </div>
+                    <div class="premium-metric-card">
+                        <span class="premium-metric-label">Sales Cash</span>
+                        <span class="premium-metric-value">₹{{ settlement_preview.sales_ledger_cash|floatformat:2 }}</span>
+                        <input type="hidden" id="sales-ledger-value" value="{{ settlement_preview.sales_ledger_cash }}">
+                    </div>
+                    <div class="premium-metric-card">
+                        <span class="premium-metric-label">Expenses</span>
+                        <span class="premium-metric-value premium-metric-danger">-₹{{ autofill_summary.expense_amount|floatformat:2 }}</span>
+                        <input type="hidden" id="expense-value" value="{{ autofill_summary.expense_amount }}">
+                    </div>
+                    <div class="premium-metric-card">
+                        <span class="premium-metric-label">Cash in Hand</span>
+                        <span class="premium-metric-value premium-metric-success" id="cash-in-hand-display">₹{{ settlement_preview.cash_in_hand|floatformat:2 }}</span>
+                    </div>
+                </div>
+
+                <!-- Main Form Fields -->
+                <div class="premium-form-grid">
+                    <div class="premium-form-field">
+                        <label for="{{ form.settlement_date.id_for_label }}">Settlement Date</label>
+                        {{ form.settlement_date }}
+                        {% if form.settlement_date.errors %}
+                            <span class="premium-error">{{ form.settlement_date.errors|join:", " }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="premium-form-field">
+                        <label for="{{ form.gpay_settled.id_for_label }}">Card / UPI Settled</label>
+                        {{ form.gpay_settled }}
+                        {% if form.gpay_settled.errors %}
+                            <span class="premium-error">{{ form.gpay_settled.errors|join:", " }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="premium-form-field">
+                        <label for="{{ form.cash_settled.id_for_label }}">Cash Handover</label>
+                        {{ form.cash_settled }}
+                        {% if form.cash_settled.errors %}
+                            <span class="premium-error">{{ form.cash_settled.errors|join:", " }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="premium-form-field">
+                        <label for="{{ form.cash_settled_to.id_for_label }}">Handover To</label>
+                        {{ form.cash_settled_to }}
+                        {% if form.cash_settled_to.errors %}
+                            <span class="premium-error">{{ form.cash_settled_to.errors|join:", " }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="premium-form-field">
+                        <label for="{{ form.closing_balance.id_for_label }}">Closing Balance</label>
+                        {{ form.closing_balance }}
+                        {% if form.closing_balance.errors %}
+                            <span class="premium-error">{{ form.closing_balance.errors|join:", " }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="premium-form-field premium-form-field-full">
+                        <label for="{{ form.notes.id_for_label }}">Notes</label>
+                        {{ form.notes }}
+                    </div>
+                </div>
+
+                <!-- Quick Summary Row -->
+                <div class="premium-summary-row">
+                    <div class="premium-summary-item">
+                        <span>Total Amount</span>
+                        <strong id="total-amount-display">₹{{ settlement_preview.total_amount|floatformat:2 }}</strong>
+                    </div>
+                    <div class="premium-summary-item">
+                        <span>Actual Sales</span>
+                        <strong id="actual-sales-display">₹{{ settlement_preview.actual_sales|floatformat:2 }}</strong>
+                    </div>
+                </div>
+
+                <div class="premium-form-actions">
+                    <a href="{% url 'daily-settlement' %}?entry_date={{ selected_entry_date|date:'Y-m-d' }}&start_date={{ settlement_filters.start_date|date:'Y-m-d' }}&end_date={{ settlement_filters.end_date|date:'Y-m-d' }}" 
+                       class="premium-button premium-button-outline">Clear</a>
+                    <button type="submit" class="premium-button premium-button-primary">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                        {% if selected_settlement %}Update{% else %}Save Settlement{% endif %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Right Column - Cash Denomination Calculator -->
+    <div class="premium-settlement-side">
+        <div class="premium-card premium-card-calculator">
+            <div class="premium-card-header">
+                <div class="premium-card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="4" y="4" width="16" height="16" rx="2" />
+                        <path d="M8 8h8M8 12h8M8 16h4" />
+                    </svg>
+                    <h3>Cash Count</h3>
+                </div>
+                <span class="premium-badge premium-badge-soft">Calculator</span>
+            </div>
+
+            <div class="premium-denomination-container">
+                <input type="hidden" id="settlement-cash-denominations" name="cash_denominations" value="{{ cash_denominations_json }}">
+                
+                <div class="premium-denomination-grid">
+                    {% for denomination in cash_denomination_values %}
+                    <div class="premium-denomination-row">
+                        <span class="premium-denomination-label">₹{{ denomination }}</span>
+                        <span class="premium-denomination-multiply">×</span>
+                        <input type="number" min="0" step="1" value="0" 
+                               class="premium-denomination-input" 
+                               data-denomination-value="{{ denomination }}"
+                               data-denomination-input>
+                        <span class="premium-denomination-equals">=</span>
+                        <span class="premium-denomination-total" data-denomination-total="{{ denomination }}">₹0</span>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="premium-denomination-footer">
+                    <div class="premium-denomination-grand-total">
+                        <span>Counted Total</span>
+                        <strong id="denomination-total-display">₹0.00</strong>
+                    </div>
+                    <button type="button" class="premium-button premium-button-ghost" id="clear-denominations">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                        </svg>
+                        Clear
+                    </button>
+                </div>
+                <p class="premium-denomination-hint" id="denomination-summary">
+                    Compare counted cash with cash in hand (₹{{ settlement_preview.cash_in_hand|floatformat:2 }})
+                </p>
+            </div>
+        </div>
+
+        <!-- Settlement History Preview -->
+        <div class="premium-card">
+            <div class="premium-card-header">
+                <div class="premium-card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 7h16M4 12h16M4 17h10" />
+                    </svg>
+                    <h3>Recent Settlements</h3>
+                </div>
+                <span class="premium-badge premium-badge-soft">{{ settlement_count }}</span>
+            </div>
+
+            {% if settlement_records %}
+            <div class="premium-timeline">
+                {% for record in settlement_records|slice:":5" %}
+                <a href="{% url 'daily-settlement' %}?start_date={{ settlement_filters.start_date|date:'Y-m-d' }}&end_date={{ settlement_filters.end_date|date:'Y-m-d' }}&entry_date={{ record.settlement_date|date:'Y-m-d' }}" 
+                   class="premium-timeline-item {% if record.settlement_date == selected_entry_date %}active{% endif %}">
+                    <div class="premium-timeline-date">{{ record.settlement_date|date:"d-m-Y" }}</div>
+                    <div class="premium-timeline-content">
+                        <div class="premium-timeline-row">
+                            <span>Cash: ₹{{ record.cash_settled }}</span>
+                            <span>Card: ₹{{ record.gpay_settled }}</span>
+                        </div>
+                        <div class="premium-timeline-row premium-timeline-total">
+                            <span>Total: ₹{{ record.total_amount }}</span>
+                            <span class="premium-timeline-time">{{ record.updated_at|date:"h:i A" }}</span>
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="premium-empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                </svg>
+                <p>No settlements in this range</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    // DOM Elements
+    const elements = {
+        openingBalance: document.querySelector("#opening-balance-value"),
+        salesLedger: document.querySelector("#sales-ledger-value"),
+        expense: document.querySelector("#expense-value"),
+        gpaySettled: document.querySelector("#{{ form.gpay_settled.auto_id }}"),
+        cashSettled: document.querySelector("#{{ form.cash_settled.auto_id }}"),
+        closingBalance: document.querySelector("#{{ form.closing_balance.auto_id }}"),
+        cashInHandDisplay: document.querySelector("#cash-in-hand-display"),
+        totalDisplay: document.querySelector("#total-amount-display"),
+        actualSalesDisplay: document.querySelector("#actual-sales-display"),
+        denominationInputs: Array.from(document.querySelectorAll("[data-denomination-input]")),
+        denominationHidden: document.querySelector("#settlement-cash-denominations"),
+        denominationTotalDisplay: document.querySelector("#denomination-total-display"),
+        denominationSummary: document.querySelector("#denomination-summary"),
+        clearButton: document.querySelector("#clear-denominations")
+    };
+
+    // Helper Functions
+    const toNumber = (value) => {
+        if (!value) return 0;
+        const num = parseFloat(value.toString().replace(/[^\d.-]/g, ''));
+        return isNaN(num) ? 0 : num;
+    };
+
+    const getMetricValue = (element) => {
+        return element ? toNumber(element.value) : 0;
+    };
+
+    // Calculate Cash in Hand
+    const calculateCashInHand = () => {
+        const opening = getMetricValue(elements.openingBalance);
+        const sales = getMetricValue(elements.salesLedger);
+        const expense = getMetricValue(elements.expense);
+        return opening + sales - expense;
+    };
+
+    // Update All Calculations
+    const updateCalculations = () => {
+        const gpay = toNumber(elements.gpaySettled?.value);
+        const cash = toNumber(elements.cashSettled?.value);
+        const cashInHand = calculateCashInHand();
+        const closing = cashInHand - cash;
+        const total = gpay + cash + getMetricValue(elements.expense) + closing;
+        const actualSales = total - getMetricValue(elements.openingBalance);
+
+        // Update displays
+        if (elements.cashInHandDisplay) {
+            elements.cashInHandDisplay.textContent = `₹${cashInHand.toFixed(2)}`;
+        }
+        if (elements.closingBalance) {
+            elements.closingBalance.value = closing.toFixed(2);
+        }
+        if (elements.totalDisplay) {
+            elements.totalDisplay.textContent = `₹${total.toFixed(2)}`;
+        }
+        if (elements.actualSalesDisplay) {
+            elements.actualSalesDisplay.textContent = `₹${actualSales.toFixed(2)}`;
+        }
+
+        // Update denomination hint
+        if (elements.denominationSummary) {
+            const counted = getDenominationTotal();
+            const diff = counted - cashInHand;
+            if (Math.abs(diff) > 0.01) {
+                elements.denominationSummary.innerHTML = `⚠️ Counted cash differs by ₹${Math.abs(diff).toFixed(2)}`;
+                elements.denominationSummary.style.color = diff > 0 ? '#e67e22' : '#e74c3c';
+            } else {
+                elements.denominationSummary.innerHTML = `✓ Counted cash matches cash in hand`;
+                elements.denominationSummary.style.color = '#27ae60';
+            }
+        }
+    };
+
+    // Denomination Calculator Functions
+    const getDenominationTotal = () => {
+        return elements.denominationInputs.reduce((sum, input) => {
+            const denom = parseInt(input.dataset.denominationValue) || 0;
+            const count = parseInt(input.value) || 0;
+            return sum + (denom * count);
+        }, 0);
+    };
+
+    const updateDenominationDisplay = () => {
+        const total = getDenominationTotal();
+        
+        // Update line totals
+        elements.denominationInputs.forEach(input => {
+            const denom = input.dataset.denominationValue;
+            const count = parseInt(input.value) || 0;
+            const total = denom * count;
+            const totalElement = document.querySelector(`[data-denomination-total="${denom}"]`);
+            if (totalElement) {
+                totalElement.textContent = `₹${total}`;
+            }
+        });
+
+        // Update grand total
+        if (elements.denominationTotalDisplay) {
+            elements.denominationTotalDisplay.textContent = `₹${total.toFixed(2)}`;
+        }
+
+        // Update hidden input
+        if (elements.denominationHidden) {
+            const payload = {};
+            elements.denominationInputs.forEach(input => {
+                const count = parseInt(input.value) || 0;
+                if (count > 0) {
+                    payload[input.dataset.denominationValue] = count;
+                }
+            });
+            elements.denominationHidden.value = JSON.stringify(payload);
+        }
+
+        updateCalculations();
+    };
+
+    const clearDenominations = () => {
+        elements.denominationInputs.forEach(input => {
+            input.value = 0;
+        });
+        updateDenominationDisplay();
+    };
+
+    // Event Listeners
+    [elements.gpaySettled, elements.cashSettled].forEach(input => {
+        if (input) {
+            input.addEventListener("input", updateCalculations);
+            input.addEventListener("change", updateCalculations);
+        }
+    });
+
+    elements.denominationInputs.forEach(input => {
+        input.addEventListener("input", updateDenominationDisplay);
+        input.addEventListener("change", updateDenominationDisplay);
+    });
+
+    if (elements.clearButton) {
+        elements.clearButton.addEventListener("click", clearDenominations);
+    }
+
+    // Load saved denominations
+    if (elements.denominationHidden?.value) {
+        try {
+            const saved = JSON.parse(elements.denominationHidden.value);
+            elements.denominationInputs.forEach(input => {
+                const denom = input.dataset.denominationValue;
+                if (saved[denom]) {
+                    input.value = saved[denom];
+                }
+            });
+            updateDenominationDisplay();
+        } catch (e) {
+            console.error('Failed to parse denominations');
+        }
+    }
+
+    // Initial calculation
+    updateCalculations();
+    updateDenominationDisplay();
+});
+</script>
+
+{% endblock %}

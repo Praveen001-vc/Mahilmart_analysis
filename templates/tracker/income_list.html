@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Income Records | Mahilmart{% endblock %}
+
+{% block content %}
+<section class="page-heading premium-panel">
+    <div>
+        <span class="eyebrow">Income Ledger</span>
+        <h1>Income Records</h1>
+        <p>Manual income entries and Daily Settlement income values are shown together in one ledger.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="secondary-button" href="{% url 'daily-settlement' %}">Daily Settlement</a>
+        <a class="primary-button" href="{% url 'income-add' %}">Add Income</a>
+    </div>
+</section>
+
+<section class="stats-grid compact-grid">
+    <article class="stat-card premium-panel">
+        <span>Total Records</span>
+        <strong>{{ page_count }}</strong>
+    </article>
+    <article class="stat-card premium-panel">
+        <span>Total Income Value</span>
+        <strong>Rs. {{ page_total }}</strong>
+    </article>
+</section>
+
+<section
+    class="premium-panel"
+    data-auto-load-table
+    data-batch-size="50"
+    data-total-count="{{ page_count }}"
+    data-next-url="{{ next_page_url }}"
+>
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">Detailed View</span>
+            <h2>Income table</h2>
+        </div>
+        <p class="muted-text">50 rows load at a time. Scroll down to load more automatically.</p>
+    </div>
+
+    {% if records %}
+        <div class="table-shell">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Title</th>
+                        <th>Source</th>
+                        <th>Category</th>
+                        <th>Payment</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody data-table-body>
+                    {% for record in records %}
+                        <tr>
+                            <td>{{ record.transaction_date }}</td>
+                            <td>
+                                {{ record.title }}
+                                {% if record.entry_type == "settlement" %}
+                                    <div class="muted-text">Auto added from Daily Settlement</div>
+                                {% endif %}
+                            </td>
+                            <td>{{ record.source }}</td>
+                            <td>{{ record.category }}</td>
+                            <td>{{ record.payment_method }}</td>
+                            <td class="positive">Rs. {{ record.amount }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="auto-load-footer">
+            <div class="auto-load-status" data-load-status>
+                Showing {{ visible_count }} of {{ page_count }} records.
+            </div>
+            {% if next_page_url %}
+                <a class="secondary-button auto-load-link" data-next-link href="{{ next_page_url }}">
+                    Load next 50
+                </a>
+            {% endif %}
+            <div class="auto-load-sentinel" data-load-sentinel aria-hidden="true"></div>
+        </div>
+    {% else %}
+        <div class="empty-state">No income records available. Use the Add Income button to create the first entry.</div>
+    {% endif %}
+</section>
+{% endblock %}

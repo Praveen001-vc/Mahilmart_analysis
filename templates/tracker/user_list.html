@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Users | Mahilmart{% endblock %}
+
+{% block content %}
+<section class="page-heading premium-panel">
+    <div>
+        <span class="eyebrow">User Access</span>
+        <h1>User Management</h1>
+        <p>Create accounts, change role, and switch users between active and inactive status.</p>
+    </div>
+    <a class="primary-button" href="{% url 'user-add' %}">Create User</a>
+</section>
+
+<section class="stats-grid compact-grid compact-grid-3">
+    <article class="stat-card premium-panel">
+        <span>Total Users</span>
+        <strong>{{ page_count }}</strong>
+    </article>
+    <article class="stat-card premium-panel">
+        <span>Active Users</span>
+        <strong>{{ active_count }}</strong>
+    </article>
+    <article class="stat-card premium-panel">
+        <span>Inactive Users</span>
+        <strong>{{ inactive_count }}</strong>
+    </article>
+</section>
+
+<section class="premium-panel">
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">Database Records</span>
+            <h2>User table</h2>
+        </div>
+    </div>
+
+    {% if users %}
+        <div class="table-shell">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>User Name</th>
+                        <th>Master Name</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.master_name_display }}</td>
+                            <td>{{ user.role_label }}</td>
+                            <td>{{ user.status_label }}</td>
+                            <td>
+                                <a class="table-link" href="{% url 'user-edit' user.pk %}">Edit</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">No users available yet. Create or import the first user.</div>
+    {% endif %}
+</section>
+{% endblock %}

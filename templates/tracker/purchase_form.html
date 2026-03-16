@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Add Purchase | Mahilmart{% endblock %}
+{% block body_class %}app-shell entry-master-shell{% endblock %}
+
+{% block content %}
+<section class="entry-master-hero premium-panel">
+    <div>
+        <span class="eyebrow">New Purchase Entry</span>
+        <h1>Add Purchase Record</h1>
+        <p>Save supplier name, type, invoice number, total amount, paid amount, pending amount, notes, and one upload file.</p>
+        <p class="muted-text">Purchase date and time are saved automatically.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="secondary-button" href="{% url 'purchase-list' %}">Back to Purchases</a>
+        <a class="secondary-button" href="{% url 'supplier-add' %}">Add Supplier Optional</a>
+    </div>
+</section>
+
+<form method="post" enctype="multipart/form-data" class="financial-form entry-master-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="form-error">
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+   
+
+    <section class="entry-master-grid">
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128100;</span> Supplier Details</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.supplier.id_for_label }}">{{ form.supplier.label }}{% if form.supplier.field.required %} *{% endif %}</label>
+                    {{ form.supplier }}
+                    {% if form.supplier.help_text %}
+                        <small class="help-text">{{ form.supplier.help_text }}</small>
+                    {% endif %}
+                    {% if form.supplier.errors %}
+                        <div class="field-error">{{ form.supplier.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.supplier_name.id_for_label }}">{{ form.supplier_name.label }}{% if form.supplier_name.field.required %} *{% endif %}</label>
+                    {{ form.supplier_name }}
+                    {% if form.supplier_name.help_text %}
+                        <small class="help-text">{{ form.supplier_name.help_text }}</small>
+                    {% endif %}
+                    {% if form.supplier_name.errors %}
+                        <div class="field-error">{{ form.supplier_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                {% if supplier_count == 0 %}
+                    <div class="entry-inline-note">
+                        No suppliers saved yet. You can still add the supplier name manually for this purchase.
+                    </div>
+                {% endif %}
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128196;</span> Invoice Details</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.purchase_type.id_for_label }}">{{ form.purchase_type.label }}{% if form.purchase_type.field.required %} *{% endif %}</label>
+                    {{ form.purchase_type }}
+                    {% if form.purchase_type.errors %}
+                        <div class="field-error">{{ form.purchase_type.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.invoice_number.id_for_label }}">{{ form.invoice_number.label }}{% if form.invoice_number.field.required %} *{% endif %}</label>
+                    {{ form.invoice_number }}
+                    {% if form.invoice_number.errors %}
+                        <div class="field-error">{{ form.invoice_number.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#8377;</span> Payment Snapshot</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.total_amount.id_for_label }}">{{ form.total_amount.label }}{% if form.total_amount.field.required %} *{% endif %}</label>
+                    {{ form.total_amount }}
+                    {% if form.total_amount.errors %}
+                        <div class="field-error">{{ form.total_amount.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.paid_amount.id_for_label }}">{{ form.paid_amount.label }}{% if form.paid_amount.field.required %} *{% endif %}</label>
+                    {{ form.paid_amount }}
+                    {% if form.paid_amount.help_text %}
+                        <small class="help-text">{{ form.paid_amount.help_text }}</small>
+                    {% endif %}
+                    {% if form.paid_amount.errors %}
+                        <div class="field-error">{{ form.paid_amount.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="pending-preview">Pending Amount</label>
+                    <input
+                        id="pending-preview"
+                        type="text"
+                        class="input-control entry-readonly"
+                        value="0.00"
+                        readonly
+                    >
+                    <small class="help-text">Calculated automatically as Total Amount - Paid Amount.</small>
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128206;</span> File & Notes</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.attachment.id_for_label }}">{{ form.attachment.label }}{% if form.attachment.field.required %} *{% endif %}</label>
+                    {{ form.attachment }}
+                    {% if form.attachment.help_text %}
+                        <small class="help-text">{{ form.attachment.help_text }}</small>
+                    {% endif %}
+                    {% if form.attachment.errors %}
+                        <div class="field-error">{{ form.attachment.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block entry-field-tall">
+                    <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}{% if form.notes.field.required %} *{% endif %}</label>
+                    {{ form.notes }}
+                    {% if form.notes.errors %}
+                        <div class="field-error">{{ form.notes.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="premium-panel entry-master-tools">
+        <div class="entry-tool-pill">Supplier Match</div>
+        <div class="entry-tool-pill">Invoice Number</div>
+        <div class="entry-tool-pill">Payment Snapshot</div>
+        <div class="entry-tool-pill">File Upload</div>
+        <div class="entry-tool-pill">Purchase Notes</div>
+    </section>
+
+    <div class="entry-master-actions">
+        <button type="submit" class="primary-button">Save Purchase</button>
+        <button type="submit" class="secondary-button" name="_download_invoice" value="1">Save And Download Invoice</button>
+        <a class="secondary-button" href="{% url 'purchase-list' %}">Cancel</a>
+        <button type="reset" class="secondary-button">Reset</button>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const totalInput = document.getElementById("id_total_amount");
+    const paidInput = document.getElementById("id_paid_amount");
+    const pendingInput = document.getElementById("pending-preview");
+
+    if (!totalInput || !paidInput || !pendingInput) {
+        return;
+    }
+
+    const updatePending = () => {
+        const total = Number.parseFloat(totalInput.value || "0");
+        const paid = Number.parseFloat(paidInput.value || "0");
+        const pending = Math.max(total - paid, 0);
+        pendingInput.value = pending.toFixed(2);
+    };
+
+    totalInput.addEventListener("input", updatePending);
+    paidInput.addEventListener("input", updatePending);
+    updatePending();
+});
+</script>
+{% endblock %}

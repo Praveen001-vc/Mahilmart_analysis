@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d9eef5"/>
+      <stop offset="34%" stop-color="#dcecf0"/>
+      <stop offset="63%" stop-color="#efd9d7"/>
+      <stop offset="100%" stop-color="#cfd8de"/>
+    </linearGradient>
+    <radialGradient id="moon-glow" cx="0.78" cy="0.2" r="0.14">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.88"/>
+      <stop offset="35%" stop-color="#ffffff" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="cloud-pink" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f8dad5" stop-opacity="0"/>
+      <stop offset="20%" stop-color="#f8dad5" stop-opacity="0.74"/>
+      <stop offset="80%" stop-color="#f2cbc6" stop-opacity="0.74"/>
+      <stop offset="100%" stop-color="#f2cbc6" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="far-ridge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#dde9ed"/>
+      <stop offset="100%" stop-color="#a3b5be"/>
+    </linearGradient>
+    <linearGradient id="mid-ridge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#eef5f6"/>
+      <stop offset="52%" stop-color="#b7c9d1"/>
+      <stop offset="100%" stop-color="#78909e"/>
+    </linearGradient>
+    <linearGradient id="front-ridge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#667d8b"/>
+      <stop offset="100%" stop-color="#1b2c38"/>
+    </linearGradient>
+    <linearGradient id="forest-back" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#223944"/>
+      <stop offset="100%" stop-color="#0a1218"/>
+    </linearGradient>
+    <linearGradient id="forest-front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#172933"/>
+      <stop offset="100%" stop-color="#03070b"/>
+    </linearGradient>
+    <linearGradient id="mist" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="blur-xl" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="blur-md" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <rect width="1600" height="900" fill="url(#moon-glow)"/>
+
+  <g opacity="0.78" filter="url(#blur-xl)">
+    <path d="M-120 256C96 204 296 226 514 246C730 268 952 266 1184 248C1336 236 1484 236 1728 254V322H-120Z" fill="url(#cloud-pink)"/>
+    <path d="M-160 340C40 300 276 332 514 354C720 372 952 374 1170 360C1368 346 1502 352 1740 372V428H-160Z" fill="url(#cloud-pink)" opacity="0.9"/>
+    <path d="M64 156C188 150 306 170 430 190C562 212 686 208 812 194C926 180 1058 160 1214 164C1350 166 1486 188 1608 210V236H64Z" fill="#f4d7d2" opacity="0.4"/>
+  </g>
+
+  <g opacity="0.9">
+    <ellipse cx="1260" cy="182" rx="38" ry="58" fill="#ffffff" opacity="0.8" transform="rotate(24 1260 182)"/>
+    <ellipse cx="1274" cy="182" rx="32" ry="56" fill="#d9eef5" opacity="0.72" transform="rotate(24 1274 182)"/>
+  </g>
+
+  <path d="M-80 654L126 534L254 586L408 444L492 500L646 362L740 450L878 512L1036 362L1186 534L1318 488L1464 572L1680 632V900H-80Z" fill="url(#far-ridge)"/>
+  <path d="M-80 730L84 596L176 640L324 542L470 366L590 474L736 338L832 432L966 504L1100 340L1228 518L1336 490L1468 580L1680 672V900H-80Z" fill="url(#mid-ridge)"/>
+
+  <g opacity="0.97">
+    <path d="M-80 784L42 704L132 742L228 680L336 582L458 414L598 544L736 340L856 486L976 530L1100 340L1220 540L1342 516L1478 614L1680 700V900H-80Z" fill="url(#front-ridge)"/>
+    <path d="M472 372L516 458L564 434L618 526L656 478L720 398L736 340L782 406L814 388L870 470L936 500L1004 470L1060 396L1100 340L1148 430L1186 420L1240 528L1278 508L1340 516L1400 596L1478 614L1536 670L1600 706V900H-80V814L14 744L94 768L174 736L266 648L356 616L432 542Z" fill="#213440"/>
+  </g>
+
+  <g fill="#f9fdff" opacity="0.94">
+    <path d="M436 430L470 366L510 448L490 442L468 404L446 438Z"/>
+    <path d="M700 374L736 340L776 402L758 396L736 362L718 392Z"/>
+    <path d="M1062 376L1100 340L1146 424L1126 418L1098 360L1076 394Z"/>
+    <path d="M1198 420L1228 390L1268 494L1248 486L1222 432Z"/>
+    <path d="M316 540L348 512L386 574L364 566L344 534L330 560Z"/>
+    <path d="M840 448L874 422L920 488L898 486L874 446L856 468Z"/>
+    <path d="M136 620L166 598L208 640L184 642L164 614L146 632Z"/>
+  </g>
+
+  <g opacity="0.5" filter="url(#blur-md)">
+    <path d="M-120 620C118 588 288 644 520 650C718 654 900 622 1106 624C1298 626 1476 650 1716 624V700H-120Z" fill="url(#mist)"/>
+    <path d="M-120 688C88 662 312 706 534 710C770 714 944 678 1178 676C1388 674 1522 690 1716 674V742H-120Z" fill="url(#mist)" opacity="0.8"/>
+  </g>
+
+  <path d="M-80 774L24 710L78 770L128 708L186 782L234 724L292 794L352 724L414 804L470 734L532 802L588 730L652 810L708 736L770 808L822 742L886 812L944 746L1012 820L1076 748L1140 822L1198 756L1268 832L1328 766L1404 846L1472 782L1560 860L1680 812V900H-80Z" fill="url(#forest-back)"/>
+  <path d="M-80 824L6 758L70 842L130 770L192 852L254 786L316 864L384 794L448 872L514 804L574 878L646 810L708 880L774 812L838 882L906 816L980 886L1048 818L1122 892L1192 826L1266 900L1328 834L1402 900H-80Z" fill="url(#forest-front)" opacity="0.96"/>
+</svg>

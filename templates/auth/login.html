@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Login | Mahilmart{% endblock %}
+{% block body_class %}auth-shell{% endblock %}
+
+{% block content %}
+<section class="auth-layout">
+    <div class="auth-hero premium-panel">
+        <span class="eyebrow">Mahilmart Finance Control</span>
+        <h1>Track income, expenses, and cash flow with a premium dashboard.</h1>
+        <p>
+            Built for daily business visibility. Monitor collections, supplier payments,
+            and monthly balance from one secure workspace.
+        </p>
+        <div class="feature-grid">
+            <article class="feature-card">
+                <h2>Income Tracking</h2>
+                <p>Capture store sales, wholesale collections, and service revenue in separate entries.</p>
+            </article>
+            <article class="feature-card">
+                <h2>Expense Control</h2>
+                <p>Manage supplier bills, transport, utilities, and operational spending without confusion.</p>
+            </article>
+            <article class="feature-card">
+                <h2>Monthly Reports</h2>
+                <p>Review category-wise performance and compare month-by-month financial movement.</p>
+            </article>
+        </div>
+    </div>
+
+    <div class="auth-card premium-panel">
+        <span class="eyebrow">Secure Login</span>
+        <h2>Sign in to Mahilmart</h2>
+        <p class="muted-text">Use your Django admin or staff account credentials.</p>
+
+        <form method="post" class="auth-form">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="form-error">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="field-block">
+                <label for="{{ form.username.id_for_label }}">Username</label>
+                {{ form.username }}
+                {% if form.username.errors %}
+                    <div class="field-error">{{ form.username.errors|join:", " }}</div>
+                {% endif %}
+            </div>
+
+            <div class="field-block">
+                <label for="{{ form.password.id_for_label }}">Password</label>
+                {{ form.password }}
+                {% if form.password.errors %}
+                    <div class="field-error">{{ form.password.errors|join:", " }}</div>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="primary-button full-width">Login</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

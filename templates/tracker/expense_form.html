@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Add Expense | Mahilmart{% endblock %}
+{% block body_class %}app-shell entry-master-shell{% endblock %}
+
+{% block content %}
+<section class="entry-master-hero entry-master-hero-light premium-panel">
+    <div>
+        <span class="eyebrow">New Expense Entry</span>
+        <h1>Add Expense Record</h1>
+        <p>Register utilities, salaries, rent, supplier purchases, logistics, and every operating cost with clean records.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="secondary-button" href="{% url 'supplier-list' %}">View Suppliers</a>
+        <a class="secondary-button" href="{% url 'supplier-add' %}">Add Supplier Optional</a>
+    </div>
+</section>
+
+<form method="post" class="financial-form entry-master-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="form-error">
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <section class="entry-master-grid">
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#9874;</span> Expense Basics</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.title.id_for_label }}">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
+                    {{ form.title }}
+                    {% if form.title.errors %}
+                        <div class="field-error">{{ form.title.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.category.id_for_label }}">{{ form.category.label }}{% if form.category.field.required %} *{% endif %}</label>
+                    {{ form.category }}
+                    {% if form.category.errors %}
+                        <div class="field-error">{{ form.category.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128179;</span> Supplier & Reference</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.supplier.id_for_label }}">{{ form.supplier.label }}{% if form.supplier.field.required %} *{% endif %}</label>
+                    {{ form.supplier }}
+                    {% if form.supplier.help_text %}
+                        <small class="help-text">{{ form.supplier.help_text }}</small>
+                    {% endif %}
+                    {% if form.supplier.errors %}
+                        <div class="field-error">{{ form.supplier.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.vendor.id_for_label }}">{{ form.vendor.label }}{% if form.vendor.field.required %} *{% endif %}</label>
+                    {{ form.vendor }}
+                    {% if form.vendor.help_text %}
+                        <small class="help-text">{{ form.vendor.help_text }}</small>
+                    {% endif %}
+                    {% if form.vendor.errors %}
+                        <div class="field-error">{{ form.vendor.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                {% if supplier_count == 0 %}
+                    <div class="entry-inline-note">
+                        No suppliers saved yet. You can still create general expenses and add supplier records later.
+                    </div>
+                {% endif %}
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#8377;</span> Amount & Payment</h2>
+            </div>
+            <div class="entry-card-body entry-card-grid">
+                <div class="field-block">
+                    <label for="{{ form.amount.id_for_label }}">{{ form.amount.label }}{% if form.amount.field.required %} *{% endif %}</label>
+                    {{ form.amount }}
+                    {% if form.amount.errors %}
+                        <div class="field-error">{{ form.amount.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.transaction_date.id_for_label }}">{{ form.transaction_date.label }}{% if form.transaction_date.field.required %} *{% endif %}</label>
+                    {{ form.transaction_date }}
+                    {% if form.transaction_date.errors %}
+                        <div class="field-error">{{ form.transaction_date.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block entry-field-full">
+                    <label for="{{ form.payment_method.id_for_label }}">{{ form.payment_method.label }}{% if form.payment_method.field.required %} *{% endif %}</label>
+                    {{ form.payment_method }}
+                    {% if form.payment_method.errors %}
+                        <div class="field-error">{{ form.payment_method.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#9998;</span> Notes</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block entry-field-tall">
+                    <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}{% if form.notes.field.required %} *{% endif %}</label>
+                    {{ form.notes }}
+                    {% if form.notes.help_text %}
+                        <small class="help-text">{{ form.notes.help_text }}</small>
+                    {% endif %}
+                    {% if form.notes.errors %}
+                        <div class="field-error">{{ form.notes.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="premium-panel entry-master-tools">
+        <div class="entry-tool-pill">Expense Title</div>
+        <div class="entry-tool-pill">Supplier Link</div>
+        <div class="entry-tool-pill">Reference</div>
+        <div class="entry-tool-pill">Payment Method</div>
+        <div class="entry-tool-pill">Notes</div>
+    </section>
+
+    <div class="entry-master-actions">
+        <button type="submit" class="primary-button">Save Expense</button>
+        <a class="secondary-button" href="{% url 'expense-list' %}">Cancel</a>
+        <button type="reset" class="secondary-button">Reset</button>
+    </div>
+</form>
+{% endblock %}

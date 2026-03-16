@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Add Supplier | Mahilmart{% endblock %}
+{% block body_class %}app-shell supplier-master-shell{% endblock %}
+
+{% block content %}
+<section class="supplier-master-hero supplier-master-hero-light premium-panel">
+    <div>
+        <span class="eyebrow">Supplier Master</span>
+        <h1>Add New Supplier</h1>
+        <p>Create supplier records with contact details, compliance IDs, bank details, credit terms, and notes.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="secondary-button" href="{% url 'supplier-list' %}">Back to Suppliers</a>
+    </div>
+</section>
+
+<form method="post" class="financial-form supplier-master-form">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="form-error">
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <section class="supplier-master-grid">
+        <article class="premium-panel supplier-master-card">
+            <div class="supplier-card-heading">
+                <h2><span aria-hidden="true">&#9432;</span> Basic Information</h2>
+            </div>
+            <div class="supplier-card-body">
+                <div class="field-block">
+                    <label>Supplier ID</label>
+                    <input type="text" class="input-control" value="{{ next_supplier_code }}" readonly>
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.name.id_for_label }}">{{ form.name.label }}{% if form.name.field.required %} *{% endif %}</label>
+                    {{ form.name }}
+                    {% if form.name.errors %}
+                        <div class="field-error">{{ form.name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.contact_person.id_for_label }}">{{ form.contact_person.label }}{% if form.contact_person.field.required %} *{% endif %}</label>
+                    {{ form.contact_person }}
+                    {% if form.contact_person.errors %}
+                        <div class="field-error">{{ form.contact_person.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.phone_number.id_for_label }}">{{ form.phone_number.label }}{% if form.phone_number.field.required %} *{% endif %}</label>
+                    {{ form.phone_number }}
+                    {% if form.phone_number.errors %}
+                        <div class="field-error">{{ form.phone_number.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel supplier-master-card">
+            <div class="supplier-card-heading">
+                <h2><span aria-hidden="true">&#9993;</span> Contact & Address</h2>
+            </div>
+            <div class="supplier-card-body">
+                <div class="field-block">
+                    <label for="{{ form.email.id_for_label }}">{{ form.email.label }}{% if form.email.field.required %} *{% endif %}</label>
+                    {{ form.email }}
+                    {% if form.email.errors %}
+                        <div class="field-error">{{ form.email.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block supplier-field-tall">
+                    <label for="{{ form.address.id_for_label }}">{{ form.address.label }}{% if form.address.field.required %} *{% endif %}</label>
+                    {{ form.address }}
+                    {% if form.address.errors %}
+                        <div class="field-error">{{ form.address.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel supplier-master-card">
+            <div class="supplier-card-heading">
+                <h2><span aria-hidden="true">&#8377;</span> Compliance & Credit</h2>
+            </div>
+            <div class="supplier-card-body supplier-card-grid">
+                <div class="field-block">
+                    <label for="{{ form.gstin_number.id_for_label }}">{{ form.gstin_number.label }}{% if form.gstin_number.field.required %} *{% endif %}</label>
+                    {{ form.gstin_number }}
+                    {% if form.gstin_number.errors %}
+                        <div class="field-error">{{ form.gstin_number.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.fssai_number.id_for_label }}">{{ form.fssai_number.label }}{% if form.fssai_number.field.required %} *{% endif %}</label>
+                    {{ form.fssai_number }}
+                    {% if form.fssai_number.errors %}
+                        <div class="field-error">{{ form.fssai_number.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.pan_number.id_for_label }}">{{ form.pan_number.label }}{% if form.pan_number.field.required %} *{% endif %}</label>
+                    {{ form.pan_number }}
+                    {% if form.pan_number.errors %}
+                        <div class="field-error">{{ form.pan_number.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.credit_terms.id_for_label }}">{{ form.credit_terms.label }}{% if form.credit_terms.field.required %} *{% endif %}</label>
+                    {{ form.credit_terms }}
+                    {% if form.credit_terms.errors %}
+                        <div class="field-error">{{ form.credit_terms.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.opening_balance.id_for_label }}">{{ form.opening_balance.label }}{% if form.opening_balance.field.required %} *{% endif %}</label>
+                    {{ form.opening_balance }}
+                    {% if form.opening_balance.errors %}
+                        <div class="field-error">{{ form.opening_balance.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.status.id_for_label }}">{{ form.status.label }}{% if form.status.field.required %} *{% endif %}</label>
+                    {{ form.status }}
+                    {% if form.status.errors %}
+                        <div class="field-error">{{ form.status.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel supplier-master-card">
+            <div class="supplier-card-heading">
+                <h2><span aria-hidden="true">&#127974;</span> Banking & Notes</h2>
+            </div>
+            <div class="supplier-card-body supplier-card-grid">
+                <div class="field-block">
+                    <label for="{{ form.bank_name.id_for_label }}">{{ form.bank_name.label }}{% if form.bank_name.field.required %} *{% endif %}</label>
+                    {{ form.bank_name }}
+                    {% if form.bank_name.errors %}
+                        <div class="field-error">{{ form.bank_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.account_number.id_for_label }}">{{ form.account_number.label }}{% if form.account_number.field.required %} *{% endif %}</label>
+                    {{ form.account_number }}
+                    {% if form.account_number.errors %}
+                        <div class="field-error">{{ form.account_number.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.ifsc_code.id_for_label }}">{{ form.ifsc_code.label }}{% if form.ifsc_code.field.required %} *{% endif %}</label>
+                    {{ form.ifsc_code }}
+                    {% if form.ifsc_code.errors %}
+                        <div class="field-error">{{ form.ifsc_code.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block supplier-field-tall supplier-field-full">
+                    <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}{% if form.notes.field.required %} *{% endif %}</label>
+                    {{ form.notes }}
+                    {% if form.notes.help_text %}
+                        <small class="help-text">{{ form.notes.help_text }}</small>
+                    {% endif %}
+                    {% if form.notes.errors %}
+                        <div class="field-error">{{ form.notes.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="premium-panel supplier-master-tools">
+        <div class="supplier-tool-pill">Supplier Identity</div>
+        <div class="supplier-tool-pill">Contact Details</div>
+        <div class="supplier-tool-pill">Compliance IDs</div>
+        <div class="supplier-tool-pill">Bank Setup</div>
+        <div class="supplier-tool-pill">Credit Terms</div>
+    </section>
+
+    <div class="supplier-form-actions">
+        <button type="submit" class="primary-button">Save Supplier</button>
+        <a class="secondary-button" href="{% url 'supplier-list' %}">Cancel</a>
+        <button type="reset" class="secondary-button">Reset</button>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+
+{% block title %}Sales Ledger | Mahilmart{% endblock %}
+{% block body_class %}app-shell sales-ledger-shell{% endblock %}
+
+{% block content %}
+<section class="page-heading premium-panel sales-page-head">
+    <div>
+        <span class="eyebrow">Sales Sync</span>
+        <h1>Sales Ledger</h1>
+        <p>SQL Server sales are synced into PostgreSQL and shown here with bill number, customer, amount, received amount, balance, and payment mode.</p>
+    </div>
+    <div class="hero-actions sales-hero-actions">
+        <div class="sales-sync-meta">
+            <span>Synced Bills</span>
+            <strong>{{ synced_record_count }}</strong>
+            <small>
+                {% if last_synced_at %}
+                    Last sync {{ last_synced_at|date:"d-m-Y h:i A" }}
+                {% else %}
+                    No sync has been run yet
+                {% endif %}
+            </small>
+        </div>
+        <form method="post" action="{% url 'sales-list' %}">
+            {% csrf_token %}
+            <input type="hidden" name="bill_no" value="{{ sales_filters.bill_no }}">
+            <input type="hidden" name="customer_name" value="{{ sales_filters.customer_name }}">
+            <input type="hidden" name="payment_mode" value="{{ sales_filters.payment_mode }}">
+            <input type="hidden" name="date_from" value="{{ sales_filters.date_from }}">
+            <input type="hidden" name="date_to" value="{{ sales_filters.date_to }}">
+            <button type="submit" class="primary-button">Sync Sales From SQL Server</button>
+        </form>
+    </div>
+</section>
+
+<section class="stats-grid compact-grid compact-grid-3">
+    <article class="stat-card premium-panel">
+        <span>Filtered Bills</span>
+        <strong>{{ page_count }}</strong>
+    </article>
+    <article class="stat-card premium-panel">
+        <span>Net Amount</span>
+        <strong>Rs. {{ page_total }}</strong>
+    </article>
+    <article class="stat-card premium-panel">
+        <span>Received Amount</span>
+        <strong>Rs. {{ received_total }}</strong>
+    </article>
+    <article class="stat-card premium-panel">
+        <span>Balance Amount</span>
+        <strong>Rs. {{ balance_total }}</strong>
+    </article>
+    <article class="stat-card premium-panel">
+        <span>Split Cash Total</span>
+        <strong>Rs. {{ split_cash_total }}</strong>
+    </article>
+    <article class="stat-card premium-panel">
+        <span>Split Card Total</span>
+        <strong>Rs. {{ split_card_total }}</strong>
+    </article>
+</section>
+
+<section class="premium-panel filter-panel">
+    <div class="panel-heading">
+        <div>
+            <span class="eyebrow">Find Bills</span>
+            <h2>Filter synced sales</h2>
+        </div>
+        {% if is_default_today_view %}
+            <p class="muted-text">Today&apos;s sales are shown by default, and sync also pulls only today unless you choose another date.</p>
+        {% elif has_active_filters %}
+            <p class="muted-text">Showing only sales matching the selected filters.</p>
+        {% else %}
+            <p class="muted-text">Most recent synced sales are shown first.</p>
+        {% endif %}
+    </div>
+
+    <form method="get" action="{% url 'sales-list' %}" class="financial-form">
+        <div class="filter-grid sales-filter-grid">
+            <div class="field-block">
+                <label for="sales-bill-no">Bill No</label>
+                <input
+                    id="sales-bill-no"
+                    type="text"
+                    name="bill_no"
+                    class="input-control"
+                    value="{{ sales_filters.bill_no }}"
+                    placeholder="Search bill number"
+                >
+            </div>
+            <div class="field-block">
+                <label for="sales-customer-name">Customer Name</label>
+                <input
+                    id="sales-customer-name"
+                    type="text"
+                    name="customer_name"
+                    class="input-control"
+                    value="{{ sales_filters.customer_name }}"
+                    placeholder="Search customer"
+                >
+            </div>
+            <div class="field-block">
+                <label for="sales-payment-mode">Payment Mode</label>
+                <select id="sales-payment-mode" name="payment_mode" class="input-control">
+                    <option value="">All</option>
+                    {% for option_value, option_label in payment_mode_options %}
+                        <option value="{{ option_value }}"{% if option_value == sales_filters.payment_mode %} selected{% endif %}>{{ option_label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field-block">
+                <label for="sales-date-from">Date From</label>
+                <input
+                    id="sales-date-from"
+                    type="date"
+                    name="date_from"
+                    class="input-control"
+                    value="{{ sales_filters.date_from }}"
+                >
+            </div>
+            <div class="field-block">
+                <label for="sales-date-to">Date To</label>
+                <input
+                    id="sales-date-to"
+                    type="date"
+                    name="date_to"
+                    class="input-control"
+                    value="{{ sales_filters.date_to }}"
+                >
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="primary-button">Apply Filters</button>
+            <a class="secondary-button" href="{% url 'sales-list' %}">Reset</a>
+        </div>
+    </form>
+</section>
+
+<section
+    class="premium-panel sales-history-card"
+    data-auto-load-table
+    data-batch-size="50"
+    data-total-count="{{ page_count }}"
+    data-next-url="{{ next_page_url }}"
+>
+    <div class="sales-history-head">
+        <h2><span aria-hidden="true">&#128203;</span> Sales Ledger</h2>
+        <p class="muted-text">50 rows load at a time. Scroll down to load more automatically.</p>
+    </div>
+
+    {% if records %}
+        <div class="table-shell">
+            <table class="data-table sales-data-table">
+                <thead>
+                    <tr>
+                        <th>Bill No</th>
+                        <th>Sale Date</th>
+                        <th>Customer Name</th>
+                        <th>Net Amount</th>
+                        <th>Received Amount</th>
+                        <th>Balance Amount</th>
+                        <th>Payment Mode</th>
+                    </tr>
+                </thead>
+                <tbody data-table-body>
+                    {% for record in records %}
+                        <tr>
+                            <td data-label="Bill No">{{ record.bill_no }}</td>
+                            <td data-label="Sale Date">
+                                {% if record.sale_date %}
+                                    {{ record.sale_date|date:"d-m-Y" }}
+                                {% else %}
+                                    <span class="muted-text">-</span>
+                                {% endif %}
+                            </td>
+                            <td data-label="Customer Name">
+                                {% if record.customer_name %}
+                                    {{ record.customer_name }}
+                                {% else %}
+                                    <span class="muted-text">Walk-in Customer</span>
+                                {% endif %}
+                            </td>
+                            <td data-label="Net Amount">Rs. {{ record.net_amount }}</td>
+                            <td data-label="Received Amount">Rs. {{ record.received_amount }}</td>
+                            <td data-label="Balance Amount">Rs. {{ record.balance_amount }}</td>
+                            <td data-label="Payment Mode">
+                                <div class="sales-split-form">
+                                    <div class="sales-split-top-row">
+                                        {% if record.display_payment_mode == "Cash + Card" %}
+                                            <span class="sales-payment-pill sales-payment-pill-split">
+                                                {{ record.display_payment_mode }}
+                                            </span>
+                                        {% elif record.display_payment_mode == "Cash" %}
+                                            <span class="sales-payment-pill sales-payment-pill-cash">
+                                                {{ record.display_payment_mode }}
+                                            </span>
+                                        {% elif record.display_payment_mode == "Card" %}
+                                            <span class="sales-payment-pill sales-payment-pill-card">
+                                                {{ record.display_payment_mode }}
+                                            </span>
+                                        {% elif record.display_payment_mode == "Credit" %}
+                                            <span class="sales-payment-pill sales-payment-pill-credit">
+                                                {{ record.display_payment_mode }}
+                                            </span>
+                                        {% else %}
+                                            <span class="sales-payment-pill sales-payment-pill-unknown">
+                                                {{ record.display_payment_mode }}
+                                            </span>
+                                        {% endif %}
+
+                                        <div class="sales-split-actions">
+                                            <button
+                                                type="button"
+                                                class="secondary-button sales-split-save"
+                                                data-open-sales-split-modal
+                                                data-record-id="{{ record.pk }}"
+                                                data-bill-no="{{ record.bill_no }}"
+                                                data-customer-name="{% if record.customer_name %}{{ record.customer_name }}{% else %}Walk-in Customer{% endif %}"
+                                                data-payment-mode="{{ record.display_payment_mode }}"
+                                                data-net-amount="{{ record.net_amount }}"
+                                                data-split-cash="{{ record.split_cash_amount }}"
+                                                data-split-card="{{ record.split_card_amount }}"
+                                                data-has-split="{% if record.has_manual_split %}true{% else %}false{% endif %}"
+                                            >
+                                                {% if record.has_manual_split %}Edit Split{% else %}Add Split{% endif %}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {% if record.has_manual_split %}
+                                        <div class="sales-split-summary">
+                                            Split Total: Rs. {{ record.split_total_amount }}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="auto-load-footer">
+            <div class="auto-load-status" data-load-status>
+                Showing {{ visible_count }} of {{ page_count }} records.
+            </div>
+            {% if next_page_url %}
+                <a class="secondary-button auto-load-link" data-next-link href="{{ next_page_url }}">
+                    Load next 50
+                </a>
+            {% endif %}
+            <div class="auto-load-sentinel" data-load-sentinel aria-hidden="true"></div>
+        </div>
+    {% else %}
+        {% if synced_record_count %}
+            <div class="empty-state">No synced sales matched the selected filters.</div>
+        {% else %}
+            <div class="empty-state">No sales have been synced yet. Use the sync button above to load data from SQL Server into PostgreSQL.</div>
+        {% endif %}
+    {% endif %}
+</section>
+
+<section class="modal-overlay" data-sales-split-modal hidden>
+    <div class="modal-card modal-card-narrow premium-panel" role="dialog" aria-modal="true" aria-labelledby="sales-split-modal-title">
+        <div class="modal-header">
+            <div>
+                <span class="eyebrow">Split Payment</span>
+                <h2 id="sales-split-modal-title">Edit Sales Split</h2>
+                <p class="muted-text">Enter cash and card amounts for this bill. The popup total should match the bill amount.</p>
+            </div>
+            <button type="button" class="ghost-button" data-close-sales-split-modal>Close</button>
+        </div>
+
+        <div class="detail-grid compact-detail-grid sales-split-detail-grid">
+            <div class="detail-card">
+                <span>Bill No</span>
+                <strong data-sales-split-bill-no>-</strong>
+            </div>
+            <div class="detail-card">
+                <span>Customer</span>
+                <strong data-sales-split-customer>-</strong>
+            </div>
+            <div class="detail-card">
+                <span>Payment Mode</span>
+                <strong data-sales-split-mode>-</strong>
+            </div>
+            <div class="detail-card">
+                <span>Net Amount</span>
+                <strong data-sales-split-net-amount>Rs. 0.00</strong>
+            </div>
+        </div>
+
+        <form method="post" action="{% url 'sales-list' %}" class="financial-form" data-sales-split-form>
+            {% csrf_token %}
+            <input type="hidden" name="action" value="save_split">
+            <input type="hidden" name="record_id" value="" data-sales-split-record-id>
+            <input type="hidden" name="bill_no" value="{{ sales_filters.bill_no }}">
+            <input type="hidden" name="customer_name" value="{{ sales_filters.customer_name }}">
+            <input type="hidden" name="payment_mode" value="{{ sales_filters.payment_mode }}">
+            <input type="hidden" name="date_from" value="{{ sales_filters.date_from }}">
+            <input type="hidden" name="date_to" value="{{ sales_filters.date_to }}">
+
+            <div class="form-grid sales-split-modal-grid">
+                <div class="field-block">
+                    <label for="sales-split-modal-cash">Cash</label>
+                    <input
+                        id="sales-split-modal-cash"
+                        type="number"
+                        name="split_cash_amount"
+                        class="input-control"
+                        min="0"
+                        step="0.01"
+                        value="0.00"
+                        data-sales-split-cash-input
+                    >
+                </div>
+                <div class="field-block">
+                    <label for="sales-split-modal-card">Card</label>
+                    <input
+                        id="sales-split-modal-card"
+                        type="number"
+                        name="split_card_amount"
+                        class="input-control"
+                        min="0"
+                        step="0.01"
+                        value="0.00"
+                        data-sales-split-card-input
+                    >
+                </div>
+            </div>
+
+            <div class="detail-card sales-split-total-card">
+                <span>Split Total</span>
+                <strong data-sales-split-total>Rs. 0.00</strong>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" class="secondary-button" data-close-sales-split-modal>Cancel</button>
+                <button type="submit" class="primary-button">Save Split</button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const splitModal = document.querySelector("[data-sales-split-modal]");
+    const splitForm = document.querySelector("[data-sales-split-form]");
+
+    if (!splitModal || !splitForm) {
+        return;
+    }
+
+    const recordIdInput = splitForm.querySelector("[data-sales-split-record-id]");
+    const cashInput = splitForm.querySelector("[data-sales-split-cash-input]");
+    const cardInput = splitForm.querySelector("[data-sales-split-card-input]");
+    const totalOutput = splitForm.querySelector("[data-sales-split-total]");
+    const billNoOutput = splitModal.querySelector("[data-sales-split-bill-no]");
+    const customerOutput = splitModal.querySelector("[data-sales-split-customer]");
+    const modeOutput = splitModal.querySelector("[data-sales-split-mode]");
+    const netAmountOutput = splitModal.querySelector("[data-sales-split-net-amount]");
+    let lastFocusedButton = null;
+
+    const toNumber = (value) => {
+        const parsed = Number.parseFloat(String(value || "0").trim());
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const formatAmount = (value) => `Rs. ${toNumber(value).toFixed(2)}`;
+
+    const setBodyScroll = () => {
+        document.body.classList.toggle("modal-open", !splitModal.hidden);
+    };
+
+    const updateSplitTotal = () => {
+        totalOutput.textContent = formatAmount(toNumber(cashInput.value) + toNumber(cardInput.value));
+    };
+
+    const openSplitModal = (button) => {
+        lastFocusedButton = button;
+        const netAmount = button.dataset.netAmount || "0.00";
+
+        recordIdInput.value = button.dataset.recordId || "";
+        cashInput.value = toNumber(button.dataset.splitCash).toFixed(2);
+        cardInput.value = toNumber(button.dataset.splitCard).toFixed(2);
+        cashInput.max = netAmount;
+        cardInput.max = netAmount;
+
+        billNoOutput.textContent = button.dataset.billNo || "-";
+        customerOutput.textContent = button.dataset.customerName || "-";
+        modeOutput.textContent = button.dataset.paymentMode || "-";
+        netAmountOutput.textContent = formatAmount(netAmount);
+
+        updateSplitTotal();
+        splitModal.hidden = false;
+        setBodyScroll();
+        cashInput.focus();
+        cashInput.select();
+    };
+
+    const closeSplitModal = () => {
+        splitModal.hidden = true;
+        setBodyScroll();
+        if (lastFocusedButton) {
+            lastFocusedButton.focus();
+        }
+    };
+
+    [cashInput, cardInput].forEach((input) => {
+        input.addEventListener("input", updateSplitTotal);
+    });
+
+    document.addEventListener("click", (event) => {
+        const openButton = event.target.closest("[data-open-sales-split-modal]");
+        if (openButton) {
+            openSplitModal(openButton);
+            return;
+        }
+
+        const closeButton = event.target.closest("[data-close-sales-split-modal]");
+        if (closeButton) {
+            closeSplitModal();
+            return;
+        }
+
+        if (event.target === splitModal) {
+            closeSplitModal();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !splitModal.hidden) {
+            closeSplitModal();
+        }
+    });
+});
+</script>
+{% endblock %}
