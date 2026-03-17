@@ -11,6 +11,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from .expense_categories import COUNTER_EXPENSE_CATEGORY
 from .models import (
     DailyCashSettlement,
     ExpenseCategory,
@@ -171,7 +172,9 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Stationery")
         self.assertContains(response, "Purpose")
-        self.assertContains(response, "+ Add Category")
+        self.assertContains(response, "Add Category")
+        self.assertContains(response, "data-category-modal-open")
+        self.assertContains(response, "data-category-form")
 
     def test_expense_category_page_creates_category(self):
         self.client.force_login(self.user)
@@ -190,6 +193,31 @@ class TrackerViewsTests(TestCase):
             ExpenseCategory.objects.filter(
                 user=self.user,
                 name="Courier Charges",
+            ).exists()
+        )
+
+    def test_expense_category_page_creates_category_with_ajax(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("expense-category-list"),
+            {
+                "name": "Milk Run",
+                "next": reverse("expense-add"),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["created"])
+        self.assertEqual(payload["name"], "Milk Run")
+        self.assertGreaterEqual(payload["category_count"], 1)
+        self.assertTrue(
+            ExpenseCategory.objects.filter(
+                user=self.user,
+                name="Milk Run",
             ).exists()
         )
 
@@ -388,6 +416,40 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(expense.vendor, "Auto Fare")
         self.assertEqual(expense.category, "Transport")
         self.assertEqual(expense.amount, Decimal("354.00"))
+
+    def test_daily_settlement_expense_total_counts_only_counter_expense(self):
+        self.client.force_login(self.user)
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Counter Cash",
+            vendor="Front Desk",
+            category=COUNTER_EXPENSE_CATEGORY,
+            amount=Decimal("200.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="General Expense",
+            vendor="Vendor A",
+            category="General",
+            amount=Decimal("20000.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+
+        expense_list_response = self.client.get(reverse("expense-list"))
+        self.assertEqual(expense_list_response.status_code, 200)
+        self.assertContains(expense_list_response, COUNTER_EXPENSE_CATEGORY)
+        self.assertContains(expense_list_response, "Counter Cash")
+        self.assertContains(expense_list_response, "General Expense")
+
+        settlement_response = self.client.get(reverse("daily-settlement"))
+        self.assertEqual(settlement_response.status_code, 200)
+        self.assertEqual(
+            settlement_response.context["autofill_summary"]["expense_amount"],
+            Decimal("200.00"),
+        )
 
     def test_expense_list_inline_delete_removes_record(self):
         self.client.force_login(self.user)
@@ -714,7 +776,7 @@ class TrackerViewsTests(TestCase):
             user=self.user,
             title="Today Expense",
             vendor="Vendor A",
-            category="General",
+            category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("125.00"),
             transaction_date=date.today(),
         )
@@ -722,6 +784,7 @@ class TrackerViewsTests(TestCase):
         response = self.client.get(reverse("daily-settlement"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "summary-sections-grid")
         self.assertEqual(
             response.context["autofill_summary"]["opening_balance"],
             Decimal("741.00"),
@@ -798,7 +861,7 @@ class TrackerViewsTests(TestCase):
             user=self.user,
             title="Today Expense",
             vendor="Vendor A",
-            category="General",
+            category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("50.00"),
             transaction_date=date.today(),
         )
@@ -887,7 +950,7 @@ class TrackerViewsTests(TestCase):
             user=self.user,
             title="Today Expense",
             vendor="Vendor A",
-            category="General",
+            category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("200.00"),
             transaction_date=date.today(),
         )
@@ -937,7 +1000,7 @@ class TrackerViewsTests(TestCase):
             user=self.user,
             title="Today Expense",
             vendor="Vendor A",
-            category="General",
+            category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("200.00"),
             transaction_date=date.today(),
         )
@@ -1092,14 +1155,14 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.context["settlement_preview"]["cash_in_hand"],
-            Decimal("850.00"),
+            Decimal("900.00"),
         )
         self.assertEqual(
             response.context["settlement_preview"]["expense_amount"],
-            Decimal("50.00"),
+            Decimal("0.00"),
         )
         self.assertEqual(response.context["cash_denomination_total"], Decimal("900.00"))
-        self.assertEqual(response.context["cash_difference"], Decimal("50.00"))
+        self.assertEqual(response.context["cash_difference"], Decimal("0.00"))
         self.assertEqual(response.context["selected_settlement"].pk, settlement.pk)
         denomination_counts = {
             row["value"]: row["count"]

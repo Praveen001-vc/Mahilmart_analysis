@@ -18,6 +18,9 @@ def normalize_expense_category_name(name):
     return " ".join(str(name or "").strip().split())[:80]
 
 
+COUNTER_EXPENSE_CATEGORY = "Counter Expense"
+
+
 def ensure_expense_categories_for_role(user):
     if not getattr(user, "is_authenticated", False):
         return ExpenseCategory.objects.none()

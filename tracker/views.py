@@ -22,6 +22,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from .expense_categories import (
+    COUNTER_EXPENSE_CATEGORY,
     ensure_expense_categories_for_role,
     get_expense_category_options as get_saved_expense_category_options,
     get_or_create_role_expense_category,
@@ -375,6 +376,13 @@ def get_expense_category_options(user):
     return get_saved_expense_category_options(user)
 
 
+def build_settlement_redirect_url(settlement_date):
+    return (
+        f"{reverse('daily-settlement')}?"
+        f"{urlencode({'selected_date': settlement_date.isoformat(), 'entry_date': settlement_date.isoformat()})}"
+    )
+
+
 def get_expense_redirect_params(params):
     redirect_params = {}
     for key in ("start_date", "end_date", "category", "payment_method"):
@@ -566,6 +574,7 @@ def build_settlement_autofill_summary(user, settlement_date):
     sales_summary = build_sales_settlement_summary(settlement_date)
     expense_queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user).filter(
         transaction_date=settlement_date,
+        category__iexact=COUNTER_EXPENSE_CATEGORY,
     )
     if previous_settlement:
         opening_balance = previous_settlement.closing_balance
@@ -1356,6 +1365,7 @@ class ExpenseCreateView(LoginRequiredMixin, CreateView):
             self.request.user,
         ).count()
         context["category_count"] = len(get_expense_category_options(self.request.user))
+        context["category_form"] = ExpenseCategoryForm()
         return context
 
 
@@ -1368,6 +1378,7 @@ class ExpenseCategoryListView(LoginRequiredMixin, TemplateView):
 
     def post(self, request, *args, **kwargs):
         form = ExpenseCategoryForm(request.POST)
+        is_ajax_request = request.headers.get("x-requested-with") == "XMLHttpRequest"
         if form.is_valid():
             category_name = normalize_expense_category_name(form.cleaned_data["name"])
             existing = (
@@ -1376,14 +1387,54 @@ class ExpenseCategoryListView(LoginRequiredMixin, TemplateView):
                 .first()
             )
             if existing is not None:
+                if is_ajax_request:
+                    return JsonResponse(
+                        {
+                            "ok": True,
+                            "created": False,
+                            "name": existing.name,
+                            "category_count": len(
+                                get_expense_category_options(request.user)
+                            ),
+                            "message": (
+                                f"{existing.name} already exists in this role workspace."
+                            ),
+                        }
+                    )
                 messages.info(request, f"{existing.name} already exists in this role workspace.")
             else:
                 ExpenseCategory.objects.create(
                     user=request.user,
                     name=category_name,
                 )
+                if is_ajax_request:
+                    return JsonResponse(
+                        {
+                            "ok": True,
+                            "created": True,
+                            "name": category_name,
+                            "category_count": len(
+                                get_expense_category_options(request.user)
+                            ),
+                            "message": "Expense category created successfully.",
+                        }
+                    )
                 messages.success(request, "Expense category created successfully.")
             return redirect(self.get_next_url())
+        if is_ajax_request:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "errors": {
+                        field_name: [
+                            error["message"]
+                            for error in field_errors
+                        ]
+                        for field_name, field_errors in form.errors.get_json_data().items()
+                    },
+                },
+                status=400,
+            )
         context = self.get_context_data(form=form)
         return self.render_to_response(context)
 
@@ -1512,7 +1563,7 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
                 "sales_ledger_cash": saved_sales_ledger_cash,
                 "gpay_settled": loaded_settlement.gpay_settled,
                 "cash_settled": loaded_settlement.cash_settled,
-                "expense_amount": loaded_settlement.expense_amount,
+                "expense_amount": autofill_summary["expense_amount"],
             }
         return {
             "opening_balance": autofill_summary["opening_balance"],
@@ -1563,12 +1614,14 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
             autofill_summary = {
                 **autofill_summary,
                 "opening_balance": loaded_settlement.opening_balance,
-                "expense_amount": loaded_settlement.expense_amount,
                 "gpay_settled": loaded_settlement.gpay_settled,
-                "cash_in_hand": loaded_settlement.cash_in_hand,
+                "cash_in_hand": settlement_preview["cash_in_hand"],
             }
-            cash_denomination_total = loaded_settlement.cash_denomination_total
-            cash_difference = loaded_settlement.cash_difference
+            cash_denomination_total = get_cash_denominations_total(cash_denominations)
+            cash_difference = get_cash_difference_amount(
+                cash_denomination_total,
+                settlement_preview["cash_in_hand"],
+            )
         else:
             cash_denomination_total = get_cash_denominations_total(cash_denominations)
             cash_difference = get_cash_difference_amount(
@@ -1674,9 +1727,7 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
                 request,
                 f"Daily cash settlement saved for {settlement.settlement_date:%d-%m-%Y}.",
             )
-            return redirect(
-                f"{reverse('daily-settlement')}?{urlencode({'selected_date': settlement.settlement_date.isoformat(), 'entry_date': settlement.settlement_date.isoformat()})}"
-            )
+            return redirect(build_settlement_redirect_url(settlement.settlement_date))
 
         messages.error(request, "Please correct the highlighted settlement details.")
         return self.render_to_response(

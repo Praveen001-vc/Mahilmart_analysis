@@ -65,8 +65,9 @@
                 </div>
             </div>
             
+            <div class="summary-sections-grid">
             <!-- SECTION I: Daily Summary -->
-            <div class="form-section">
+            <div class="form-section summary-section">
                 <div class="section-head">
                     <span class="section-num">I</span>
                     <h2>Daily Summary</h2>
@@ -94,7 +95,7 @@
                     {% if form.gpay_settled.errors %}
                         <div class="field-error">{{ form.gpay_settled.errors|join:", " }}</div>
                     {% endif %}
-                    <div class="row-note">Auto fetched from Sales table card payment and split-card payment.</div>
+                    
                     
                     <div class="form-row total-row">
                         <span class="row-label">Total amount:</span>
@@ -109,7 +110,7 @@
             </div>
             
             <!-- SECTION II: Cash Handling -->
-            <div class="form-section">
+            <div class="form-section summary-section">
                 <div class="section-head">
                     <span class="section-num">II</span>
                     <h2>Cash Handling</h2>
@@ -161,6 +162,16 @@
                 </div>
             </div>
             
+            </div>
+
+            <!-- Form Buttons -->
+            <div class="form-buttons">
+                <a href="{% url 'daily-settlement' %}?selected_date={{ selected_entry_date|date:'Y-m-d' }}&entry_date={{ selected_entry_date|date:'Y-m-d' }}" class="btn-clear">Clear</a>
+                <button type="submit" class="btn-save">
+                    {% if selected_settlement %}Update{% else %}Save Settlement{% endif %}
+                </button>
+            </div>
+
             <!-- SECTION III: Notes & Credit -->
             <div class="form-section">
                 <div class="section-head">
@@ -213,14 +224,6 @@
                         </div>
                     {% endif %}
                 </div>
-            </div>
-            
-            <!-- Form Buttons -->
-            <div class="form-buttons">
-                <a href="{% url 'daily-settlement' %}?selected_date={{ selected_entry_date|date:'Y-m-d' }}&entry_date={{ selected_entry_date|date:'Y-m-d' }}" class="btn-clear">Clear</a>
-                <button type="submit" class="btn-save">
-                    {% if selected_settlement %}Update{% else %}Save Settlement{% endif %}
-                </button>
             </div>
         </form>
     </div>
@@ -671,8 +674,34 @@ body {
 }
 
 /* Form Sections */
+.summary-sections-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+    margin-bottom: 28px;
+}
+
 .form-section {
     margin-bottom: 28px;
+}
+
+.summary-section {
+    margin-bottom: 0;
+}
+
+.summary-section .section-body {
+    padding-left: 0;
+}
+
+.summary-section .form-row {
+    grid-template-columns: minmax(130px, 152px) 1fr;
+    gap: 14px;
+}
+
+.summary-section .row-input {
+    width: 100%;
+    max-width: 220px;
 }
 
 .section-head {
@@ -1038,6 +1067,11 @@ body {
     .main-layout {
         grid-template-columns: 1fr;
     }
+
+    .summary-sections-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
     
     .date-strip {
         flex-direction: column;
@@ -1047,6 +1081,19 @@ body {
 }
 
 @media (max-width: 640px) {
+    .summary-sections-grid {
+        gap: 16px;
+    }
+
+    .summary-section .form-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .summary-section .row-input {
+        max-width: none;
+    }
+
     .form-row {
         grid-template-columns: 1fr;
         gap: 4px;

@@ -37,7 +37,9 @@
                 <div class="field-block">
                     <div class="field-label-row">
                         <label for="{{ form.category.id_for_label }}">{{ form.category.label }}{% if form.category.field.required %} *{% endif %}</label>
-                        <a class="field-label-action" href="{% url 'expense-category-list' %}?next={% url 'expense-add' %}">+ Add Category</a>
+                        <button type="button" class="field-label-action category-action-button" data-category-modal-open>
+                            <span aria-hidden="true">+</span> Add Category
+                        </button>
                     </div>
                     {{ form.category }}
                     {% if form.category.errors %}
@@ -51,9 +53,14 @@
                         <div class="field-error">{{ form.title.errors|join:", " }}</div>
                     {% endif %}
                 </div>
-                <div class="entry-inline-note">
-                    {{ category_count }} saved categories are available for this shared role workspace.
+                <div class="entry-inline-note" data-category-count-note>
+                    {% if category_count == 1 %}
+                        1 saved category is available for this shared role workspace.
+                    {% else %}
+                        {{ category_count }} saved categories are available for this shared role workspace.
+                    {% endif %}
                 </div>
+                <div class="entry-inline-note category-inline-feedback" data-category-inline-feedback hidden></div>
             </div>
         </article>
 
@@ -153,4 +160,266 @@
         <button type="reset" class="secondary-button">Reset</button>
     </div>
 </form>
+
+<section class="modal-overlay" data-category-modal hidden>
+    <div class="modal-card modal-card-narrow premium-panel category-modal-card" role="dialog" aria-modal="true" aria-labelledby="expense-category-modal-title">
+        <div class="category-modal-shell">
+            <div class="category-modal-header">
+                <div>
+                    <span class="category-modal-chip">Quick Category Studio</span>
+                    <h2 id="expense-category-modal-title">Add Category Without Leaving This Page</h2>
+                    <p class="category-modal-subtitle">
+                        Create a reusable expense category, keep the current form values, and drop it straight into the category selector.
+                    </p>
+                </div>
+                <button type="button" class="ghost-button category-modal-close" data-modal-close>Close</button>
+            </div>
+
+            <div class="category-modal-grid">
+                <form method="post" action="{% url 'expense-category-list' %}" class="financial-form category-modal-form" data-category-form novalidate>
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'expense-add' %}">
+
+                    <div class="category-modal-field">
+                        <label for="{{ category_form.name.id_for_label }}">{{ category_form.name.label }}</label>
+                        {% if category_form.name.help_text %}
+                            <p class="muted-text category-modal-help">{{ category_form.name.help_text }}</p>
+                        {% endif %}
+                        {{ category_form.name }}
+                        <div class="field-error" data-category-form-error hidden></div>
+                        <div class="category-modal-status" data-category-form-status hidden aria-live="polite"></div>
+                    </div>
+
+                    <div class="category-modal-actions">
+                        <button type="button" class="secondary-button" data-modal-close>Cancel</button>
+                        <button type="submit" class="primary-button category-modal-save" data-category-submit>
+                            <span data-category-submit-label>Save Category</span>
+                        </button>
+                    </div>
+                </form>
+
+                <aside class="category-modal-insight">
+                    <article class="category-modal-stat">
+                        <span>Saved Categories</span>
+                        <strong data-category-modal-count>
+                            {% if category_count == 1 %}
+                                1 ready to use
+                            {% else %}
+                                {{ category_count }} ready to use
+                            {% endif %}
+                        </strong>
+                        <p>Each saved category stays shared across this role workspace, so your team keeps one clean master list.</p>
+                    </article>
+                    <article class="category-modal-stat category-modal-stat-accent">
+                        <span>Best For</span>
+                        <strong>Fuel, rent, courier, salary, maintenance</strong>
+                        <p>Use short reusable names to keep Expense Tracker filtering and Daily Cash Settlement reporting neat.</p>
+                    </article>
+                </aside>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const categoryModal = document.querySelector("[data-category-modal]");
+    const openCategoryModalButton = document.querySelector("[data-category-modal-open]");
+    const categoryForm = document.querySelector("[data-category-form]");
+    const categorySelect = document.getElementById("id_category");
+    const categoryCountNote = document.querySelector("[data-category-count-note]");
+    const categoryInlineFeedback = document.querySelector("[data-category-inline-feedback]");
+    const modalCountSummary = document.querySelector("[data-category-modal-count]");
+
+    if (!categoryModal || !openCategoryModalButton || !categoryForm || !categorySelect) {
+        return;
+    }
+
+    const nameInput = categoryForm.querySelector('input[name="name"]');
+    const errorBox = categoryForm.querySelector("[data-category-form-error]");
+    const statusBox = categoryForm.querySelector("[data-category-form-status]");
+    const submitButton = categoryForm.querySelector("[data-category-submit]");
+    const submitLabel = categoryForm.querySelector("[data-category-submit-label]");
+
+    const updateBodyScroll = () => {
+        document.body.classList.toggle("modal-open", !categoryModal.hidden);
+    };
+
+    const clearModalFeedback = () => {
+        errorBox.hidden = true;
+        errorBox.textContent = "";
+        statusBox.hidden = true;
+        statusBox.textContent = "";
+        statusBox.classList.remove("is-error", "is-success");
+    };
+
+    const setInlineFeedback = (message = "") => {
+        if (!categoryInlineFeedback) {
+            return;
+        }
+
+        categoryInlineFeedback.textContent = message;
+        categoryInlineFeedback.hidden = message === "";
+    };
+
+    const showModalStatus = (message, tone) => {
+        statusBox.textContent = message;
+        statusBox.hidden = false;
+        statusBox.classList.toggle("is-error", tone === "error");
+        statusBox.classList.toggle("is-success", tone === "success");
+    };
+
+    const showModalError = (message) => {
+        errorBox.textContent = message;
+        errorBox.hidden = false;
+    };
+
+    const buildCountText = (count) => {
+        if (count === 1) {
+            return "1 saved category is available for this shared role workspace.";
+        }
+
+        return `${count} saved categories are available for this shared role workspace.`;
+    };
+
+    const buildModalCountText = (count) => {
+        if (count === 1) {
+            return "1 ready to use";
+        }
+
+        return `${count} ready to use`;
+    };
+
+    const syncCategoryCount = (count) => {
+        if (categoryCountNote) {
+            categoryCountNote.textContent = buildCountText(count);
+        }
+        if (modalCountSummary) {
+            modalCountSummary.textContent = buildModalCountText(count);
+        }
+    };
+
+    const ensureCategoryOption = (value) => {
+        const normalizedValue = (value || "").trim().toLowerCase();
+        if (!normalizedValue) {
+            return null;
+        }
+
+        let option = Array.from(categorySelect.options).find(
+            (item) => item.value.trim().toLowerCase() === normalizedValue,
+        );
+        if (option) {
+            return option;
+        }
+
+        option = new Option(value, value);
+        const insertBeforeOption = Array.from(categorySelect.options)
+            .filter((item) => item.value)
+            .find(
+                (item) =>
+                    item.text.localeCompare(value, undefined, { sensitivity: "base" }) > 0,
+            );
+
+        if (insertBeforeOption) {
+            categorySelect.insertBefore(option, insertBeforeOption);
+        } else {
+            categorySelect.appendChild(option);
+        }
+
+        return option;
+    };
+
+    const openCategoryModal = () => {
+        clearModalFeedback();
+        categoryModal.hidden = false;
+        updateBodyScroll();
+        window.requestAnimationFrame(() => {
+            nameInput?.focus();
+        });
+    };
+
+    const closeCategoryModal = (focusTarget = openCategoryModalButton) => {
+        categoryModal.hidden = true;
+        updateBodyScroll();
+        focusTarget?.focus();
+    };
+
+    openCategoryModalButton.addEventListener("click", () => {
+        setInlineFeedback("");
+        openCategoryModal();
+    });
+
+    document.addEventListener("click", (event) => {
+        const closeButton = event.target.closest("[data-modal-close]");
+        if (closeButton && closeButton.closest("[data-category-modal]")) {
+            closeCategoryModal();
+            return;
+        }
+
+        if (event.target === categoryModal) {
+            closeCategoryModal();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !categoryModal.hidden) {
+            closeCategoryModal();
+        }
+    });
+
+    categoryForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        clearModalFeedback();
+        setInlineFeedback("");
+        submitButton.disabled = true;
+        submitLabel.textContent = "Saving...";
+
+        try {
+            const response = await fetch(categoryForm.action, {
+                method: "POST",
+                body: new FormData(categoryForm),
+                credentials: "same-origin",
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                const firstError = Object.values(data.errors || {}).flat()[0]
+                    || "Unable to save the category right now.";
+                showModalError(firstError);
+                showModalStatus("Please review the category name and try again.", "error");
+                return;
+            }
+
+            const selectedOption = ensureCategoryOption(data.name);
+            if (selectedOption) {
+                categorySelect.value = selectedOption.value;
+                categorySelect.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+
+            const updatedCount = Number(
+                data.category_count || Math.max(categorySelect.options.length - 1, 0),
+            );
+            syncCategoryCount(updatedCount);
+            categoryForm.reset();
+            closeCategoryModal(categorySelect);
+            setInlineFeedback(
+                data.created
+                    ? `${data.name} is ready and selected in the Category field.`
+                    : `${data.name} was already available and is now selected.`,
+            );
+        } catch (error) {
+            showModalError("Connection issue. Please try again.");
+            showModalStatus("We could not save the category right now.", "error");
+        } finally {
+            submitButton.disabled = false;
+            submitLabel.textContent = "Save Category";
+        }
+    });
+});
+</script>
 {% endblock %}

@@ -5,50 +5,6 @@
 {% block body_class %}app-shell dashboard-premium-shell{% endblock %}
 
 {% block content %}
-<section class="dashboard-command-bar premium-panel">
-    <form method="get" action="{% url 'dashboard' %}" class="dashboard-command-form">
-        <label class="dashboard-command-search" for="dashboard-date-filter">
-            <span class="dashboard-command-eyebrow">As of Date</span>
-            <input
-                id="dashboard-date-filter"
-                type="date"
-                name="as_of_date"
-                class="input-control dashboard-date-control"
-                value="{{ selected_date|date:'Y-m-d' }}"
-                data-dashboard-date-input
-            >
-        </label>
-        <button type="submit" class="dashboard-command-submit">Apply</button>
-    </form>
-    <div class="dashboard-command-side">
-        <a class="dashboard-mini-link" href="{% url 'reports' %}">Reports</a>
-        <a class="dashboard-mini-link" href="{% url 'dashboard' %}">Today</a>
-        <div class="dashboard-profile-pill">
-            <span class="dashboard-avatar">
-                {% if request.user.is_superuser %}
-                    A
-                {% elif request.user.is_staff %}
-                    M
-                {% else %}
-                    S
-                {% endif %}
-            </span>
-            <div>
-                <strong>
-                    {% if request.user.is_superuser %}
-                        Admin Role
-                    {% elif request.user.is_staff %}
-                        Store Admin Role
-                    {% else %}
-                        Staff Role
-                    {% endif %}
-                </strong>
-                <span>Shared role workspace</span>
-            </div>
-        </div>
-    </div>
-</section>
-
 <section class="dashboard-stage premium-panel">
     <div class="dashboard-stage-head">
         <div class="dashboard-stage-copy">
@@ -56,10 +12,26 @@
             <h1>Dashboard</h1>
             <p>Track income, expenses, settlements, and daily movement from one shared role workspace.</p>
         </div>
-        <div class="dashboard-premium-actions">
-            <a class="dashboard-hero-primary" href="{% url 'income-add' %}">Add Income</a>
-            <a class="dashboard-hero-secondary" href="{% url 'daily-settlement' %}">Daily Settlement</a>
-            <a class="dashboard-hero-secondary" href="{% url 'expense-add' %}">Add Expense</a>
+        <div class="dashboard-stage-tools">
+            <form method="get" action="{% url 'dashboard' %}" class="dashboard-command-form dashboard-stage-filter">
+                <label class="dashboard-command-search" for="dashboard-date-filter">
+                    <!-- <span class="dashboard-command-eyebrow">As of Date</span> -->
+                    <input
+                        id="dashboard-date-filter"
+                        type="date"
+                        name="as_of_date"
+                        class="input-control dashboard-date-control"
+                        value="{{ selected_date|date:'Y-m-d' }}"
+                        data-dashboard-date-input
+                    >
+                </label>
+                <button type="submit" class="dashboard-command-submit">Apply</button>
+            </form>
+            <div class="dashboard-premium-actions">
+                <a class="dashboard-hero-primary" href="{% url 'income-add' %}">Add Income</a>
+                <a class="dashboard-hero-secondary" href="{% url 'daily-settlement' %}">Daily Settlement</a>
+                <a class="dashboard-hero-secondary" href="{% url 'expense-add' %}">Add Expense</a>
+            </div>
         </div>
     </div>
 

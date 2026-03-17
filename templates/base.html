@@ -35,7 +35,7 @@
                     <a href="{% url 'purchase-list' %}">Purchases</a>
                     <a href="{% url 'supplier-list' %}">Suppliers</a>
                     <a href="{% url 'expense-list' %}">Expenses</a>
-                    <a href="{% url 'reports' %}">Reports</a>
+                    <!-- <a href="{% url 'reports' %}">Reports</a> -->
                     {% if request.user.is_superuser %}
                         <a href="{% url 'user-list' %}">Users</a>
                     {% endif %}
