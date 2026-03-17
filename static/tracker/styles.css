@@ -1923,6 +1923,9 @@ p {
     background: #ffffff;
     color: var(--text-main);
     border: 1px solid var(--panel-border);
+    transition: opacity 0.26s ease, transform 0.26s ease;
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .message-card.success {
@@ -1933,6 +1936,11 @@ p {
 .message-card.error {
     background: rgba(220, 96, 109, 0.12);
     color: #b84855;
+}
+
+.message-card.is-dismissing {
+    opacity: 0;
+    transform: translateY(-6px);
 }
 
 body.modal-open {

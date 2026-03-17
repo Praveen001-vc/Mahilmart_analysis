@@ -3,6 +3,7 @@ import shutil
 import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -32,6 +33,11 @@ from .sales_sync import (
     build_sqlserver_connection_string,
     classify_sales_payment_mode,
     sanitize_sales_amounts,
+)
+from .user_sync import (
+    USER_SYNC_SOURCE_REFERENCE,
+    UserSyncStats,
+    sync_users_from_rows,
 )
 
 
@@ -1223,6 +1229,30 @@ class TrackerViewsTests(TestCase):
         self.assertFalse(managed_user.is_active)
         self.assertEqual(managed_profile.master_name, "STOREADMINONE")
 
+    @patch("tracker.views.sync_users_from_sqlserver")
+    def test_admin_can_trigger_user_sync_from_user_list(self, sync_mock):
+        self.client.force_login(self.admin_user)
+        sync_mock.return_value = UserSyncStats(
+            fetched_count=4,
+            inserted_count=2,
+            refreshed_count=0,
+            skipped_count=2,
+        )
+
+        response = self.client.post(reverse("user-list"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("user-list"))
+        sync_mock.assert_called_once_with()
+
+    def test_user_list_shows_sync_button_for_admin(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("user-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sync Users From SQL Server")
+
     def test_purchase_record_pending_amount_is_calculated(self):
         self.client.force_login(self.user)
         supplier = Supplier.objects.create(
@@ -1956,3 +1986,63 @@ class SalesSyncUnitTests(TestCase):
         self.assertEqual(received_amount, Decimal("0.00"))
         self.assertEqual(balance_amount, Decimal("224.00"))
         self.assertTrue(had_amount_anomaly)
+
+
+class UserSyncUnitTests(TestCase):
+    def test_sync_users_from_rows_creates_login_user_and_profile(self):
+        stats = sync_users_from_rows(
+            [
+                SimpleNamespace(
+                    User_SNo=12,
+                    User_Name="StoreAdminSync",
+                    User_MtName="STOREADMINSYNC",
+                    User_Passwrd="SyncPass123!",
+                    User_CPasswrd="SyncPass123!",
+                )
+            ]
+        )
+
+        synced_user = get_user_model().objects.get(username="StoreAdminSync")
+
+        self.assertEqual(stats.fetched_count, 1)
+        self.assertEqual(stats.inserted_count, 1)
+        self.assertEqual(stats.refreshed_count, 0)
+        self.assertEqual(stats.skipped_count, 0)
+        self.assertTrue(synced_user.is_staff)
+        self.assertFalse(synced_user.is_superuser)
+        self.assertTrue(synced_user.check_password("SyncPass123!"))
+        self.assertEqual(synced_user.account_profile.master_name, "STOREADMINSYNC")
+        self.assertEqual(synced_user.account_profile.source_user_no, 12)
+        self.assertEqual(
+            synced_user.account_profile.source_reference,
+            USER_SYNC_SOURCE_REFERENCE,
+        )
+
+    def test_sync_users_from_rows_skips_existing_user_matched_by_username(self):
+        existing_user = get_user_model().objects.create_user(
+            username="Ramu",
+            password="OldPass123!",
+        )
+
+        stats = sync_users_from_rows(
+            [
+                SimpleNamespace(
+                    User_SNo=44,
+                    User_Name="Ramu",
+                    User_MtName="RAMU",
+                    User_Passwrd="NewPass123!",
+                    User_CPasswrd="NewPass123!",
+                )
+            ]
+        )
+
+        existing_user.refresh_from_db()
+
+        self.assertEqual(stats.fetched_count, 1)
+        self.assertEqual(stats.inserted_count, 0)
+        self.assertEqual(stats.refreshed_count, 0)
+        self.assertEqual(stats.skipped_count, 1)
+        self.assertTrue(existing_user.check_password("OldPass123!"))
+        self.assertFalse(
+            UserAccountProfile.objects.filter(user=existing_user).exists()
+        )

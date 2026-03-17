@@ -51,6 +51,7 @@ from .models import (
     Supplier,
 )
 from .sales_sync import SalesSyncError, sync_sales_from_sqlserver
+from .user_sync import UserSyncError, sync_users_from_sqlserver
 from .user_roles import filter_queryset_by_role, get_user_role_label
 
 User = get_user_model()
@@ -2034,6 +2035,21 @@ class UserListView(AdminRequiredMixin, ListView):
     model = User
     template_name = "tracker/user_list.html"
     context_object_name = "users"
+
+    def post(self, request, *args, **kwargs):
+        try:
+            stats = sync_users_from_sqlserver()
+        except UserSyncError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(
+                request,
+                "User sync completed. "
+                f"{stats.fetched_count} rows processed, "
+                f"{stats.inserted_count} inserted, "
+                f"{stats.skipped_count} skipped.",
+            )
+        return redirect("user-list")
 
     def get_queryset(self):
         return User.objects.select_related("account_profile").order_by("username")

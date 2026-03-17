@@ -9,7 +9,13 @@
         <h1>User Management</h1>
         <p>Create accounts, change role, and switch users between active and inactive status.</p>
     </div>
-    <a class="primary-button" href="{% url 'user-add' %}">Create User</a>
+    <div class="hero-actions">
+        <form method="post" action="{% url 'user-list' %}">
+            {% csrf_token %}
+            <button type="submit" class="secondary-button">Sync Users From SQL Server</button>
+        </form>
+        <a class="primary-button" href="{% url 'user-add' %}">Create User</a>
+    </div>
 </section>
 
 <section class="stats-grid compact-grid compact-grid-3">

@@ -61,9 +61,9 @@
         <div class="shell-main">
             <main class="page-shell">
                 {% if messages %}
-                    <section class="message-stack">
+                    <section class="message-stack" data-message-stack>
                         {% for message in messages %}
-                            <div class="message-card {{ message.tags }}">{{ message }}</div>
+                            <div class="message-card {{ message.tags }}" data-flash-message>{{ message }}</div>
                         {% endfor %}
                     </section>
                 {% endif %}
@@ -73,6 +73,28 @@
         </div>
     </div>
     <script src="{% static 'tracker/auto_load.js' %}" defer></script>
+    <script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const messageStack = document.querySelector("[data-message-stack]");
+        const flashMessages = Array.from(document.querySelectorAll("[data-flash-message]"));
+
+        if (!messageStack || !flashMessages.length) {
+            return;
+        }
+
+        flashMessages.forEach((messageCard) => {
+            window.setTimeout(() => {
+                messageCard.classList.add("is-dismissing");
+                window.setTimeout(() => {
+                    messageCard.remove();
+                    if (!messageStack.children.length) {
+                        messageStack.remove();
+                    }
+                }, 260);
+            }, 5000);
+        });
+    });
+    </script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
