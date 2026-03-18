@@ -160,6 +160,7 @@ class DailyCashSettlementForm(StyledModelForm):
         model = DailyCashSettlement
         fields = [
             "settlement_date",
+            "opening_balance",
             "gpay_settled",
             "cash_settled",
             "cash_settled_to",
@@ -168,6 +169,7 @@ class DailyCashSettlementForm(StyledModelForm):
         ]
         widgets = {
             "settlement_date": StyledModelForm.date_widget,
+            "opening_balance": StyledModelForm.money_widget,
             "gpay_settled": StyledModelForm.money_widget,
             "cash_settled": StyledModelForm.money_widget,
             "cash_settled_to": StyledModelForm.text_widget,
@@ -176,6 +178,7 @@ class DailyCashSettlementForm(StyledModelForm):
         }
         labels = {
             "settlement_date": "Date",
+            "opening_balance": "Opening Balance",
             "gpay_settled": "Card Bill / Split-Card Settled",
             "cash_settled": "Cash Settled",
             "cash_settled_to": "Cash Settled To",
@@ -190,6 +193,7 @@ class DailyCashSettlementForm(StyledModelForm):
     def clean(self):
         cleaned_data = super().clean()
         numeric_fields = (
+            "opening_balance",
             "gpay_settled",
             "cash_settled",
             "closing_balance",

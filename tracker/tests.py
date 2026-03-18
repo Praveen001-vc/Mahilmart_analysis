@@ -976,6 +976,51 @@ class TrackerViewsTests(TestCase):
         self.assertNotContains(response, 'name="opening_balance"', html=False)
         self.assertNotContains(response, 'name="expense_amount"', html=False)
 
+    def test_daily_settlement_allows_opening_balance_edit_for_admin_only(self):
+        self.client.force_login(self.admin_user)
+        yesterday = date.today() - timedelta(days=1)
+        DailyCashSettlement.objects.create(
+            user=self.admin_user,
+            settlement_date=yesterday,
+            opening_balance=Decimal("500.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("741.00"),
+        )
+
+        response = self.client.get(reverse("daily-settlement"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="opening_balance"', html=False)
+        self.assertTrue(response.context["can_edit_opening_balance"])
+
+        today_value = date.today().isoformat()
+        response = self.client.post(
+            reverse("daily-settlement"),
+            {
+                "settlement_date": today_value,
+                "opening_balance": "900.00",
+                "gpay_settled": "0.00",
+                "cash_settled": "200.00",
+                "cash_denominations": "",
+                "cash_settled_to": "Admin Counter",
+                "closing_balance": "0.00",
+                "notes": "Adjusted opening balance",
+                "selected_date": today_value,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        settlement = DailyCashSettlement.objects.get(
+            user=self.admin_user,
+            settlement_date=date.today(),
+        )
+        self.assertEqual(settlement.opening_balance, Decimal("900.00"))
+        self.assertEqual(settlement.closing_balance, Decimal("700.00"))
+        self.assertEqual(settlement.actual_sales, Decimal("0.00"))
+        self.assertEqual(settlement.notes, "Adjusted opening balance")
+
     def test_daily_settlement_prefills_from_sales_ledger_for_selected_date(self):
         self.client.force_login(self.user)
         yesterday = date.today() - timedelta(days=1)

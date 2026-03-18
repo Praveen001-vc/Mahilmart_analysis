@@ -76,9 +76,23 @@
                 <div class="section-body">
                     <div class="form-row">
                         <span class="row-label">Opening balance:</span>
+                        {% if can_edit_opening_balance %}
+                            <input
+                                type="number"
+                                name="opening_balance"
+                                id="opening-balance"
+                                class="row-input"
+                                step="0.01"
+                                value="{{ form.opening_balance.value|default:settlement_preview.opening_balance }}"
+                            >
+                        {% else %}
                         <span class="row-value">₹{{ autofill_summary.opening_balance|floatformat:2 }}</span>
                         <input type="hidden" id="opening-balance" value="{{ settlement_preview.opening_balance }}">
+                        {% endif %}
                     </div>
+                    {% if form.opening_balance.errors %}
+                        <div class="field-error">{{ form.opening_balance.errors|join:", " }}</div>
+                    {% endif %}
                     
                     <div class="form-row">
                         <span class="row-label">Sales Ledger Cash:</span>
@@ -362,7 +376,7 @@
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     // Get elements
-    const openingBalance = parseFloat(document.querySelector("#opening-balance")?.value || 0);
+    const openingBalanceInput = document.querySelector("#opening-balance");
     const salesCash = parseFloat(document.querySelector("#sales-cash")?.value || 0);
     const expense = parseFloat(document.querySelector("#expense-amount")?.value || 0);
     const gpayInput = document.querySelector("#gpay-settled");
@@ -388,6 +402,8 @@ document.addEventListener("DOMContentLoaded", function() {
         return isNaN(num) ? 0 : num;
     };
 
+    const getOpeningBalance = () => toNumber(openingBalanceInput?.value);
+
     const formatSignedCurrency = (value) => {
         if (value > 0) {
             return `+₹${value.toFixed(2)}`;
@@ -401,12 +417,12 @@ document.addEventListener("DOMContentLoaded", function() {
     // Calculate total
     const calculateTotal = () => {
         const gpay = toNumber(gpayInput?.value);
-        return openingBalance + salesCash + gpay;
+        return getOpeningBalance() + salesCash + gpay;
     };
     
     // Calculate cash in hand
     const calculateCashInHand = () => {
-        return salesCash + openingBalance - expense;
+        return salesCash + getOpeningBalance() - expense;
     };
     
     // Calculate denomination total
@@ -477,7 +493,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const cashSettled = toNumber(cashSettledInput?.value);
         const denominationTotal = calculateDenomTotal();
         const closing = cashInHand - cashSettled;
-        const actualSales = total - openingBalance;
+        const actualSales = total - getOpeningBalance();
         const diff = denominationTotal - cashInHand;
         
         // Update displays
@@ -507,6 +523,7 @@ document.addEventListener("DOMContentLoaded", function() {
     };
     
     // Event listeners
+    if (openingBalanceInput) openingBalanceInput.addEventListener("input", updateAll);
     if (gpayInput) gpayInput.addEventListener("input", updateAll);
     if (cashSettledInput) cashSettledInput.addEventListener("input", updateAll);
     
