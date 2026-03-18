@@ -2164,6 +2164,73 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(record.split_card_amount, Decimal("500.00"))
         self.assertEqual(record.display_payment_mode, "Cash + Card")
 
+    def test_sales_list_can_update_existing_split_bill_to_full_cash_or_card(self):
+        self.client.force_login(self.user)
+        record = SalesLedgerRecord.objects.create(
+            source_sale_no=304,
+            bill_no="BILL-304",
+            sale_date=date.today(),
+            customer_name="Split Customer",
+            net_amount=Decimal("450.00"),
+            received_amount=Decimal("450.00"),
+            balance_amount=Decimal("0.00"),
+            split_cash_amount=Decimal("200.00"),
+            split_card_amount=Decimal("250.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+
+        response = self.client.post(
+            reverse("sales-list"),
+            {
+                "action": "save_split",
+                "record_id": str(record.pk),
+                "split_cash_amount": "450.00",
+                "split_card_amount": "0.00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        record.refresh_from_db()
+        self.assertEqual(record.split_cash_amount, Decimal("450.00"))
+        self.assertEqual(record.split_card_amount, Decimal("0.00"))
+        self.assertEqual(record.display_payment_mode, "Cash")
+
+        response = self.client.post(
+            reverse("sales-list"),
+            {
+                "action": "save_split",
+                "record_id": str(record.pk),
+                "split_cash_amount": "0.00",
+                "split_card_amount": "450.00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        record.refresh_from_db()
+        self.assertEqual(record.split_cash_amount, Decimal("0.00"))
+        self.assertEqual(record.split_card_amount, Decimal("450.00"))
+        self.assertEqual(record.display_payment_mode, "Card")
+
+    def test_sales_list_split_modal_shows_full_cash_and_card_shortcuts(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=305,
+            bill_no="BILL-305",
+            sale_date=date.today(),
+            customer_name="Shortcut Customer",
+            net_amount=Decimal("300.00"),
+            received_amount=Decimal("300.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
+        )
+
+        response = self.client.get(reverse("sales-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Full Cash")
+        self.assertContains(response, "Full Card")
+        self.assertContains(response, "Clear Split")
+
     def test_sales_list_rejects_split_total_greater_than_bill_amount(self):
         self.client.force_login(self.user)
         record = SalesLedgerRecord.objects.create(
