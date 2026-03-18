@@ -897,19 +897,181 @@ p {
 }
 
 .sales-split-detail-grid,
+.sales-split-modal-header {
+    align-items: stretch;
+    margin-bottom: 18px;
+    padding: 20px 22px;
+    border-radius: 26px;
+    background: linear-gradient(135deg, rgba(111, 130, 255, 0.08), rgba(111, 220, 194, 0.16));
+    border: 1px solid rgba(204, 214, 236, 0.9);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.sales-split-modal-copy {
+    max-width: 420px;
+}
+
+.sales-split-modal-copy h2 {
+    margin-bottom: 8px;
+    font-size: 2rem;
+    line-height: 1.05;
+}
+
+.sales-split-modal-note {
+    margin: 0;
+    font-size: 0.98rem;
+    line-height: 1.65;
+    color: #5f6e8d;
+}
+
+.sales-split-header-close {
+    width: auto;
+    min-height: 42px;
+    padding: 9px 18px;
+    align-self: flex-start;
+    flex: 0 0 auto;
+    background: rgba(255, 255, 255, 0.88);
+    border-color: rgba(201, 210, 228, 0.95);
+    box-shadow: 0 10px 22px rgba(90, 104, 142, 0.08);
+}
+
+.sales-split-detail-grid {
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.sales-split-detail-grid .detail-card {
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 247, 253, 0.96));
+    border: 1px solid rgba(213, 221, 239, 0.95);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.sales-split-detail-grid .detail-card span {
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #7484a6;
+}
+
+.sales-split-detail-grid .detail-card strong {
+    margin-top: 10px;
+    font-size: 1.16rem;
+}
+
+.sales-split-modal-grid {
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.sales-split-modal-grid .field-block {
+    gap: 8px;
+}
+
+.sales-split-modal-grid .field-block label {
+    font-size: 0.94rem;
+    font-weight: 700;
+    color: #23344f;
+}
+
+.sales-split-modal-grid .input-control {
+    min-height: 48px;
+    border-radius: 18px;
+    border: 1px solid rgba(205, 215, 236, 0.95);
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.sales-split-helper-card {
+    margin-bottom: 16px;
+    padding: 14px 16px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, rgba(255, 248, 229, 0.8), rgba(240, 247, 255, 0.92));
+    border: 1px solid rgba(223, 226, 203, 0.95);
+}
+
+.sales-split-helper {
+    margin: 0;
+    color: #334865;
+    font-size: 0.88rem;
+    line-height: 1.6;
+}
+
+.sales-split-helper-error {
+    color: #d24545;
+    font-weight: 700;
+}
+
+.sales-split-helper-success {
+    color: #0a9d70;
+    font-weight: 700;
+}
+
 .sales-split-total-card {
-    margin-bottom: 14px;
+    margin-bottom: 0;
+    padding: 18px 20px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, rgba(243, 247, 255, 0.98), rgba(252, 254, 255, 0.98));
+    border: 1px solid rgba(211, 220, 239, 0.95);
+}
+
+.sales-split-total-card span {
+    font-size: 0.76rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #7a8aa8;
 }
 
 .sales-split-total-card strong {
     display: block;
     margin-top: 8px;
     color: var(--text-main);
+    font-size: 1.48rem;
+    letter-spacing: -0.03em;
 }
 
-.sales-split-save {
-    padding: 6px 12px;
-    font-size: 0.92rem;
+.sales-split-modal-actions {
+    margin-top: 18px;
+    margin-bottom: 0;
+    padding-top: 18px;
+    align-items: center;
+    border-top: 1px solid rgba(217, 223, 239, 0.95);
+}
+
+.sales-split-footer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.sales-split-footer-button,
+.sales-split-quick-button,
+.sales-split-submit-button {
+    width: auto;
+    min-height: 42px;
+    padding: 9px 16px;
+    flex: 0 0 auto;
+}
+
+.sales-split-quick-button {
+    font-size: 0.88rem;
+    font-weight: 700;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #ffffff, #f4f7fd);
+    border: 1px solid rgba(205, 214, 236, 0.95);
+    color: #243751;
+    box-shadow: 0 10px 22px rgba(110, 126, 159, 0.08);
+}
+
+.sales-split-clear-button {
+    background: linear-gradient(180deg, #fff6f6, #ffeaea);
+    border-color: rgba(243, 199, 199, 0.95);
+    color: #bf5b61;
+}
+
+.sales-split-submit-button {
+    padding-inline: 18px;
 }
 
 .table-link {
@@ -1981,6 +2143,22 @@ body.modal-open {
 
 .modal-card-narrow {
     width: min(620px, 100%);
+}
+
+.sales-split-modal-overlay {
+    background:
+        radial-gradient(circle at top left, rgba(113, 137, 255, 0.14), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(114, 225, 193, 0.12), transparent 32%),
+        rgba(41, 47, 71, 0.34);
+}
+
+.sales-split-modal-card {
+    width: min(720px, 100%);
+    padding: 22px;
+    border-radius: 30px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), #f7f9ff);
+    border: 1px solid rgba(213, 221, 239, 0.92);
+    box-shadow: 0 30px 90px rgba(22, 29, 48, 0.2);
 }
 
 .modal-header,
@@ -4498,6 +4676,40 @@ body.modal-open {
 .app-authenticated .ghost-button {
     min-height: 44px;
     justify-content: center;
+}
+
+.app-authenticated .sales-split-header-close,
+.app-authenticated .sales-split-footer-button,
+.app-authenticated .sales-split-quick-button,
+.app-authenticated .sales-split-submit-button {
+    width: auto;
+    min-height: 42px;
+}
+
+@media (max-width: 720px) {
+    .sales-split-modal-card {
+        padding: 18px;
+        border-radius: 24px;
+    }
+
+    .sales-split-modal-header {
+        padding: 18px;
+    }
+
+    .sales-split-modal-copy h2 {
+        font-size: 1.74rem;
+    }
+
+    .sales-split-footer-actions {
+        width: 100%;
+    }
+
+    .sales-split-footer-button,
+    .sales-split-quick-button,
+    .sales-split-submit-button {
+        width: 100%;
+        justify-content: center;
+    }
 }
 
 .app-authenticated .shell-main {

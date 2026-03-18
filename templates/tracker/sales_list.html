@@ -310,15 +310,15 @@
     {% endif %}
 </section>
 
-<section class="modal-overlay" data-sales-split-modal hidden>
-    <div class="modal-card modal-card-narrow premium-panel" role="dialog" aria-modal="true" aria-labelledby="sales-split-modal-title">
-        <div class="modal-header">
-            <div>
+<section class="modal-overlay sales-split-modal-overlay" data-sales-split-modal hidden>
+    <div class="modal-card modal-card-narrow premium-panel sales-split-modal-card" role="dialog" aria-modal="true" aria-labelledby="sales-split-modal-title">
+        <div class="modal-header sales-split-modal-header">
+            <div class="sales-split-modal-copy">
                 <span class="eyebrow">Split Payment</span>
                 <h2 id="sales-split-modal-title">Edit Sales Split</h2>
-                <p class="muted-text">Enter cash and card amounts for this bill. The popup total should match the bill amount.</p>
+                <p class="muted-text sales-split-modal-note">Enter cash and card amounts for this bill. The popup total should match the bill amount.</p>
             </div>
-            <button type="button" class="ghost-button" data-close-sales-split-modal>Close</button>
+            <button type="button" class="secondary-button sales-split-header-close" data-close-sales-split-modal>Close</button>
         </div>
 
         <div class="detail-grid compact-detail-grid sales-split-detail-grid">
@@ -379,14 +379,31 @@
                 </div>
             </div>
 
+            <div class="sales-split-helper-card">
+                <div class="sales-split-helper" data-sales-split-helper>
+                    Use Full Cash or Full Card to replace the old split on the same bill.
+                </div>
+            </div>
+
             <div class="detail-card sales-split-total-card">
                 <span>Split Total</span>
                 <strong data-sales-split-total>Rs. 0.00</strong>
             </div>
 
-            <div class="modal-actions">
-                <button type="button" class="secondary-button" data-close-sales-split-modal>Cancel</button>
-                <button type="submit" class="primary-button">Save Split</button>
+            <div class="modal-actions sales-split-modal-actions">
+                <div class="sales-split-footer-actions">
+                    <button type="button" class="secondary-button sales-split-footer-button" data-close-sales-split-modal>Cancel</button>
+                    <button type="button" class="secondary-button sales-split-quick-button" data-sales-split-fill="cash">
+                        Full Cash
+                    </button>
+                    <button type="button" class="secondary-button sales-split-quick-button" data-sales-split-fill="card">
+                        Full Card
+                    </button>
+                    <button type="button" class="secondary-button sales-split-quick-button sales-split-clear-button" data-sales-split-fill="clear">
+                        Clear Split
+                    </button>
+                </div>
+                <button type="submit" class="primary-button sales-split-submit-button">Save Split</button>
             </div>
         </form>
     </div>
@@ -407,6 +424,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const cashInput = splitForm.querySelector("[data-sales-split-cash-input]");
     const cardInput = splitForm.querySelector("[data-sales-split-card-input]");
     const totalOutput = splitForm.querySelector("[data-sales-split-total]");
+    const helperOutput = splitForm.querySelector("[data-sales-split-helper]");
+    const submitButton = splitForm.querySelector("button[type='submit']");
     const billNoOutput = splitModal.querySelector("[data-sales-split-bill-no]");
     const customerOutput = splitModal.querySelector("[data-sales-split-customer]");
     const modeOutput = splitModal.querySelector("[data-sales-split-mode]");
@@ -420,17 +439,86 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const formatAmount = (value) => `Rs. ${toNumber(value).toFixed(2)}`;
 
+    const getNetAmount = () => toNumber(splitForm.dataset.netAmount);
+
     const setBodyScroll = () => {
         document.body.classList.toggle("modal-open", !splitModal.hidden);
     };
 
     const updateSplitTotal = () => {
-        totalOutput.textContent = formatAmount(toNumber(cashInput.value) + toNumber(cardInput.value));
+        const cashAmount = toNumber(cashInput.value);
+        const cardAmount = toNumber(cardInput.value);
+        const totalAmount = cashAmount + cardAmount;
+        const netAmount = getNetAmount();
+
+        totalOutput.textContent = formatAmount(totalAmount);
+
+        if (submitButton) {
+            submitButton.disabled = totalAmount > netAmount;
+        }
+
+        if (!helperOutput) {
+            return;
+        }
+
+        helperOutput.classList.remove(
+            "sales-split-helper-error",
+            "sales-split-helper-success",
+        );
+
+        if (totalAmount > netAmount) {
+            helperOutput.textContent = `Split total cannot exceed ${formatAmount(netAmount)}.`;
+            helperOutput.classList.add("sales-split-helper-error");
+            return;
+        }
+
+        if (totalAmount === 0) {
+            helperOutput.textContent = "Use Full Cash, Full Card, or enter both amounts to save a manual split.";
+            return;
+        }
+
+        if (cashAmount === netAmount && cardAmount === 0) {
+            helperOutput.textContent = "This bill will be saved as Cash.";
+            helperOutput.classList.add("sales-split-helper-success");
+            return;
+        }
+
+        if (cardAmount === netAmount && cashAmount === 0) {
+            helperOutput.textContent = "This bill will be saved as Card.";
+            helperOutput.classList.add("sales-split-helper-success");
+            return;
+        }
+
+        if (totalAmount === netAmount && cashAmount > 0 && cardAmount > 0) {
+            helperOutput.textContent = "This bill will be saved as Cash + Card.";
+            helperOutput.classList.add("sales-split-helper-success");
+            return;
+        }
+
+        helperOutput.textContent = `Current split total is ${formatAmount(totalAmount)}.`;
+    };
+
+    const applyQuickSplit = (mode) => {
+        const netAmount = getNetAmount();
+
+        if (mode === "cash") {
+            cashInput.value = netAmount.toFixed(2);
+            cardInput.value = "0.00";
+        } else if (mode === "card") {
+            cashInput.value = "0.00";
+            cardInput.value = netAmount.toFixed(2);
+        } else {
+            cashInput.value = "0.00";
+            cardInput.value = "0.00";
+        }
+
+        updateSplitTotal();
     };
 
     const openSplitModal = (button) => {
         lastFocusedButton = button;
         const netAmount = button.dataset.netAmount || "0.00";
+        splitForm.dataset.netAmount = netAmount;
 
         recordIdInput.value = button.dataset.recordId || "";
         cashInput.value = toNumber(button.dataset.splitCash).toFixed(2);
@@ -472,6 +560,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const closeButton = event.target.closest("[data-close-sales-split-modal]");
         if (closeButton) {
             closeSplitModal();
+            return;
+        }
+
+        const fillButton = event.target.closest("[data-sales-split-fill]");
+        if (fillButton) {
+            applyQuickSplit(fillButton.dataset.salesSplitFill);
             return;
         }
 
