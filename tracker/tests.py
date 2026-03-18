@@ -1977,6 +1977,25 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["received_total"], Decimal("525.00"))
         self.assertEqual(response.context["balance_total"], Decimal("900.00"))
 
+    def test_sales_list_received_total_uses_synced_received_amount(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=103,
+            bill_no="CARD-103",
+            sale_date=date.today(),
+            customer_name="Card Customer",
+            net_amount=Decimal("600.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("600.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+
+        response = self.client.get(reverse("sales-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["received_total"], Decimal("0.00"))
+        self.assertContains(response, "CARD-103")
+
     def test_sales_list_shows_credit_bill_list_from_sales_records(self):
         self.client.force_login(self.user)
         SalesLedgerRecord.objects.create(
