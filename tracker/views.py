@@ -1531,6 +1531,9 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
     permission_denied_message = "You do not have access to Daily Settlement."
     template_name = "tracker/daily_settlement.html"
 
+    def user_can_edit_opening_balance(self):
+        return bool(self.request.user.is_superuser)
+
     def get_selected_entry_date(self, params, filter_values):
         return get_settlement_entry_date(params, filter_values["selected_date"])
 
@@ -1579,6 +1582,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
             form = DailyCashSettlementForm(
                 initial={
                     "settlement_date": selected_entry_date,
+                    "opening_balance": autofill_summary["opening_balance"],
                     "gpay_settled": autofill_summary["gpay_settled"],
                     "cash_settled": Decimal("0.00"),
                     "closing_balance": preview["closing_balance"],
@@ -1587,6 +1591,18 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
         return self.configure_settlement_form(form, autofill_summary)
 
     def configure_settlement_form(self, form, autofill_summary):
+        opening_class = form.fields["opening_balance"].widget.attrs.get("class", "")
+        if self.user_can_edit_opening_balance():
+            form.fields["opening_balance"].widget.attrs.pop("readonly", None)
+            form.fields["opening_balance"].widget.attrs["class"] = opening_class.replace(
+                "settlement-readonly", ""
+            ).strip()
+        else:
+            form.fields["opening_balance"].widget.attrs["readonly"] = True
+            form.fields["opening_balance"].widget.attrs["class"] = (
+                f"{opening_class} settlement-readonly".strip()
+            )
+
         closing_class = form.fields["closing_balance"].widget.attrs.get("class", "")
         form.fields["closing_balance"].widget.attrs["readonly"] = True
         form.fields["closing_balance"].widget.attrs["class"] = (
@@ -1613,7 +1629,11 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
     def get_preview_source(self, form, loaded_settlement, autofill_summary):
         if form.is_bound:
             return {
-                "opening_balance": autofill_summary["opening_balance"],
+                "opening_balance": (
+                    form["opening_balance"].value()
+                    if self.user_can_edit_opening_balance()
+                    else autofill_summary["opening_balance"]
+                ),
                 "sales_ledger_cash": autofill_summary["sales_ledger_cash"],
                 "gpay_settled": form["gpay_settled"].value(),
                 "cash_settled": form["cash_settled"].value(),
@@ -1712,6 +1732,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 "selected_entry_date": selected_entry_date,
                 "selected_settlement": loaded_settlement,
                 "settlement_preview": settlement_preview,
+                "can_edit_opening_balance": self.user_can_edit_opening_balance(),
                 "settlement_records": settlement_records,
                 "settlement_count": settlement_records.count(),
                 "gpay_total": settlement_totals["gpay_total"] or Decimal("0.00"),
@@ -1758,10 +1779,18 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 request.user,
                 settlement.settlement_date,
             )
-            settlement.opening_balance = autofill_summary["opening_balance"]
+            if request.user.is_superuser:
+                settlement.opening_balance = form.cleaned_data["opening_balance"]
+            else:
+                settlement.opening_balance = autofill_summary["opening_balance"]
             settlement.expense_amount = autofill_summary["expense_amount"]
             if autofill_summary["settlement_source"] == "sales":
                 settlement.gpay_settled = autofill_summary["gpay_settled"]
+            cash_in_hand = get_cash_in_hand_amount(
+                settlement.opening_balance,
+                autofill_summary["sales_ledger_cash"],
+                settlement.expense_amount,
+            )
             closing_balance = get_settlement_closing_balance(
                 settlement.opening_balance,
                 autofill_summary["sales_ledger_cash"],
@@ -1773,7 +1802,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                     "cash_settled",
                     (
                         "Cash settled cannot be greater than cash in hand "
-                        f"of Rs. {format_money(autofill_summary['cash_in_hand'])}."
+                        f"of Rs. {format_money(cash_in_hand)}."
                     ),
                 )
                 return self.render_to_response(
