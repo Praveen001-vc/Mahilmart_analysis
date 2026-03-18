@@ -68,19 +68,16 @@ def normalize_sale_date(value):
     return None
 
 
-def has_meaningful_card_number(card_number):
+def has_card_payment_reference(card_number):
     cleaned = normalize_text(card_number)
-    if not cleaned or "http" in cleaned.casefold():
-        return False
-    condensed = "".join(character for character in cleaned if character.isalnum())
-    return len(condensed) >= 4
+    return bool(cleaned) and "http" not in cleaned.casefold()
 
 
 def classify_sales_payment_mode(received_amount, balance_amount, card_number=""):
+    if has_card_payment_reference(card_number):
+        return SalesPaymentMode.CARD
     if balance_amount > 0:
         return SalesPaymentMode.CREDIT
-    if received_amount > 0 and balance_amount <= 0 and has_meaningful_card_number(card_number):
-        return SalesPaymentMode.CARD
     if received_amount > 0 and balance_amount <= 0:
         return SalesPaymentMode.CASH
     return SalesPaymentMode.UNKNOWN
