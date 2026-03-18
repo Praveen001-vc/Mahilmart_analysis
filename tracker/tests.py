@@ -28,6 +28,7 @@ from .models import (
     UserModulePermission,
 )
 from .sales_sync import (
+    SOURCE_SALE_TYPE_PAYMENT_MODE_MAP,
     SalesSyncError,
     SalesSyncStats,
     build_sales_sync_query,
@@ -2129,7 +2130,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(record.split_card_amount, Decimal("0.00"))
         self.assertContains(response, "cannot exceed the net amount")
 
-    def test_sales_record_with_card_reference_displays_as_card_and_not_credit(self):
+    def test_sales_record_with_card_payment_mode_displays_as_card_and_not_credit(self):
         record = SalesLedgerRecord.objects.create(
             source_sale_no=303,
             bill_no="CARD-303",
@@ -2138,11 +2139,10 @@ class TrackerViewsTests(TestCase):
             net_amount=Decimal("600.00"),
             received_amount=Decimal("0.00"),
             balance_amount=Decimal("600.00"),
-            payment_mode=SalesPaymentMode.CREDIT,
-            source_card_no="8904057301672",
+            payment_mode=SalesPaymentMode.CARD,
         )
 
-        self.assertTrue(record.has_card_payment_reference)
+        self.assertTrue(record.is_card_payment)
         self.assertEqual(record.display_payment_mode, "Card")
         self.assertEqual(record.effective_received_amount, Decimal("600.00"))
         self.assertEqual(record.effective_balance_amount, Decimal("0.00"))
@@ -2239,27 +2239,52 @@ class SalesSyncUnitTests(TestCase):
         self.assertIn("CAST(SalMas_Date AS date) <= {d '2025-11-09'}", query)
         self.assertEqual(params, [])
 
-    def test_classify_sales_payment_mode_marks_card_when_card_reference_exists(self):
+    def test_classify_sales_payment_mode_uses_source_type_for_card(self):
         self.assertEqual(
             classify_sales_payment_mode(
+                source_sale_type=next(
+                    key
+                    for key, value in SOURCE_SALE_TYPE_PAYMENT_MODE_MAP.items()
+                    if value == SalesPaymentMode.CARD
+                ),
+                received_amount=Decimal("0.00"),
+                balance_amount=Decimal("900.00"),
+                card_number="",
+            ),
+            SalesPaymentMode.CARD,
+        )
+
+    def test_classify_sales_payment_mode_uses_source_type_for_credit(self):
+        self.assertEqual(
+            classify_sales_payment_mode(
+                source_sale_type=next(
+                    key
+                    for key, value in SOURCE_SALE_TYPE_PAYMENT_MODE_MAP.items()
+                    if value == SalesPaymentMode.CREDIT
+                ),
                 received_amount=Decimal("0.00"),
                 balance_amount=Decimal("900.00"),
                 card_number="8904057301672",
             ),
-            SalesPaymentMode.CARD,
+            SalesPaymentMode.CREDIT,
         )
 
-    def test_classify_sales_payment_mode_marks_card_for_settled_card_reference(self):
+    def test_classify_sales_payment_mode_uses_source_type_for_cash(self):
         self.assertEqual(
             classify_sales_payment_mode(
-                received_amount=Decimal("250.00"),
-                balance_amount=Decimal("0.00"),
+                source_sale_type=next(
+                    key
+                    for key, value in SOURCE_SALE_TYPE_PAYMENT_MODE_MAP.items()
+                    if value == SalesPaymentMode.CASH
+                ),
+                received_amount=Decimal("0.00"),
+                balance_amount=Decimal("900.00"),
                 card_number="8904057301672",
             ),
-            SalesPaymentMode.CARD,
+            SalesPaymentMode.CASH,
         )
 
-    def test_classify_sales_payment_mode_marks_cash_without_card_number(self):
+    def test_classify_sales_payment_mode_falls_back_to_cash_without_source_type(self):
         self.assertEqual(
             classify_sales_payment_mode(
                 received_amount=Decimal("250.00"),
@@ -2269,7 +2294,7 @@ class SalesSyncUnitTests(TestCase):
             SalesPaymentMode.CASH,
         )
 
-    def test_classify_sales_payment_mode_marks_credit_when_no_card_reference_exists(self):
+    def test_classify_sales_payment_mode_falls_back_to_credit_without_source_type(self):
         self.assertEqual(
             classify_sales_payment_mode(
                 received_amount=Decimal("0.00"),

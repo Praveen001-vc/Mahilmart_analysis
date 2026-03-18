@@ -17,6 +17,7 @@ SALES_SYNC_SELECT = """
 SELECT
     SalMas_SNo AS SalMas_SNo,
     ISNULL(SalMas_BillNo, '') AS SalMas_BillNo,
+    ISNULL(SalMas_Type, 0) AS SalMas_Type,
     SalMas_Date AS SalMas_Date,
     ISNULL(SalMas_Add1, '') AS SalMas_Add1,
     ISNULL(SalMas_NetAmt, 0) AS SalMas_NetAmt,
@@ -32,6 +33,13 @@ PREFERRED_SQLSERVER_DRIVERS = (
     "ODBC Driver 17 for SQL Server",
     "SQL Server",
 )
+
+# Single source of truth for SQL Server SalMas_Type mapping.
+SOURCE_SALE_TYPE_PAYMENT_MODE_MAP = {
+    1: SalesPaymentMode.CASH,
+    2: SalesPaymentMode.CREDIT,
+    3: SalesPaymentMode.CARD,
+}
 
 
 class SalesSyncError(RuntimeError):
@@ -73,7 +81,24 @@ def has_card_payment_reference(card_number):
     return bool(cleaned) and "http" not in cleaned.casefold()
 
 
-def classify_sales_payment_mode(received_amount, balance_amount, card_number=""):
+def normalize_source_sale_type(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def classify_sales_payment_mode(
+    received_amount,
+    balance_amount,
+    card_number="",
+    source_sale_type=0,
+):
+    normalized_sale_type = normalize_source_sale_type(source_sale_type)
+    mapped_payment_mode = SOURCE_SALE_TYPE_PAYMENT_MODE_MAP.get(normalized_sale_type)
+    if mapped_payment_mode is not None:
+        return mapped_payment_mode
+
     if has_card_payment_reference(card_number):
         return SalesPaymentMode.CARD
     if balance_amount > 0:
@@ -234,6 +259,7 @@ def build_sales_record(row, synced_at):
                 received_amount=received_amount,
                 balance_amount=balance_amount,
                 card_number=source_card_no,
+                source_sale_type=getattr(row, "SalMas_Type", 0),
             )
         ),
         source_card_no=source_card_no,

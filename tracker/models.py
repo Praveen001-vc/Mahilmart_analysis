@@ -359,15 +359,14 @@ class SalesLedgerRecord(models.Model):
         return self.split_cash_amount + self.split_card_amount
 
     @property
-    def has_card_payment_reference(self):
-        cleaned_reference = str(self.source_card_no or "").strip()
-        return bool(cleaned_reference) and "http" not in cleaned_reference.casefold()
+    def is_card_payment(self):
+        return self.payment_mode == SalesPaymentMode.CARD
 
     @property
     def effective_received_amount(self):
         if self.has_manual_split:
             return min(self.net_amount, self.split_total_amount)
-        if self.has_card_payment_reference:
+        if self.is_card_payment:
             return self.net_amount
         if self.received_amount > 0:
             return min(self.net_amount, self.received_amount)
@@ -377,7 +376,7 @@ class SalesLedgerRecord(models.Model):
     def effective_balance_amount(self):
         if self.has_manual_split:
             return max(self.net_amount - self.effective_received_amount, Decimal("0.00"))
-        if self.has_card_payment_reference:
+        if self.is_card_payment:
             return Decimal("0.00")
         if self.balance_amount > 0:
             return min(self.net_amount, self.balance_amount)
@@ -391,7 +390,7 @@ class SalesLedgerRecord(models.Model):
             return "Cash"
         if self.split_card_amount > 0 and self.split_cash_amount == 0:
             return "Card"
-        if self.has_card_payment_reference:
+        if self.is_card_payment:
             return "Card"
         return self.payment_mode
 
