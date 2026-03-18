@@ -1568,7 +1568,19 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
 
     def build_form(self, selected_entry_date, loaded_settlement, autofill_summary):
         if loaded_settlement:
-            form = DailyCashSettlementForm(instance=loaded_settlement)
+            preview_values = self.get_loaded_settlement_preview_values(
+                loaded_settlement,
+                autofill_summary,
+            )
+            preview = build_settlement_preview(preview_values)
+            form = DailyCashSettlementForm(
+                instance=loaded_settlement,
+                initial={
+                    "opening_balance": preview_values["opening_balance"],
+                    "gpay_settled": preview_values["gpay_settled"],
+                    "closing_balance": preview["closing_balance"],
+                },
+            )
         else:
             preview = build_settlement_preview(
                 {
@@ -1589,6 +1601,24 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 }
             )
         return self.configure_settlement_form(form, autofill_summary)
+
+    def get_loaded_settlement_preview_values(self, loaded_settlement, autofill_summary):
+        if autofill_summary["sales_count"] > 0:
+            sales_ledger_cash = autofill_summary["sales_ledger_cash"]
+            gpay_settled = autofill_summary["gpay_settled"]
+        else:
+            sales_ledger_cash = (
+                loaded_settlement.actual_sales - loaded_settlement.gpay_settled
+            )
+            gpay_settled = loaded_settlement.gpay_settled
+
+        return {
+            "opening_balance": loaded_settlement.opening_balance,
+            "sales_ledger_cash": sales_ledger_cash,
+            "gpay_settled": gpay_settled,
+            "cash_settled": loaded_settlement.cash_settled,
+            "expense_amount": autofill_summary["expense_amount"],
+        }
 
     def configure_settlement_form(self, form, autofill_summary):
         opening_class = form.fields["opening_balance"].widget.attrs.get("class", "")
@@ -1632,7 +1662,11 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 "opening_balance": (
                     form["opening_balance"].value()
                     if self.user_can_edit_opening_balance()
-                    else autofill_summary["opening_balance"]
+                    else (
+                        loaded_settlement.opening_balance
+                        if loaded_settlement
+                        else autofill_summary["opening_balance"]
+                    )
                 ),
                 "sales_ledger_cash": autofill_summary["sales_ledger_cash"],
                 "gpay_settled": form["gpay_settled"].value(),
@@ -1640,16 +1674,10 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 "expense_amount": autofill_summary["expense_amount"],
             }
         if loaded_settlement:
-            saved_sales_ledger_cash = (
-                loaded_settlement.actual_sales - loaded_settlement.gpay_settled
+            return self.get_loaded_settlement_preview_values(
+                loaded_settlement,
+                autofill_summary,
             )
-            return {
-                "opening_balance": loaded_settlement.opening_balance,
-                "sales_ledger_cash": saved_sales_ledger_cash,
-                "gpay_settled": loaded_settlement.gpay_settled,
-                "cash_settled": loaded_settlement.cash_settled,
-                "expense_amount": autofill_summary["expense_amount"],
-            }
         return {
             "opening_balance": autofill_summary["opening_balance"],
             "sales_ledger_cash": autofill_summary["sales_ledger_cash"],
@@ -1699,7 +1727,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
             autofill_summary = {
                 **autofill_summary,
                 "opening_balance": loaded_settlement.opening_balance,
-                "gpay_settled": loaded_settlement.gpay_settled,
+                "gpay_settled": settlement_preview["gpay_settled"],
                 "cash_in_hand": settlement_preview["cash_in_hand"],
             }
             cash_denomination_total = get_cash_denominations_total(cash_denominations)
@@ -1768,7 +1796,17 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
             params=request.POST,
             loaded_settlement=loaded_settlement,
         )
+        selected_date_autofill = build_settlement_autofill_summary(
+            request.user,
+            selected_entry_date,
+        )
         post_data = request.POST.copy()
+        if not request.user.is_superuser and not (post_data.get("opening_balance") or "").strip():
+            post_data["opening_balance"] = str(
+                loaded_settlement.opening_balance
+                if loaded_settlement
+                else selected_date_autofill["opening_balance"]
+            )
         form = DailyCashSettlementForm(post_data, instance=loaded_settlement)
 
         if form.is_valid():
@@ -1781,6 +1819,8 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
             )
             if request.user.is_superuser:
                 settlement.opening_balance = form.cleaned_data["opening_balance"]
+            elif loaded_settlement:
+                settlement.opening_balance = loaded_settlement.opening_balance
             else:
                 settlement.opening_balance = autofill_summary["opening_balance"]
             settlement.expense_amount = autofill_summary["expense_amount"]

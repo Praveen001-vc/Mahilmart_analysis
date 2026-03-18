@@ -1289,6 +1289,80 @@ class TrackerViewsTests(TestCase):
         )
         self.assertEqual(settlement.gpay_settled, Decimal("275.00"))
 
+    def test_daily_settlement_refreshes_sales_values_after_split_edit(self):
+        self.client.force_login(self.user)
+        target_date = date.today()
+        sales_record = SalesLedgerRecord.objects.create(
+            source_sale_no=5002,
+            bill_no="SAL-5002",
+            sale_date=target_date,
+            customer_name="Split Update Customer",
+            net_amount=Decimal("450.00"),
+            received_amount=Decimal("450.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+        settlement = DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=target_date,
+            opening_balance=Decimal("100.00"),
+            gpay_settled=Decimal("450.00"),
+            cash_settled=Decimal("50.00"),
+            cash_settled_to="Counter A",
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("50.00"),
+            notes="Saved before sales edit",
+        )
+
+        sales_record.split_cash_amount = Decimal("450.00")
+        sales_record.split_card_amount = Decimal("0.00")
+        sales_record.save(update_fields=["split_cash_amount", "split_card_amount"])
+
+        response = self.client.get(
+            reverse("daily-settlement"),
+            {
+                "selected_date": target_date.isoformat(),
+                "entry_date": target_date.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_settlement"].pk, settlement.pk)
+        self.assertEqual(
+            response.context["settlement_preview"]["sales_ledger_cash"],
+            Decimal("450.00"),
+        )
+        self.assertEqual(
+            response.context["settlement_preview"]["gpay_settled"],
+            Decimal("0.00"),
+        )
+        self.assertEqual(
+            response.context["settlement_preview"]["closing_balance"],
+            Decimal("500.00"),
+        )
+        self.assertContains(response, "Saved before sales edit")
+
+        response = self.client.post(
+            reverse("daily-settlement"),
+            {
+                "settlement_date": target_date.isoformat(),
+                "gpay_settled": "0.00",
+                "cash_settled": "50.00",
+                "cash_denominations": "",
+                "cash_settled_to": "Counter A",
+                "closing_balance": "0.00",
+                "notes": "Updated after sales split edit",
+                "selected_date": target_date.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        settlement.refresh_from_db()
+        self.assertEqual(settlement.gpay_settled, Decimal("0.00"))
+        self.assertEqual(settlement.closing_balance, Decimal("500.00"))
+        self.assertEqual(settlement.actual_sales, Decimal("450.00"))
+        self.assertEqual(settlement.notes, "Updated after sales split edit")
+
     def test_daily_settlement_single_date_filter_shows_only_matching_date(self):
         self.client.force_login(self.user)
         target_date = date.today() - timedelta(days=2)
