@@ -15,6 +15,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils.dateparse import parse_date
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 from django.views.generic import CreateView, ListView, RedirectView, TemplateView, UpdateView
 from reportlab.lib import colors
@@ -58,6 +59,7 @@ from .models import (
     Supplier,
 )
 from .sales_sync import SalesSyncError, sync_sales_from_sqlserver
+from .supplier_sync import SupplierSyncError, sync_suppliers_from_sqlserver
 from .user_sync import UserSyncError, sync_users_from_sqlserver
 from .user_roles import filter_queryset_by_role, get_user_role_label
 
@@ -214,6 +216,17 @@ def build_page_url(request, page_number):
     query_params = request.GET.copy()
     query_params["page"] = page_number
     return f"{request.path}?{query_params.urlencode()}"
+
+
+def get_safe_next_url(request, fallback_url):
+    next_url = (request.GET.get("next") or request.POST.get("next") or "").strip()
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return next_url
+    return fallback_url
 
 
 def get_selected_date(request, parameter_name="as_of_date"):
@@ -2069,6 +2082,26 @@ class SupplierListView(ModulePermissionRequiredMixin, ListView):
     template_name = "tracker/supplier_list.html"
     context_object_name = "suppliers"
 
+    def post(self, request, *args, **kwargs):
+        action = (request.POST.get("action") or "").strip()
+        if action != "sync_suppliers":
+            return redirect("supplier-list")
+
+        try:
+            stats = sync_suppliers_from_sqlserver(request.user)
+        except SupplierSyncError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(
+                request,
+                "Supplier sync completed. "
+                f"{stats.fetched_count} rows processed, "
+                f"{stats.inserted_count} inserted, "
+                f"{stats.updated_count} updated, "
+                f"{stats.skipped_count} skipped.",
+            )
+        return redirect("supplier-list")
+
     def get_queryset(self):
         return filter_queryset_by_role(Supplier.objects.all(), self.request.user)
 
@@ -2087,6 +2120,12 @@ class SupplierCreateView(ModulePermissionRequiredMixin, CreateView):
     template_name = "tracker/supplier_form.html"
     success_url = reverse_lazy("supplier-list")
 
+    def get_return_url(self):
+        return get_safe_next_url(self.request, reverse("supplier-list"))
+
+    def get_success_url(self):
+        return self.get_return_url()
+
     def form_valid(self, form):
         form.instance.user = self.request.user
         messages.success(self.request, "Supplier details saved successfully.")
@@ -2095,6 +2134,7 @@ class SupplierCreateView(ModulePermissionRequiredMixin, CreateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["next_supplier_code"] = get_next_supplier_code()
+        context["next_url"] = self.get_return_url()
         return context
 
 

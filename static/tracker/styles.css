@@ -351,6 +351,10 @@ p {
     flex-wrap: wrap;
 }
 
+.inline-action-form {
+    margin: 0;
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button {
@@ -1820,6 +1824,13 @@ p {
     color: #7c879e;
 }
 
+.empty-state-actions {
+    margin-top: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
 @media (max-width: 1180px) {
     .dashboard-stage-head {
         flex-direction: column;
@@ -2918,6 +2929,13 @@ body.modal-open {
     color: #56647c;
     font-size: 0.92rem;
     line-height: 1.6;
+}
+
+.supplier-empty-state-note {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
 }
 
 .entry-readonly {

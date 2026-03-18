@@ -4,6 +4,7 @@
 {% block body_class %}app-shell entry-master-shell{% endblock %}
 
 {% block content %}
+{% url 'expense-add' as expense_add_url %}
 <section class="entry-master-hero entry-master-hero-light premium-panel">
     <div>
         <span class="eyebrow">New Expense Entry</span>
@@ -12,8 +13,11 @@
     </div>
     <div class="hero-actions">
         <a class="secondary-button" href="{% url 'expense-category-list' %}?next={% url 'expense-add' %}">Manage Categories</a>
-        <a class="secondary-button" href="{% url 'supplier-list' %}">View Suppliers</a>
-        <a class="secondary-button" href="{% url 'supplier-add' %}">Add Supplier Optional</a>
+        {% if supplier_count == 0 %}
+            <a class="secondary-button" href="{% url 'supplier-add' %}?next={{ expense_add_url }}">Add First Supplier</a>
+        {% else %}
+            <a class="secondary-button" href="{% url 'supplier-list' %}">View Suppliers</a>
+        {% endif %}
     </div>
 </section>
 
@@ -90,8 +94,9 @@
                     {% endif %}
                 </div>
                 {% if supplier_count == 0 %}
-                    <div class="entry-inline-note">
-                        No suppliers saved yet. You can still create general expenses and add supplier records later.
+                    <div class="entry-inline-note supplier-empty-state-note">
+                        <div>No supplier details are saved in PostgreSQL yet. Add a supplier first, or continue with a general expense and attach the supplier later.</div>
+                        <a class="secondary-button" href="{% url 'supplier-add' %}?next={{ expense_add_url }}">Go to Supplier Details</a>
                     </div>
                 {% endif %}
             </div>

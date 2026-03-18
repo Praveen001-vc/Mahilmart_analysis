@@ -9,7 +9,13 @@
         <h1>Supplier Details</h1>
         <p>Store supplier code, contact details, tax information, and account details in one place.</p>
     </div>
-    <a class="primary-button" href="{% url 'supplier-add' %}">Add Supplier</a>
+    <div class="hero-actions">
+        <form method="post" class="inline-action-form">
+            {% csrf_token %}
+            <button type="submit" class="secondary-button" name="action" value="sync_suppliers">Sync Suppliers</button>
+        </form>
+        <a class="primary-button" href="{% url 'supplier-add' %}">Add Supplier</a>
+    </div>
 </section>
 
 <section class="stats-grid compact-grid">
@@ -55,7 +61,16 @@
             </table>
         </div>
     {% else %}
-        <div class="empty-state">No supplier details saved yet. Add your first supplier record.</div>
+        <div class="empty-state">
+            <div>No supplier details saved yet. Add your first supplier record.</div>
+            <div class="empty-state-actions">
+                <form method="post" class="inline-action-form">
+                    {% csrf_token %}
+                    <button type="submit" class="secondary-button" name="action" value="sync_suppliers">Sync Suppliers</button>
+                </form>
+                <a class="primary-button" href="{% url 'supplier-add' %}">Add First Supplier</a>
+            </div>
+        </div>
     {% endif %}
 </section>
 {% endblock %}

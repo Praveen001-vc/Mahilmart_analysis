@@ -11,12 +11,13 @@
         <p>Create supplier records with contact details, compliance IDs, bank details, credit terms, and notes.</p>
     </div>
     <div class="hero-actions">
-        <a class="secondary-button" href="{% url 'supplier-list' %}">Back to Suppliers</a>
+        <a class="secondary-button" href="{{ next_url }}">Back</a>
     </div>
 </section>
 
 <form method="post" class="financial-form supplier-master-form">
     {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url }}">
 
     {% if form.non_field_errors %}
         <div class="form-error">
@@ -182,7 +183,7 @@
 
     <div class="supplier-form-actions">
         <button type="submit" class="primary-button">Save Supplier</button>
-        <a class="secondary-button" href="{% url 'supplier-list' %}">Cancel</a>
+        <a class="secondary-button" href="{{ next_url }}">Cancel</a>
         <button type="reset" class="secondary-button">Reset</button>
     </div>
 </form>

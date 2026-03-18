@@ -35,6 +35,7 @@ from .sales_sync import (
     classify_sales_payment_mode,
     sanitize_sales_amounts,
 )
+from .supplier_sync import SupplierSyncStats, sync_suppliers_from_rows
 from .user_sync import (
     USER_SYNC_SOURCE_REFERENCE,
     UserSyncStats,
@@ -676,6 +677,160 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(supplier.contact_person, "Ramesh")
         self.assertEqual(supplier.phone_number, "9998887776")
         self.assertEqual(supplier.supplier_code, f"SUP-{supplier.pk:04d}")
+
+    def test_sync_suppliers_from_rows_creates_supplier_from_source_data(self):
+        stats = sync_suppliers_from_rows(
+            [
+                SimpleNamespace(
+                    SourceSupplierNo=112,
+                    SupplierName="A1 Oil",
+                    AddressLine1="Salem",
+                    AddressLine2="",
+                    AddressLine3="",
+                    AddressLine4="",
+                    PostalCode="637408",
+                    PhoneNumber="9003932582",
+                    EmailAddress="",
+                    GSTNumber="",
+                )
+            ],
+            self.user,
+        )
+
+        self.assertEqual(stats.fetched_count, 1)
+        self.assertEqual(stats.inserted_count, 1)
+        self.assertEqual(stats.updated_count, 0)
+        supplier = Supplier.objects.get(user=self.user, source_supplier_no=112)
+        self.assertEqual(supplier.name, "A1 Oil")
+        self.assertEqual(supplier.contact_person, "A1 Oil")
+        self.assertEqual(supplier.phone_number, "9003932582")
+        self.assertEqual(supplier.address, "Salem, 637408")
+
+    def test_sync_suppliers_from_rows_updates_existing_shared_role_supplier(self):
+        peer_admin = get_user_model().objects.create_superuser(
+            username="peer_admin_sync",
+            password="PeerPass123!",
+        )
+        supplier = Supplier.objects.create(
+            user=peer_admin,
+            name="Kaleel &co",
+            contact_person="Kaleel &co",
+            phone_number="Not Provided",
+        )
+
+        stats = sync_suppliers_from_rows(
+            [
+                SimpleNamespace(
+                    SourceSupplierNo=125,
+                    SupplierName="Kaleel &co",
+                    AddressLine1="Salem",
+                    AddressLine2="",
+                    AddressLine3="",
+                    AddressLine4="",
+                    PostalCode="",
+                    PhoneNumber="9843083300",
+                    EmailAddress="",
+                    GSTNumber="33ABCDE1234F1Z5",
+                )
+            ],
+            self.admin_user,
+        )
+
+        self.assertEqual(stats.fetched_count, 1)
+        self.assertEqual(stats.inserted_count, 0)
+        self.assertEqual(stats.updated_count, 1)
+        self.assertEqual(
+            Supplier.objects.filter(name="Kaleel &co", user__is_superuser=True).count(),
+            1,
+        )
+        supplier.refresh_from_db()
+        self.assertEqual(supplier.source_supplier_no, 125)
+        self.assertEqual(supplier.phone_number, "9843083300")
+        self.assertEqual(supplier.address, "Salem")
+        self.assertEqual(supplier.gstin_number, "33ABCDE1234F1Z5")
+
+    def test_supplier_list_shows_sync_button(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("supplier-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sync Suppliers")
+
+    @patch("tracker.views.sync_suppliers_from_sqlserver")
+    def test_supplier_list_sync_button_triggers_supplier_sync(self, sync_mock):
+        self.client.force_login(self.user)
+        sync_mock.return_value = SupplierSyncStats(
+            fetched_count=5,
+            inserted_count=3,
+            updated_count=1,
+            skipped_count=1,
+        )
+
+        response = self.client.post(
+            reverse("supplier-list"),
+            {
+                "action": "sync_suppliers",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("supplier-list"))
+        sync_mock.assert_called_once_with(self.user)
+
+    def test_supplier_create_redirects_back_to_next_url(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("supplier-add"),
+            {
+                "name": "Return Flow Supplier",
+                "contact_person": "Saravanan",
+                "phone_number": "9998887775",
+                "email": "",
+                "address": "",
+                "gstin_number": "",
+                "fssai_number": "",
+                "pan_number": "",
+                "credit_terms": "",
+                "opening_balance": "0.00",
+                "bank_name": "",
+                "account_number": "",
+                "ifsc_code": "",
+                "status": "Active",
+                "notes": "",
+                "next": reverse("purchase-add"),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("purchase-add"))
+
+    def test_purchase_add_page_shows_supplier_setup_actions_when_no_suppliers_exist(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("purchase-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Add First Supplier")
+        self.assertContains(
+            response,
+            f'{reverse("supplier-add")}?next={reverse("purchase-add")}',
+        )
+        self.assertContains(response, "No supplier details are saved in PostgreSQL yet.")
+
+    def test_expense_add_page_shows_supplier_setup_actions_when_no_suppliers_exist(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("expense-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Add First Supplier")
+        self.assertContains(
+            response,
+            f'{reverse("supplier-add")}?next={reverse("expense-add")}',
+        )
+        self.assertContains(response, "No supplier details are saved in PostgreSQL yet.")
 
     def test_income_list_paginates_in_batches_of_50(self):
         self.client.force_login(self.user)
