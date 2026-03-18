@@ -94,6 +94,10 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
+`runserver` now starts on port `8081` by default. If you run
+`python manage.py runserver 192.168.0.50:8000`, the command is automatically
+rewritten to `192.168.0.50:8081`.
+
 ## Optional Local Development with SQLite
 
 If PostgreSQL is not available temporarily, you can use SQLite for local testing:
