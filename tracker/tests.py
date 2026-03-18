@@ -2129,6 +2129,24 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(record.split_card_amount, Decimal("0.00"))
         self.assertContains(response, "cannot exceed the net amount")
 
+    def test_sales_record_with_card_reference_displays_as_card_and_not_credit(self):
+        record = SalesLedgerRecord.objects.create(
+            source_sale_no=303,
+            bill_no="CARD-303",
+            sale_date=date.today(),
+            customer_name="Mohan",
+            net_amount=Decimal("600.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("600.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+            source_card_no="8904057301672",
+        )
+
+        self.assertTrue(record.has_card_payment_reference)
+        self.assertEqual(record.display_payment_mode, "Card")
+        self.assertEqual(record.effective_received_amount, Decimal("600.00"))
+        self.assertEqual(record.effective_balance_amount, Decimal("0.00"))
+
     @patch("tracker.views.sync_sales_from_sqlserver")
     def test_sales_list_sync_post_runs_sync_and_preserves_filters(self, sync_mock):
         self.client.force_login(self.user)
@@ -2221,17 +2239,17 @@ class SalesSyncUnitTests(TestCase):
         self.assertIn("CAST(SalMas_Date AS date) <= {d '2025-11-09'}", query)
         self.assertEqual(params, [])
 
-    def test_classify_sales_payment_mode_marks_credit_first(self):
+    def test_classify_sales_payment_mode_marks_card_when_card_reference_exists(self):
         self.assertEqual(
             classify_sales_payment_mode(
                 received_amount=Decimal("0.00"),
                 balance_amount=Decimal("900.00"),
                 card_number="8904057301672",
             ),
-            SalesPaymentMode.CREDIT,
+            SalesPaymentMode.CARD,
         )
 
-    def test_classify_sales_payment_mode_marks_card_for_meaningful_card_number(self):
+    def test_classify_sales_payment_mode_marks_card_for_settled_card_reference(self):
         self.assertEqual(
             classify_sales_payment_mode(
                 received_amount=Decimal("250.00"),
@@ -2249,6 +2267,16 @@ class SalesSyncUnitTests(TestCase):
                 card_number="",
             ),
             SalesPaymentMode.CASH,
+        )
+
+    def test_classify_sales_payment_mode_marks_credit_when_no_card_reference_exists(self):
+        self.assertEqual(
+            classify_sales_payment_mode(
+                received_amount=Decimal("0.00"),
+                balance_amount=Decimal("900.00"),
+                card_number="",
+            ),
+            SalesPaymentMode.CREDIT,
         )
 
     def test_classify_sales_payment_mode_marks_unknown_when_unpaid_state_is_ambiguous(self):
