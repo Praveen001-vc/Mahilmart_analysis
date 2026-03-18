@@ -10,6 +10,7 @@ from .models import (
     SalesLedgerRecord,
     Supplier,
     UserAccountProfile,
+    UserModulePermission,
 )
 
 
@@ -121,3 +122,19 @@ class DailyCashSettlementAdmin(admin.ModelAdmin):
 class UserAccountProfileAdmin(admin.ModelAdmin):
     list_display = ("user", "master_name", "source_user_no")
     search_fields = ("user__username", "master_name", "source_reference")
+
+
+@admin.register(UserModulePermission)
+class UserModulePermissionAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "allow_dashboard",
+        "allow_sales",
+        "allow_daily_settlement",
+        "allow_income",
+        "allow_purchases",
+        "allow_suppliers",
+        "allow_expenses",
+        "allow_reports",
+    )
+    search_fields = ("user__username",)

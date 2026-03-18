@@ -28,14 +28,30 @@
                     </div>
                 </div>
                 <nav class="shell-nav">
-                    <a href="{% url 'dashboard' %}">Dashboard</a>
-                    <a href="{% url 'sales-list' %}">Sales</a>
-                    <a href="{% url 'daily-settlement' %}">Daily Settlement</a>
-                    <a href="{% url 'income-list' %}">Income</a>
-                    <a href="{% url 'purchase-list' %}">Purchases</a>
-                    <a href="{% url 'supplier-list' %}">Suppliers</a>
-                    <a href="{% url 'expense-list' %}">Expenses</a>
-                    <!-- <a href="{% url 'reports' %}">Reports</a> -->
+                    {% if perm.allow_dashboard %}
+                        <a href="{% url 'dashboard' %}">Dashboard</a>
+                    {% endif %}
+                    {% if perm.allow_sales %}
+                        <a href="{% url 'sales-list' %}">Sales</a>
+                    {% endif %}
+                    {% if perm.allow_daily_settlement %}
+                        <a href="{% url 'daily-settlement' %}">Daily Settlement</a>
+                    {% endif %}
+                    {% if perm.allow_income %}
+                        <a href="{% url 'income-list' %}">Income</a>
+                    {% endif %}
+                    {% if perm.allow_purchases %}
+                        <a href="{% url 'purchase-list' %}">Purchases</a>
+                    {% endif %}
+                    {% if perm.allow_suppliers %}
+                        <a href="{% url 'supplier-list' %}">Suppliers</a>
+                    {% endif %}
+                    {% if perm.allow_expenses %}
+                        <a href="{% url 'expense-list' %}">Expenses</a>
+                    {% endif %}
+                    <!-- {% if perm.allow_reports %}
+                        <a href="{% url 'reports' %}">Reports</a>
+                    {% endif %} -->
                     {% if request.user.is_superuser %}
                         <a href="{% url 'user-list' %}">Users</a>
                     {% endif %}

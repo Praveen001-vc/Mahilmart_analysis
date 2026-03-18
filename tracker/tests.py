@@ -25,6 +25,7 @@ from .models import (
     SalesPaymentMode,
     Supplier,
     UserAccountProfile,
+    UserModulePermission,
 )
 from .sales_sync import (
     SalesSyncError,
@@ -142,7 +143,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["income_total"], Decimal("1150.00"))
         self.assertEqual(response.context["expense_total"], Decimal("250.00"))
         self.assertContains(response, "Admin Role")
-        self.assertContains(response, "Shared role workspace")
+        self.assertContains(response, "Dashboard")
 
     def test_expense_add_page_includes_suppliers_from_same_role(self):
         peer_admin = get_user_model().objects.create_superuser(
@@ -1253,6 +1254,138 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sync Users From SQL Server")
 
+    def test_permission_settings_page_renders_for_admin(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(
+            reverse("permission-settings"),
+            {"user": self.user.pk},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Permission Settings")
+        self.assertContains(response, "Sidebar And Page Permissions")
+        self.assertContains(response, "Dashboard")
+        self.assertContains(response, "Reports")
+        self.assertTrue(
+            UserModulePermission.objects.filter(user=self.user).exists()
+        )
+
+    def test_admin_can_update_user_module_permission_from_settings_page(self):
+        permission_record = UserModulePermission.objects.create(user=self.user)
+        self.client.force_login(self.admin_user)
+
+        response = self.client.post(
+            reverse("permission-settings"),
+            data=json.dumps(
+                {
+                    "user": self.user.pk,
+                    "field": "allow_sales",
+                    "value": False,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["ok"], True)
+        permission_record.refresh_from_db()
+        self.assertFalse(permission_record.allow_sales)
+
+    def test_dashboard_hides_restricted_module_links_and_actions(self):
+        UserModulePermission.objects.update_or_create(
+            user=self.user,
+            defaults={
+                "allow_dashboard": True,
+                "allow_sales": False,
+                "allow_daily_settlement": False,
+                "allow_income": False,
+                "allow_purchases": False,
+                "allow_suppliers": False,
+                "allow_expenses": False,
+                "allow_reports": False,
+            },
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, reverse("sales-list"))
+        self.assertNotContains(response, reverse("income-add"))
+        self.assertNotContains(response, reverse("daily-settlement"))
+        self.assertNotContains(response, reverse("expense-add"))
+        self.assertNotContains(response, reverse("supplier-add"))
+        self.assertNotContains(response, reverse("reports"))
+        self.assertContains(response, "No quick actions are enabled for this user.")
+
+    def test_blocked_module_redirects_to_first_accessible_page(self):
+        UserModulePermission.objects.update_or_create(
+            user=self.user,
+            defaults={
+                "allow_dashboard": True,
+                "allow_sales": False,
+                "allow_daily_settlement": False,
+                "allow_income": False,
+                "allow_purchases": False,
+                "allow_suppliers": False,
+                "allow_expenses": False,
+                "allow_reports": False,
+            },
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("sales-list"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("dashboard"))
+
+    def test_home_redirect_uses_first_enabled_module_for_restricted_user(self):
+        UserModulePermission.objects.update_or_create(
+            user=self.user,
+            defaults={
+                "allow_dashboard": False,
+                "allow_sales": False,
+                "allow_daily_settlement": True,
+                "allow_income": False,
+                "allow_purchases": False,
+                "allow_suppliers": False,
+                "allow_expenses": False,
+                "allow_reports": False,
+            },
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("home"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("daily-settlement"))
+
+    def test_blocked_module_redirects_to_access_denied_when_no_pages_are_enabled(self):
+        UserModulePermission.objects.update_or_create(
+            user=self.user,
+            defaults={
+                "allow_dashboard": False,
+                "allow_sales": False,
+                "allow_daily_settlement": False,
+                "allow_income": False,
+                "allow_purchases": False,
+                "allow_suppliers": False,
+                "allow_expenses": False,
+                "allow_reports": False,
+            },
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("sales-list"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("access-denied"))
+
+        denied_response = self.client.get(reverse("access-denied"))
+        self.assertEqual(denied_response.status_code, 200)
+        self.assertContains(denied_response, "Access Denied")
+
     def test_purchase_record_pending_amount_is_calculated(self):
         self.client.force_login(self.user)
         supplier = Supplier.objects.create(
@@ -2016,6 +2149,9 @@ class UserSyncUnitTests(TestCase):
         self.assertEqual(
             synced_user.account_profile.source_reference,
             USER_SYNC_SOURCE_REFERENCE,
+        )
+        self.assertTrue(
+            UserModulePermission.objects.filter(user=synced_user).exists()
         )
 
     def test_sync_users_from_rows_skips_existing_user_matched_by_username(self):

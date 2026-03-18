@@ -21,6 +21,13 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+from .access_control import (
+    ModulePermissionRequiredMixin,
+    TRACKER_PERMISSION_ITEMS,
+    build_permission_items,
+    get_first_accessible_route_name,
+    get_user_permission_record,
+)
 from .expense_categories import (
     COUNTER_EXPENSE_CATEGORY,
     ensure_expense_categories_for_role,
@@ -1003,11 +1010,43 @@ class HomeRedirectView(RedirectView):
 
     def get_redirect_url(self, *args, **kwargs):
         if self.request.user.is_authenticated:
-            return reverse_lazy("dashboard")
+            return reverse_lazy(
+                get_first_accessible_route_name(self.request.user) or "access-denied"
+            )
         return reverse_lazy("login")
 
 
-class DashboardView(LoginRequiredMixin, TemplateView):
+class AccessDeniedView(LoginRequiredMixin, TemplateView):
+    template_name = "tracker/access_denied.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        fallback_route_name = get_first_accessible_route_name(self.request.user)
+        fallback_label = ""
+        if fallback_route_name:
+            fallback_label = next(
+                (
+                    label
+                    for label, _field_name, route_name in TRACKER_PERMISSION_ITEMS
+                    if route_name == fallback_route_name
+                ),
+                "",
+            )
+        context.update(
+            {
+                "fallback_route_name": fallback_route_name,
+                "fallback_url": (
+                    reverse(fallback_route_name) if fallback_route_name else ""
+                ),
+                "fallback_label": fallback_label,
+            }
+        )
+        return context
+
+
+class DashboardView(ModulePermissionRequiredMixin, TemplateView):
+    permission_field = "allow_dashboard"
+    permission_denied_message = "You do not have access to Dashboard."
     template_name = "tracker/dashboard.html"
 
     def get_context_data(self, **kwargs):
@@ -1108,11 +1147,13 @@ class AdminRequiredMixin(LoginRequiredMixin):
             return self.handle_no_permission()
         if not request.user.is_superuser:
             messages.error(request, "Only admin users can manage users.")
-            return redirect("dashboard")
+            return redirect(get_first_accessible_route_name(request.user) or "access-denied")
         return super().dispatch(request, *args, **kwargs)
 
 
-class IncomeListView(AutoLoadPaginatedListView):
+class IncomeListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
+    permission_field = "allow_income"
+    permission_denied_message = "You do not have access to Income."
     model = IncomeRecord
     template_name = "tracker/income_list.html"
     context_object_name = "records"
@@ -1131,7 +1172,9 @@ class IncomeListView(AutoLoadPaginatedListView):
         return context
 
 
-class IncomeCreateView(LoginRequiredMixin, CreateView):
+class IncomeCreateView(ModulePermissionRequiredMixin, CreateView):
+    permission_field = "allow_income"
+    permission_denied_message = "You do not have access to Income."
     model = IncomeRecord
     form_class = IncomeForm
     template_name = "tracker/income_form.html"
@@ -1143,7 +1186,9 @@ class IncomeCreateView(LoginRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class ExpenseListView(AutoLoadPaginatedListView):
+class ExpenseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
+    permission_field = "allow_expenses"
+    permission_denied_message = "You do not have access to Expenses."
     model = ExpenseRecord
     template_name = "tracker/expense_list.html"
     context_object_name = "records"
@@ -1343,7 +1388,9 @@ class ExpenseListView(AutoLoadPaginatedListView):
         return context
 
 
-class ExpenseCreateView(LoginRequiredMixin, CreateView):
+class ExpenseCreateView(ModulePermissionRequiredMixin, CreateView):
+    permission_field = "allow_expenses"
+    permission_denied_message = "You do not have access to Expenses."
     model = ExpenseRecord
     form_class = ExpenseForm
     template_name = "tracker/expense_form.html"
@@ -1370,7 +1417,9 @@ class ExpenseCreateView(LoginRequiredMixin, CreateView):
         return context
 
 
-class ExpenseCategoryListView(LoginRequiredMixin, TemplateView):
+class ExpenseCategoryListView(ModulePermissionRequiredMixin, TemplateView):
+    permission_field = "allow_expenses"
+    permission_denied_message = "You do not have access to Expenses."
     template_name = "tracker/expense_category_list.html"
 
     def get_next_url(self):
@@ -1464,7 +1513,9 @@ class ExpenseCategoryListView(LoginRequiredMixin, TemplateView):
         return context
 
 
-class DailySettlementView(LoginRequiredMixin, TemplateView):
+class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
+    permission_field = "allow_daily_settlement"
+    permission_denied_message = "You do not have access to Daily Settlement."
     template_name = "tracker/daily_settlement.html"
 
     def get_selected_entry_date(self, params, filter_values):
@@ -1742,7 +1793,9 @@ class DailySettlementView(LoginRequiredMixin, TemplateView):
         )
 
 
-class PurchaseListView(AutoLoadPaginatedListView):
+class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
+    permission_field = "allow_purchases"
+    permission_denied_message = "You do not have access to Purchases."
     model = PurchaseRecord
     template_name = "tracker/purchase_list.html"
     context_object_name = "records"
@@ -1774,7 +1827,9 @@ class PurchaseListView(AutoLoadPaginatedListView):
         return context
 
 
-class SalesListView(AutoLoadPaginatedListView):
+class SalesListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
+    permission_field = "allow_sales"
+    permission_denied_message = "You do not have access to Sales."
     model = SalesLedgerRecord
     template_name = "tracker/sales_list.html"
     context_object_name = "records"
@@ -1905,7 +1960,9 @@ class SalesListView(AutoLoadPaginatedListView):
         return context
 
 
-class PurchaseDetailView(LoginRequiredMixin, View):
+class PurchaseDetailView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_purchases"
+    permission_denied_message = "You do not have access to Purchases."
     def get(self, request, pk, *args, **kwargs):
         purchase = get_object_or_404(
             get_purchase_base_queryset(request.user).prefetch_related("payments__user"),
@@ -1914,7 +1971,9 @@ class PurchaseDetailView(LoginRequiredMixin, View):
         return JsonResponse(build_purchase_detail_payload(purchase))
 
 
-class PurchaseCreateView(LoginRequiredMixin, CreateView):
+class PurchaseCreateView(ModulePermissionRequiredMixin, CreateView):
+    permission_field = "allow_purchases"
+    permission_denied_message = "You do not have access to Purchases."
     model = PurchaseRecord
     form_class = PurchaseForm
     template_name = "tracker/purchase_form.html"
@@ -1952,7 +2011,9 @@ class PurchaseCreateView(LoginRequiredMixin, CreateView):
         return context
 
 
-class PurchaseInvoiceDownloadView(LoginRequiredMixin, View):
+class PurchaseInvoiceDownloadView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_purchases"
+    permission_denied_message = "You do not have access to Purchases."
     def get(self, request, pk, *args, **kwargs):
         purchase = get_object_or_404(
             get_purchase_base_queryset(request.user),
@@ -1961,7 +2022,9 @@ class PurchaseInvoiceDownloadView(LoginRequiredMixin, View):
         return build_purchase_invoice_response(purchase)
 
 
-class PurchasePaymentCreateView(LoginRequiredMixin, View):
+class PurchasePaymentCreateView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_purchases"
+    permission_denied_message = "You do not have access to Purchases."
     success_url = reverse_lazy("purchase-list")
 
     def post(self, request, pk, *args, **kwargs):
@@ -1999,7 +2062,9 @@ class PurchasePaymentCreateView(LoginRequiredMixin, View):
         return redirect(self.success_url)
 
 
-class SupplierListView(LoginRequiredMixin, ListView):
+class SupplierListView(ModulePermissionRequiredMixin, ListView):
+    permission_field = "allow_suppliers"
+    permission_denied_message = "You do not have access to Suppliers."
     model = Supplier
     template_name = "tracker/supplier_list.html"
     context_object_name = "suppliers"
@@ -2014,7 +2079,9 @@ class SupplierListView(LoginRequiredMixin, ListView):
         return context
 
 
-class SupplierCreateView(LoginRequiredMixin, CreateView):
+class SupplierCreateView(ModulePermissionRequiredMixin, CreateView):
+    permission_field = "allow_suppliers"
+    permission_denied_message = "You do not have access to Suppliers."
     model = Supplier
     form_class = SupplierForm
     template_name = "tracker/supplier_form.html"
@@ -2125,7 +2192,116 @@ class UserUpdateView(AdminRequiredMixin, UpdateView):
         return context
 
 
-class ReportsView(LoginRequiredMixin, TemplateView):
+class PermissionSettingsView(AdminRequiredMixin, TemplateView):
+    template_name = "tracker/permission_settings.html"
+
+    def get_selected_user(self):
+        user_id = (self.request.GET.get("user") or "").strip()
+        users = User.objects.filter(is_superuser=False).order_by("username")
+        if user_id.isdigit():
+            selected_user = users.filter(pk=user_id).first()
+            if selected_user is not None:
+                return selected_user
+        return users.first()
+
+    def post(self, request, *args, **kwargs):
+        if request.headers.get("Content-Type", "").startswith("application/json"):
+            try:
+                payload = json.loads(request.body.decode("utf-8") or "{}")
+            except (TypeError, ValueError):
+                return JsonResponse(
+                    {"ok": False, "message": "Invalid permission request."},
+                    status=400,
+                )
+            user_id = str(payload.get("user", "")).strip()
+            field_name = str(payload.get("field", "")).strip()
+            field_names = {
+                field for _label, field, _route in TRACKER_PERMISSION_ITEMS
+            }
+
+            if not user_id.isdigit():
+                return JsonResponse(
+                    {"ok": False, "message": "Select a valid user."},
+                    status=400,
+                )
+            if field_name not in field_names:
+                return JsonResponse(
+                    {"ok": False, "message": "Invalid permission field."},
+                    status=400,
+                )
+
+            managed_user = User.objects.filter(pk=user_id, is_superuser=False).first()
+            if managed_user is None:
+                return JsonResponse(
+                    {"ok": False, "message": "User not found."},
+                    status=404,
+                )
+
+            permission_record = get_user_permission_record(managed_user)
+            raw_value = payload.get("value")
+            is_enabled = raw_value if isinstance(raw_value, bool) else str(raw_value).strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            setattr(permission_record, field_name, is_enabled)
+            permission_record.save(update_fields=[field_name, "updated_at"])
+            return JsonResponse({"ok": True, "value": is_enabled})
+
+        messages.error(request, "Permission updates must be sent from the settings page.")
+        return redirect("permission-settings")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        users = list(
+            User.objects.filter(is_superuser=False)
+            .select_related("account_profile", "module_permissions")
+            .order_by("username")
+        )
+        selected_user = self.get_selected_user()
+        permission_record = (
+            get_user_permission_record(selected_user)
+            if selected_user is not None
+            else None
+        )
+        selected_profile = (
+            getattr(selected_user, "account_profile", None)
+            if selected_user is not None
+            else None
+        )
+
+        permission_items = (
+            build_permission_items(permission_record)
+            if permission_record is not None
+            else []
+        )
+        enabled_permission_count = sum(
+            1 for item in permission_items if item["enabled"]
+        )
+
+        context.update(
+            {
+                "managed_users": users,
+                "selected_user": selected_user,
+                "selected_user_master_name": (
+                    selected_profile.master_name
+                    if selected_profile and selected_profile.master_name
+                    else "-"
+                ),
+                "selected_user_role": (
+                    get_user_role_label(selected_user) if selected_user is not None else ""
+                ),
+                "permission_items": permission_items,
+                "enabled_permission_count": enabled_permission_count,
+            }
+        )
+        return context
+
+
+class ReportsView(ModulePermissionRequiredMixin, TemplateView):
+    permission_field = "allow_reports"
+    permission_denied_message = "You do not have access to Reports."
     template_name = "tracker/reports.html"
 
     def get_context_data(self, **kwargs):

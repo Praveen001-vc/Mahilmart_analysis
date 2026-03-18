@@ -3,6 +3,7 @@ from django.urls import path
 
 from .forms import StyledAuthenticationForm
 from .views import (
+    AccessDeniedView,
     DashboardView,
     DailySettlementView,
     ExpenseCategoryListView,
@@ -16,6 +17,7 @@ from .views import (
     PurchaseInvoiceDownloadView,
     PurchaseListView,
     PurchasePaymentCreateView,
+    PermissionSettingsView,
     ReportsView,
     SalesListView,
     SupplierCreateView,
@@ -37,6 +39,7 @@ urlpatterns = [
         name="login",
     ),
     path("logout/", LogoutView.as_view(), name="logout"),
+    path("access-denied/", AccessDeniedView.as_view(), name="access-denied"),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("sales/", SalesListView.as_view(), name="sales-list"),
     path("income/", IncomeListView.as_view(), name="income-list"),
@@ -49,6 +52,7 @@ urlpatterns = [
     path("suppliers/", SupplierListView.as_view(), name="supplier-list"),
     path("suppliers/add/", SupplierCreateView.as_view(), name="supplier-add"),
     path("users/", UserListView.as_view(), name="user-list"),
+    path("users/permissions/", PermissionSettingsView.as_view(), name="permission-settings"),
     path("users/add/", UserCreateView.as_view(), name="user-add"),
     path("users/<int:pk>/edit/", UserUpdateView.as_view(), name="user-edit"),
     path("expenses/", ExpenseListView.as_view(), name="expense-list"),

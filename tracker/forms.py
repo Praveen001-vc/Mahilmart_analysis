@@ -11,6 +11,7 @@ from .models import (
     PurchaseRecord,
     Supplier,
     UserAccountProfile,
+    UserModulePermission,
 )
 from .expense_categories import ensure_expense_categories_for_role
 from .user_roles import (
@@ -503,5 +504,6 @@ class UserManagementForm(forms.ModelForm):
             profile, _ = UserAccountProfile.objects.get_or_create(user=user)
             profile.master_name = self.cleaned_data["master_name"]
             profile.save()
+            UserModulePermission.objects.get_or_create(user=user)
 
         return user

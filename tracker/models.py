@@ -179,6 +179,30 @@ class UserAccountProfile(models.Model):
         return f"{self.user.username} profile"
 
 
+class UserModulePermission(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="module_permissions",
+    )
+    allow_dashboard = models.BooleanField(default=True)
+    allow_sales = models.BooleanField(default=True)
+    allow_daily_settlement = models.BooleanField(default=True)
+    allow_income = models.BooleanField(default=True)
+    allow_purchases = models.BooleanField(default=True)
+    allow_suppliers = models.BooleanField(default=True)
+    allow_expenses = models.BooleanField(default=True)
+    allow_reports = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["user__username"]
+
+    def __str__(self):
+        return f"{self.user.username} permissions"
+
+
 class PurchaseRecord(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

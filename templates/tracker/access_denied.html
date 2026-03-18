@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Access Denied | Mahilmart{% endblock %}
+
+{% block content %}
+<section class="page-heading premium-panel permission-page-heading access-denied-heading">
+    <div class="heading-content">
+        <span class="eyebrow gradient-text">Permission Required</span>
+        <h1 class="display-heading">Access Denied</h1>
+        <p class="subhead">This module is currently turned off for your account.</p>
+    </div>
+</section>
+
+<section class="premium-panel access-denied-shell">
+    <div class="access-denied-bg-pattern" aria-hidden="true"></div>
+    <div class="access-denied-glow" aria-hidden="true"></div>
+
+    <div class="access-denied-panel glass-panel">
+        <div class="access-denied-icon-wrap">
+            <span class="access-denied-icon">!</span>
+        </div>
+        <span class="access-denied-badge">Restricted Module</span>
+        <h2>Access Denied</h2>
+        <p>You do not have permission to open this page. Ask an admin user to enable this module from Permission Settings if you need it for your work.</p>
+
+        {% if fallback_url %}
+            <div class="access-denied-next-step">
+                <span class="access-denied-next-label">Available now</span>
+                <strong class="access-denied-next-value">{{ fallback_label }}</strong>
+            </div>
+        {% endif %}
+
+        <div class="access-denied-actions">
+            {% if fallback_url %}
+                <a class="premium-button primary-button permission-page-button" href="{{ fallback_url }}">
+                    <span class="button-content">
+                        <span class="button-text">Open {{ fallback_label }}</span>
+                    </span>
+                </a>
+            {% endif %}
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button type="submit" class="premium-button secondary-button permission-page-button">
+                    <span class="button-content">
+                        <span class="button-text">Logout</span>
+                    </span>
+                </button>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}

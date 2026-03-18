@@ -14,6 +14,7 @@
             {% csrf_token %}
             <button type="submit" class="secondary-button">Sync Users From SQL Server</button>
         </form>
+        <a class="secondary-button" href="{% url 'permission-settings' %}">Permission Settings</a>
         <a class="primary-button" href="{% url 'user-add' %}">Create User</a>
     </div>
 </section>

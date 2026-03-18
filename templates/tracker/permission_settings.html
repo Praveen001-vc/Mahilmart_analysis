@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+
+{% block title %}Permission Settings | Mahilmart{% endblock %}
+
+{% block content %}
+<section class="page-heading premium-panel permission-page-heading permission-page-heading-compact">
+    <div class="heading-content">
+        <span class="eyebrow gradient-text">User Access Control</span>
+        <h1 class="display-heading">Permission Settings</h1>
+        <p class="subhead">Control which modules appear in the sidebar and which pages each non-admin user can access.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="premium-button secondary-button permission-page-button" href="{% url 'user-list' %}">
+            <span class="button-content">
+                <span class="button-icon">&larr;</span>
+                <span class="button-text">Back To Users</span>
+            </span>
+        </a>
+    </div>
+</section>
+
+<section class="premium-panel permission-settings-shell">
+    <div class="permission-bg-pattern" aria-hidden="true"></div>
+    <div class="permission-glow" aria-hidden="true"></div>
+    <div class="permission-token-store" hidden>{% csrf_token %}</div>
+
+    <div class="permission-toolbar glass-panel permission-toolbar-compact">
+        <div class="toolbar-content">
+            <div class="toolbar-header">
+                <span class="eyebrow with-dot">
+                    <span class="dot"></span>
+                    Module Access
+                </span>
+                <h2 class="toolbar-title">Sidebar And Page Permissions</h2>
+                <p class="toolbar-description">Changes save instantly for the selected non-admin user.</p>
+            </div>
+
+            <form method="get" action="{% url 'permission-settings' %}" class="permission-select-form">
+                <div class="field-block permission-select-field premium-select-field">
+                    <label for="permission-user-select" class="select-label">Select User</label>
+                    <div class="select-wrapper">
+                        <select id="permission-user-select" name="user" class="premium-select" onchange="this.form.submit()">
+                            {% for managed_user in managed_users %}
+                                <option value="{{ managed_user.pk }}"{% if selected_user and managed_user.pk == selected_user.pk %} selected{% endif %}>
+                                    {{ managed_user.username }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <span class="select-arrow">&#9662;</span>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_user %}
+        <div class="permission-grid permission-grid-compact">
+            <aside class="permission-user-card glass-panel permission-user-card-compact">
+                <div class="user-card-header">
+                    <div class="user-avatar">
+                        <span class="avatar-initials">{{ selected_user.username|slice:":1"|upper }}</span>
+                    </div>
+                    <div class="user-role-badge">{{ selected_user_role }}</div>
+                </div>
+
+                <div class="user-stats-grid compact-user-stats">
+                    <article class="permission-user-stat compact-user-row">
+                        <div class="compact-user-meta">
+                            <span class="stat-label">Username</span>
+                            <strong class="stat-value">@{{ selected_user.username }}</strong>
+                        </div>
+                        <div class="compact-user-meta">
+                            <span class="stat-label">Full Name</span>
+                            <strong class="stat-value">{{ selected_user_master_name }}</strong>
+                        </div>
+                    </article>
+
+                    <article class="permission-user-stat compact-user-row">
+                        <div class="compact-user-meta">
+                            <span class="stat-label">Email</span>
+                            <strong class="stat-value">{{ selected_user.email|default:"-" }}</strong>
+                        </div>
+                        <div class="compact-user-meta">
+                            <span class="stat-label">Status</span>
+                            <strong class="stat-value">
+                                <span class="status-badge {% if selected_user.is_active %}status-active{% else %}status-inactive{% endif %}">
+                                    <span class="status-dot"></span>
+                                    {{ selected_user.is_active|yesno:"Active,Inactive" }}
+                                </span>
+                            </strong>
+                        </div>
+                    </article>
+
+                    <article class="permission-user-stat compact-user-row">
+                        <div class="compact-user-meta">
+                            <span class="stat-label">Last Login</span>
+                            <strong class="stat-value">{{ selected_user.last_login|date:"M d, Y"|default:"Never" }}</strong>
+                        </div>
+                        <div class="compact-user-meta">
+                            <span class="stat-label">Member Since</span>
+                            <strong class="stat-value">{{ selected_user.date_joined|date:"M d, Y" }}</strong>
+                        </div>
+                    </article>
+                </div>
+            </aside>
+
+            <div class="permission-toggle-card glass-panel permission-toggle-card-compact">
+                <div class="permission-card-header">
+                    <div class="header-left">
+                        <h3 class="permission-card-title">Module Permissions</h3>
+                        <p class="permission-card-subtitle">Toggle access for each module below.</p>
+                    </div>
+                    <div class="permission-save-status is-info" data-permission-status aria-live="polite">All changes saved</div>
+                </div>
+
+                <div class="permission-toggle-list permission-toggle-list-compact">
+                    {% for item in permission_items %}
+                        <div class="permission-toggle-item glass-card">
+                            <div class="permission-toggle-copy">
+                                <div class="item-header">
+                                    <strong class="item-title">{{ item.label }}</strong>
+                                    <span class="item-badge">{{ item.category|default:"Module" }}</span>
+                                </div>
+                                <span class="item-description">Show in sidebar and allow page access.</span>
+                            </div>
+                            <label class="premium-switch">
+                                <input
+                                    type="checkbox"
+                                    data-permission-toggle
+                                    data-user-id="{{ selected_user.pk }}"
+                                    data-field="{{ item.field }}"
+                                    {% if item.enabled %}checked{% endif %}
+                                >
+                                <span class="switch-slider">
+                                    <span class="switch-state switch-on">ON</span>
+                                    <span class="switch-state switch-off">OFF</span>
+                                </span>
+                            </label>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="permission-footer">
+                    <div class="permission-stats">
+                        <span class="stat-total">Total Modules: {{ permission_items|length }}</span>
+                        <span class="stat-enabled" data-enabled-count>{{ enabled_permission_count }} Enabled</span>
+                    </div>
+                    <button type="button" class="premium-button tertiary-button permission-page-button" data-permission-reset>
+                        <span class="button-content">
+                            <span class="button-icon">&#8635;</span>
+                            <span class="button-text">Reset</span>
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="empty-state glass-panel permission-empty-state">
+            <div class="empty-state-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="8" r="4"></circle>
+                    <path d="M5.5 20.5c.5-4 3.5-6 6.5-6s6 2 6.5 6"></path>
+                </svg>
+            </div>
+            <h3 class="empty-state-title">No Users Available</h3>
+            <p class="empty-state-description">Non-admin users are not available for permission management yet.</p>
+            <a href="{% url 'user-list' %}" class="premium-button primary-button permission-page-button">
+                <span class="button-content">Manage Users</span>
+            </a>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const statusNode = document.querySelector("[data-permission-status]");
+    const toggleNodes = Array.from(document.querySelectorAll("[data-permission-toggle]"));
+    const resetButton = document.querySelector("[data-permission-reset]");
+
+    if (resetButton) {
+        resetButton.addEventListener("click", () => {
+            window.location.reload();
+        });
+    }
+
+    if (!statusNode || !toggleNodes.length) {
+        return;
+    }
+
+    const updateStatus = (message, tone = "") => {
+        statusNode.textContent = message;
+        statusNode.classList.remove("is-success", "is-error", "is-info");
+
+        if (tone) {
+            statusNode.classList.add(`is-${tone}`);
+
+            if (tone === "success") {
+                window.setTimeout(() => {
+                    statusNode.classList.remove("is-success");
+                    statusNode.classList.add("is-info");
+                    statusNode.textContent = "All changes saved";
+                }, 3000);
+            }
+        }
+    };
+
+    const getCsrfToken = () => {
+        const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        return csrfInput ? csrfInput.value : "";
+    };
+
+    const updateEnabledCount = () => {
+        const enabledCount = toggleNodes.filter((node) => node.checked).length;
+        const statElement = document.querySelector("[data-enabled-count]");
+        if (statElement) {
+            statElement.textContent = `${enabledCount} Enabled`;
+        }
+    };
+
+    toggleNodes.forEach((toggleNode) => {
+        toggleNode.addEventListener("change", async () => {
+            const previousChecked = !toggleNode.checked;
+            const toggleItem = toggleNode.closest(".permission-toggle-item");
+
+            updateStatus("Saving permission...", "info");
+            toggleNode.disabled = true;
+            toggleItem?.classList.add("is-saving");
+
+            try {
+                const response = await fetch("{% url 'permission-settings' %}", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": getCsrfToken(),
+                    },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        user: toggleNode.dataset.userId,
+                        field: toggleNode.dataset.field,
+                        value: toggleNode.checked,
+                    }),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok || !data.ok) {
+                    throw new Error(data.message || "Could not save permission.");
+                }
+
+                updateStatus("Permission updated successfully", "success");
+                updateEnabledCount();
+            } catch (error) {
+                toggleNode.checked = previousChecked;
+                updateStatus(error.message || "Could not save permission.", "error");
+                toggleItem?.classList.add("is-error");
+                window.setTimeout(() => {
+                    toggleItem?.classList.remove("is-error");
+                }, 500);
+            } finally {
+                toggleNode.disabled = false;
+                toggleItem?.classList.remove("is-saving");
+            }
+        });
+    });
+
+    updateEnabledCount();
+});
+</script>
+{% endblock %}

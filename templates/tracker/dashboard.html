@@ -27,11 +27,19 @@
                 </label>
                 <button type="submit" class="dashboard-command-submit">Apply</button>
             </form>
-            <div class="dashboard-premium-actions">
-                <a class="dashboard-hero-primary" href="{% url 'income-add' %}">Add Income</a>
-                <a class="dashboard-hero-secondary" href="{% url 'daily-settlement' %}">Daily Settlement</a>
-                <a class="dashboard-hero-secondary" href="{% url 'expense-add' %}">Add Expense</a>
-            </div>
+            {% if perm.allow_income or perm.allow_daily_settlement or perm.allow_expenses %}
+                <div class="dashboard-premium-actions">
+                    {% if perm.allow_income %}
+                        <a class="dashboard-hero-primary" href="{% url 'income-add' %}">Add Income</a>
+                    {% endif %}
+                    {% if perm.allow_daily_settlement %}
+                        <a class="dashboard-hero-secondary" href="{% url 'daily-settlement' %}">Daily Settlement</a>
+                    {% endif %}
+                    {% if perm.allow_expenses %}
+                        <a class="dashboard-hero-secondary" href="{% url 'expense-add' %}">Add Expense</a>
+                    {% endif %}
+                </div>
+            {% endif %}
         </div>
     </div>
 
@@ -165,62 +173,68 @@
             </div>
         {% endif %}
 
-        <a class="dashboard-panel-button" href="{% url 'daily-settlement' %}">Open Daily Settlement</a>
-    </article>
-
-    <article class="premium-panel dashboard-feed-card dashboard-span-2">
-        <div class="dashboard-card-head">
-            <div>
-                <span class="eyebrow">Recent Income</span>
-                <h2>Latest collections</h2>
-            </div>
-            <p>Showing the latest saved income records</p>
-        </div>
-
-        {% if recent_income %}
-            <div class="dashboard-feed-list">
-                {% for record in recent_income %}
-                    <div class="dashboard-feed-item">
-                        <span class="dashboard-feed-avatar">{{ record.title|slice:":1"|upper }}</span>
-                        <div>
-                            <strong>{{ record.title }}</strong>
-                            <p>{{ record.source }} | {{ record.category }}</p>
-                        </div>
-                        <span class="dashboard-feed-amount positive">Rs. {{ record.amount }}</span>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="empty-state">No income records yet.</div>
+        {% if perm.allow_daily_settlement %}
+            <a class="dashboard-panel-button" href="{% url 'daily-settlement' %}">Open Daily Settlement</a>
         {% endif %}
     </article>
 
-    <article class="premium-panel dashboard-feed-card">
-        <div class="dashboard-card-head">
-            <div>
-                <span class="eyebrow">Recent Expenses</span>
-                <h2>Latest spending</h2>
+    {% if perm.allow_income %}
+        <article class="premium-panel dashboard-feed-card dashboard-span-2">
+            <div class="dashboard-card-head">
+                <div>
+                    <span class="eyebrow">Recent Income</span>
+                    <h2>Latest collections</h2>
+                </div>
+                <p>Showing the latest saved income records</p>
             </div>
-            <p>Most recent expenses in this role workspace</p>
-        </div>
 
-        {% if recent_expenses %}
-            <div class="dashboard-feed-list">
-                {% for record in recent_expenses %}
-                    <div class="dashboard-feed-item">
-                        <span class="dashboard-feed-avatar dashboard-feed-avatar-expense">{{ record.title|slice:":1"|upper }}</span>
-                        <div>
-                            <strong>{{ record.title }}</strong>
-                            <p>{{ record.supplier_display }} | {{ record.category }}</p>
+            {% if recent_income %}
+                <div class="dashboard-feed-list">
+                    {% for record in recent_income %}
+                        <div class="dashboard-feed-item">
+                            <span class="dashboard-feed-avatar">{{ record.title|slice:":1"|upper }}</span>
+                            <div>
+                                <strong>{{ record.title }}</strong>
+                                <p>{{ record.source }} | {{ record.category }}</p>
+                            </div>
+                            <span class="dashboard-feed-amount positive">Rs. {{ record.amount }}</span>
                         </div>
-                        <span class="dashboard-feed-amount negative">Rs. {{ record.amount }}</span>
-                    </div>
-                {% endfor %}
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">No income records yet.</div>
+            {% endif %}
+        </article>
+    {% endif %}
+
+    {% if perm.allow_expenses %}
+        <article class="premium-panel dashboard-feed-card">
+            <div class="dashboard-card-head">
+                <div>
+                    <span class="eyebrow">Recent Expenses</span>
+                    <h2>Latest spending</h2>
+                </div>
+                <p>Most recent expenses in this role workspace</p>
             </div>
-        {% else %}
-            <div class="empty-state">No expense records yet.</div>
-        {% endif %}
-    </article>
+
+            {% if recent_expenses %}
+                <div class="dashboard-feed-list">
+                    {% for record in recent_expenses %}
+                        <div class="dashboard-feed-item">
+                            <span class="dashboard-feed-avatar dashboard-feed-avatar-expense">{{ record.title|slice:":1"|upper }}</span>
+                            <div>
+                                <strong>{{ record.title }}</strong>
+                                <p>{{ record.supplier_display }} | {{ record.category }}</p>
+                            </div>
+                            <span class="dashboard-feed-amount negative">Rs. {{ record.amount }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state">No expense records yet.</div>
+            {% endif %}
+        </article>
+    {% endif %}
 
     <article class="premium-panel dashboard-action-board dashboard-span-2">
         <div class="dashboard-card-head">
@@ -231,23 +245,34 @@
         </div>
 
         <div class="dashboard-action-grid">
-            <a class="dashboard-action-tile" href="{% url 'income-add' %}">
-                <strong>Record Income</strong>
-                <p>Add sales, orders, and other collections.</p>
-            </a>
-            <a class="dashboard-action-tile" href="{% url 'expense-add' %}">
-                <strong>Capture Expense</strong>
-                <p>Save operating costs and supplier payments.</p>
-            </a>
-            <a class="dashboard-action-tile" href="{% url 'supplier-add' %}">
-                <strong>Add Supplier</strong>
-                <p>Create a new supplier profile and compliance record.</p>
-            </a>
-            <a class="dashboard-action-tile" href="{% url 'reports' %}">
-                <strong>Open Reports</strong>
-                <p>Review month trends, categories, and totals.</p>
-            </a>
+            {% if perm.allow_income %}
+                <a class="dashboard-action-tile" href="{% url 'income-add' %}">
+                    <strong>Record Income</strong>
+                    <p>Add sales, orders, and other collections.</p>
+                </a>
+            {% endif %}
+            {% if perm.allow_expenses %}
+                <a class="dashboard-action-tile" href="{% url 'expense-add' %}">
+                    <strong>Capture Expense</strong>
+                    <p>Save operating costs and supplier payments.</p>
+                </a>
+            {% endif %}
+            {% if perm.allow_suppliers %}
+                <a class="dashboard-action-tile" href="{% url 'supplier-add' %}">
+                    <strong>Add Supplier</strong>
+                    <p>Create a new supplier profile and compliance record.</p>
+                </a>
+            {% endif %}
+            {% if perm.allow_reports %}
+                <a class="dashboard-action-tile" href="{% url 'reports' %}">
+                    <strong>Open Reports</strong>
+                    <p>Review month trends, categories, and totals.</p>
+                </a>
+            {% endif %}
         </div>
+        {% if not perm.allow_income and not perm.allow_expenses and not perm.allow_suppliers and not perm.allow_reports %}
+            <div class="empty-state">No quick actions are enabled for this user.</div>
+        {% endif %}
     </article>
 
     <article class="premium-panel dashboard-progress-card">

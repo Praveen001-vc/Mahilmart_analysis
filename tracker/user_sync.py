@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from django.contrib.auth import get_user_model
 from django.db import transaction
 
-from .models import UserAccountProfile
+from .models import UserAccountProfile, UserModulePermission
 from .sales_sync import build_sqlserver_connection_string, normalize_text, pyodbc
 from .user_roles import apply_user_role, infer_role_from_source
 
@@ -110,6 +110,7 @@ def sync_users_from_rows(rows):
             profile.source_reference = USER_SYNC_SOURCE_REFERENCE
             profile.source_user_no = source_user_no
             profile.save()
+            UserModulePermission.objects.get_or_create(user=user)
 
         stats.inserted_count += 1
 
