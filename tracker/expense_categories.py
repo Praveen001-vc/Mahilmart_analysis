@@ -1,17 +1,4 @@
 from .models import ExpenseCategory
-from .user_roles import filter_queryset_by_role
-
-DEFAULT_EXPENSE_CATEGORIES = (
-    "Transport",
-    "Utilities",
-    "Salary",
-    "Rent",
-    "Purchase",
-    "Maintenance",
-    "Delivery",
-    "Fuel",
-    "General",
-)
 
 
 def normalize_expense_category_name(name):
@@ -19,30 +6,106 @@ def normalize_expense_category_name(name):
 
 
 COUNTER_EXPENSE_CATEGORY = "Counter Expense"
+DEFAULT_EXPENSE_CATEGORY_PURPOSES = {
+    "Purchase / Inventory Expenses": [
+        "Grocery Purchase (Rice, oil, spices, etc.)",
+        "Fruits & Vegetables",
+        "Dairy Products",
+        "Beverages",
+        "Frozen Items",
+        "Bakery Items",
+        "Household Products (detergents, cleaners)",
+        "Personal Care Items",
+    ],
+    "Utility Expenses": [
+        "Electricity Bill",
+        "Water Bill",
+        "Internet / Wi-Fi",
+        "Gas",
+    ],
+    "Staff & Salary Expenses": [
+        "Employee Salaries",
+        "Wages (Daily Workers)",
+        "Overtime Pay",
+        "Staff Incentives / Bonus",
+    ],
+    "Shop Maintenance": [
+        "Cleaning Supplies",
+        "Repairs & Maintenance",
+        "AC Service",
+        "Equipment Maintenance",
+    ],
+    "Transportation & Logistics": [
+        "Goods Transport Charges",
+        "Fuel Expenses",
+        "Delivery Charges",
+        "Loading / Unloading Charges",
+    ],
+    "Packaging & Supplies": [
+        "Carry Bags (Plastic / Paper)",
+        "Packaging Materials",
+        "Labels / Stickers",
+        "Billing Paper Rolls",
+    ],
+    "Marketing & Promotions": [
+        "Advertisement (Online / Offline)",
+        "Banner / Flex Printing",
+        "Offer Promotions",
+        "Social Media Marketing",
+    ],
+    "Financial Expenses": [
+        "Bank Charges",
+        "POS Machine Charges",
+        "Loan EMI",
+        "GST / Taxes",
+    ],
+    "Software & System": [
+        "Billing Software Subscription",
+        "POS System Maintenance",
+        "Hardware (Scanner, Printer)",
+        "Cloud / Hosting Charges",
+    ],
+    "Miscellaneous Expenses": [
+        "Security (Guard / CCTV)",
+        "Stationery",
+        "Small Misc Expenses",
+        "Emergency Expenses",
+    ],
+}
+DEFAULT_EXPENSE_CATEGORIES = tuple(DEFAULT_EXPENSE_CATEGORY_PURPOSES.keys())
 
 
 def ensure_expense_categories_for_role(user):
     if not getattr(user, "is_authenticated", False):
         return ExpenseCategory.objects.none()
 
-    queryset = filter_queryset_by_role(ExpenseCategory.objects.all(), user).order_by("name", "pk")
-    if queryset.exists():
-        return queryset
-
-    ExpenseCategory.objects.bulk_create(
-        [
-            ExpenseCategory(user=user, name=category_name)
-            for category_name in DEFAULT_EXPENSE_CATEGORIES
-        ],
-        ignore_conflicts=True,
-    )
-    return filter_queryset_by_role(ExpenseCategory.objects.all(), user).order_by("name", "pk")
+    for category_name in (COUNTER_EXPENSE_CATEGORY, *DEFAULT_EXPENSE_CATEGORIES):
+        get_or_create_role_expense_category(user, category_name)
+    return ExpenseCategory.objects.filter(user=user).order_by("name", "pk")
 
 
 def get_expense_category_options(user):
-    return list(
-        ensure_expense_categories_for_role(user).values_list("name", flat=True)
+    category_names = {
+        category.name.casefold(): category.name
+        for category in ensure_expense_categories_for_role(user)
+    }
+    ordered_names = []
+    for category_name in (COUNTER_EXPENSE_CATEGORY, *DEFAULT_EXPENSE_CATEGORIES):
+        matched_name = category_names.pop(category_name.casefold(), None)
+        if matched_name is not None:
+            ordered_names.append(matched_name)
+
+    ordered_names.extend(
+        sorted(category_names.values(), key=lambda value: value.casefold())
     )
+    return ordered_names
+
+
+def get_expense_category_purpose_map():
+    return {
+        category_name: list(purpose_options)
+        for category_name, purpose_options in DEFAULT_EXPENSE_CATEGORY_PURPOSES.items()
+    }
 
 
 def get_or_create_role_expense_category(user, name):
@@ -51,7 +114,7 @@ def get_or_create_role_expense_category(user, name):
         return None
 
     existing = (
-        filter_queryset_by_role(ExpenseCategory.objects.all(), user)
+        ExpenseCategory.objects.filter(user=user)
         .filter(name__iexact=normalized_name)
         .first()
     )

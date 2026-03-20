@@ -1,0 +1,573 @@
+{% extends "base.html" %}
+
+{% block title %}Reconciliation | Mahilmart{% endblock %}
+{% block body_class %}app-shell daily-settlement-shell reconciliation-shell{% endblock %}
+
+{% block content %}
+<div class="header-bar reconciliation-header-bar">
+    <div>
+        <h1>Separate income and expense entries</h1>
+        <!-- <p class="reconciliation-subtitle">
+            This workspace keeps reconciliation income and reconciliation expense fully separate
+            from the normal Income and Expense pages.
+        </p> -->
+    </div>
+    <a href="{% url 'reports' %}" class="back-btn">Back to Reports</a>
+</div>
+
+<div class="date-strip reconciliation-date-strip">
+    <div class="date-range">
+        <span class="date-label">{{ reconciliation_label }}</span>
+        <p class="reconciliation-date-help">Choose the period and add separate entries only for this workspace.</p>
+    </div>
+
+    <form method="get" action="{% url 'reconciliation' %}" class="date-form reconciliation-date-form">
+        <input
+            id="reconciliation-start-date"
+            type="date"
+            name="start_date"
+            value="{{ reconciliation_filters.start_date }}"
+        >
+        <input
+            id="reconciliation-end-date"
+            type="date"
+            name="end_date"
+            value="{{ reconciliation_filters.end_date }}"
+        >
+        <button type="submit">Apply</button>
+        <a href="{% url 'reconciliation' %}">Reset</a>
+    </form>
+</div>
+
+<div class="main-layout reconciliation-main-layout">
+    <div class="form-column reconciliation-form-column">
+        <div class="date-header reconciliation-date-header">
+            <div class="current-date">
+                <span class="day">Separate Workspace</span>
+                <span class="full-date">{{ reconciliation_label }}</span>
+            </div>
+
+            <div class="recent-mini">
+                <span class="recent-label">Entries:</span>
+                <span class="recent-item active">{{ income_count }} income</span>
+                <span class="recent-item">{{ expense_count }} expense</span>
+            </div>
+        </div>
+
+        <div class="summary-sections-grid reconciliation-sections-grid">
+            <section class="form-section summary-section">
+                <div class="section-head">
+                    <span class="section-num">I</span>
+                    <h2>Add reconciliation income</h2>
+                </div>
+
+                <div class="section-body">
+                    <p class="reconciliation-section-copy">These entries stay only inside this page.</p>
+
+                    <form method="post" action="{% url 'reconciliation' %}" class="reconciliation-entry-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="save_income">
+                        <input type="hidden" name="start_date" value="{{ reconciliation_filters.start_date }}">
+                        <input type="hidden" name="end_date" value="{{ reconciliation_filters.end_date }}">
+
+                        {% if income_form.non_field_errors %}
+                            <div class="field-error">
+                                {% for error in income_form.non_field_errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        <div class="reconciliation-form-grid">
+                            <div class="field-block">
+                                <label for="{{ income_form.title.id_for_label }}">{{ income_form.title.label }}</label>
+                                {{ income_form.title }}
+                                {% if income_form.title.errors %}<div class="field-error">{{ income_form.title.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ income_form.source.id_for_label }}">{{ income_form.source.label }}</label>
+                                {{ income_form.source }}
+                                {% if income_form.source.errors %}<div class="field-error">{{ income_form.source.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ income_form.category.id_for_label }}">{{ income_form.category.label }}</label>
+                                {{ income_form.category }}
+                                {% if income_form.category.errors %}<div class="field-error">{{ income_form.category.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ income_form.amount.id_for_label }}">{{ income_form.amount.label }}</label>
+                                {{ income_form.amount }}
+                                {% if income_form.amount.errors %}<div class="field-error">{{ income_form.amount.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ income_form.transaction_date.id_for_label }}">{{ income_form.transaction_date.label }}</label>
+                                {{ income_form.transaction_date }}
+                                {% if income_form.transaction_date.errors %}<div class="field-error">{{ income_form.transaction_date.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ income_form.payment_method.id_for_label }}">{{ income_form.payment_method.label }}</label>
+                                {{ income_form.payment_method }}
+                                {% if income_form.payment_method.errors %}<div class="field-error">{{ income_form.payment_method.errors|join:", " }}</div>{% endif %}
+                            </div>
+                        </div>
+
+                        <div class="field-block">
+                            <label for="{{ income_form.opening_balance.id_for_label }}">{{ income_form.opening_balance.label }}</label>
+                            {{ income_form.opening_balance }}
+                            {% if income_form.opening_balance.errors %}<div class="field-error">{{ income_form.opening_balance.errors|join:", " }}</div>{% endif %}
+                        </div>
+
+                        <div class="field-block reconciliation-notes-field">
+                            <label for="{{ income_form.notes.id_for_label }}">{{ income_form.notes.label }}</label>
+                            {{ income_form.notes }}
+                            {% if income_form.notes.errors %}<div class="field-error">{{ income_form.notes.errors|join:", " }}</div>{% endif %}
+                        </div>
+
+                        <div class="form-buttons reconciliation-form-buttons">
+                            <a
+                                href="{% url 'reconciliation' %}?start_date={{ reconciliation_filters.start_date }}&end_date={{ reconciliation_filters.end_date }}"
+                                class="btn-clear"
+                            >
+                                Clear
+                            </a>
+                            <button type="submit" class="btn-save">Save Income Entry</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <section class="form-section summary-section">
+                <div class="section-head">
+                    <span class="section-num">II</span>
+                    <h2>Add reconciliation expense</h2>
+                </div>
+
+                <div class="section-body">
+                    <p class="reconciliation-section-copy">These entries stay only inside this page.</p>
+
+                    <form method="post" action="{% url 'reconciliation' %}" class="reconciliation-entry-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="save_expense">
+                        <input type="hidden" name="start_date" value="{{ reconciliation_filters.start_date }}">
+                        <input type="hidden" name="end_date" value="{{ reconciliation_filters.end_date }}">
+
+                        {% if expense_form.non_field_errors %}
+                            <div class="field-error">
+                                {% for error in expense_form.non_field_errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+
+                        <div class="reconciliation-form-grid">
+                            <div class="field-block">
+                                <label for="{{ expense_form.category.id_for_label }}">{{ expense_form.category.label }}</label>
+                                {{ expense_form.category }}
+                                {% if expense_form.category.errors %}<div class="field-error">{{ expense_form.category.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ expense_form.vendor.id_for_label }}">{{ expense_form.vendor.label }}</label>
+                                {{ expense_form.vendor }}
+                                {% if expense_form.vendor.errors %}<div class="field-error">{{ expense_form.vendor.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="reconciliation-purpose-select">{{ expense_form.title.label }}</label>
+                                <div class="purpose-hidden-input" hidden>
+                                    {{ expense_form.title }}
+                                </div>
+                                <div class="purpose-select-shell">
+                                    <select
+                                        id="reconciliation-purpose-select"
+                                        class="input-control"
+                                        data-purpose-select="reconciliation-expense"
+                                    >
+                                        <option value="">Select Purpose</option>
+                                    </select>
+                                </div>
+                                <small class="help-text">Purpose suggestions change when you choose a category.</small>
+                                {% if expense_form.title.errors %}<div class="field-error">{{ expense_form.title.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ expense_form.amount.id_for_label }}">{{ expense_form.amount.label }}</label>
+                                {{ expense_form.amount }}
+                                {% if expense_form.amount.errors %}<div class="field-error">{{ expense_form.amount.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ expense_form.transaction_date.id_for_label }}">{{ expense_form.transaction_date.label }}</label>
+                                {{ expense_form.transaction_date }}
+                                {% if expense_form.transaction_date.errors %}<div class="field-error">{{ expense_form.transaction_date.errors|join:", " }}</div>{% endif %}
+                            </div>
+                            <div class="field-block">
+                                <label for="{{ expense_form.payment_method.id_for_label }}">{{ expense_form.payment_method.label }}</label>
+                                {{ expense_form.payment_method }}
+                                {% if expense_form.payment_method.errors %}<div class="field-error">{{ expense_form.payment_method.errors|join:", " }}</div>{% endif %}
+                            </div>
+                        </div>
+
+                        <div class="field-block reconciliation-notes-field">
+                            <label for="{{ expense_form.notes.id_for_label }}">{{ expense_form.notes.label }}</label>
+                            {{ expense_form.notes }}
+                            {% if expense_form.notes.errors %}<div class="field-error">{{ expense_form.notes.errors|join:", " }}</div>{% endif %}
+                        </div>
+
+                        <div class="form-buttons reconciliation-form-buttons">
+                            <a
+                                href="{% url 'reconciliation' %}?start_date={{ reconciliation_filters.start_date }}&end_date={{ reconciliation_filters.end_date }}"
+                                class="btn-clear"
+                            >
+                                Clear
+                            </a>
+                            <button type="submit" class="btn-save">Save Expense Entry</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div class="calculator-column reconciliation-sidebar">
+        <div class="cash-count-card reconciliation-summary-card">
+            <h3>Workspace Summary</h3>
+
+            <div class="reconciliation-metric-list">
+                <div class="reconciliation-metric-row">
+                    <span>Manual income total</span>
+                    <strong class="positive">Rs. {{ manual_income_total }}</strong>
+                </div>
+                <div class="reconciliation-metric-row reconciliation-metric-row-editable">
+                    <div class="reconciliation-metric-head">
+                        <span>Opening balance</span>
+                        <button
+                            type="button"
+                            class="reconciliation-metric-action"
+                            data-open-opening-balance-modal
+                        >
+                            Edit
+                        </button>
+                    </div>
+                    <strong>Rs. {{ reconciliation_opening_balance }}</strong>
+                    <small>For {{ reconciliation_opening_balance_date|date:"d-m-Y" }}</small>
+                </div>
+                <div class="reconciliation-settlement-panel">
+                    <div class="reconciliation-settlement-head">
+                        <span>Auto settlement income</span>
+                        <strong class="positive">Rs. {{ settlement_income_total }}</strong>
+                    </div>
+
+                    <div class="reconciliation-settlement-breakdown">
+                        <div class="reconciliation-settlement-item">
+                            <span>Cash settled</span>
+                            <strong>Rs. {{ settlement_cash_total }}</strong>
+                        </div>
+                        <div class="reconciliation-settlement-item">
+                            <span>Split card balance</span>
+                            <strong>Rs. {{ split_card_balance_total }}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="reconciliation-metric-row">
+                    <span>Total income</span>
+                    <strong class="positive">Rs. {{ income_total }}</strong>
+                </div>
+                <div class="reconciliation-metric-row">
+                    <span>Total expense</span>
+                    <strong class="negative">Rs. {{ expense_total }}</strong>
+                </div>
+                <div class="reconciliation-metric-row">
+                    <span>Closing balance</span>
+                    <strong class="positive">Rs. {{ reconciliation_closing_balance }}</strong>
+                </div>
+                <div class="reconciliation-metric-row">
+                    <span>Next day opening</span>
+                    <strong class="positive">Rs. {{ next_day_opening_balance }}</strong>
+                </div>
+                <div class="reconciliation-metric-row">
+                    <span>Tracked entries</span>
+                    <strong>{{ income_count|add:expense_count }}</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="reconciliation-history-grid">
+    <article class="reconciliation-history-card">
+        <div class="reconciliation-card-head">
+            <div>
+                <span class="recent-label">Separate Income</span>
+                <h3>Income entry history</h3>
+            </div>
+            <span class="recent-item active">{{ income_count }} records</span>
+        </div>
+
+        {% if income_records %}
+            <div class="table-shell">
+                <table class="data-table reconciliation-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Title</th>
+                            <th>Source</th>
+                            <th>Category</th>
+                            <th>Payment</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in income_records %}
+                            <tr>
+                                <td>{{ record.transaction_date }}</td>
+                                <td>{{ record.title }}</td>
+                                <td>{{ record.source|default:"-" }}</td>
+                                <td>{{ record.category|default:"-" }}</td>
+                                <td>{{ record.payment_method }}</td>
+                                <td class="positive">Rs. {{ record.amount }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state reconciliation-empty-state">No reconciliation income entries found for the selected dates.</div>
+        {% endif %}
+    </article>
+
+    <article class="reconciliation-history-card">
+        <div class="reconciliation-card-head">
+            <div>
+                <span class="recent-label">Separate Expense</span>
+                <h3>Expense entry history</h3>
+            </div>
+            <span class="recent-item">{{ expense_count }} records</span>
+        </div>
+
+        {% if expense_records %}
+            <div class="table-shell">
+                <table class="data-table reconciliation-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Title</th>
+                            <th>Vendor</th>
+                            <th>Category</th>
+                            <th>Payment</th>
+                            <th>Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in expense_records %}
+                            <tr>
+                                <td>{{ record.transaction_date }}</td>
+                                <td>{{ record.title }}</td>
+                                <td>{{ record.vendor|default:"-" }}</td>
+                                <td>{{ record.category|default:"-" }}</td>
+                                <td>{{ record.payment_method }}</td>
+                                <td class="negative">Rs. {{ record.amount }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state reconciliation-empty-state">No reconciliation expense or purchase entries found for the selected dates.</div>
+        {% endif %}
+    </article>
+</div>
+
+<section
+    class="modal-overlay"
+    data-opening-balance-modal
+    {% if not opening_balance_modal_open %}hidden{% endif %}
+>
+    <div
+        class="modal-card modal-card-narrow premium-panel reconciliation-opening-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reconciliation-opening-balance-title"
+    >
+        <div class="reconciliation-opening-modal-shell">
+            <div class="modal-header reconciliation-opening-modal-header">
+                <div class="reconciliation-opening-modal-copy">
+                    <span class="reconciliation-opening-modal-chip">Opening Balance</span>
+                    <h2 id="reconciliation-opening-balance-title">Edit opening balance</h2>
+                    <p class="reconciliation-opening-modal-note">
+                        Update the opening balance for {{ reconciliation_opening_balance_date|date:"d-m-Y" }} in this workspace.
+                    </p>
+                </div>
+                <button type="button" class="ghost-button" data-close-opening-balance-modal>Close</button>
+            </div>
+
+            <form method="post" action="{% url 'reconciliation' %}" class="reconciliation-opening-modal-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save_opening_balance">
+                <input type="hidden" name="start_date" value="{{ reconciliation_filters.start_date }}">
+                <input type="hidden" name="end_date" value="{{ reconciliation_filters.end_date }}">
+                {{ opening_balance_form.balance_date }}
+
+                {% if opening_balance_form.non_field_errors %}
+                    <div class="field-error">
+                        {% for error in opening_balance_form.non_field_errors %}
+                            <div>{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <div class="modal-summary-grid reconciliation-opening-modal-summary">
+                    <article class="detail-card">
+                        <span>Selected Date</span>
+                        <strong>{{ reconciliation_opening_balance_date|date:"d-m-Y" }}</strong>
+                    </article>
+                    <article class="detail-card">
+                        <span>Current Balance</span>
+                        <strong>Rs. {{ reconciliation_opening_balance }}</strong>
+                    </article>
+                </div>
+
+                <div class="field-block">
+                    <label for="{{ opening_balance_form.amount.id_for_label }}">{{ opening_balance_form.amount.label }}</label>
+                    {{ opening_balance_form.amount }}
+                    {% if opening_balance_form.amount.errors %}<div class="field-error">{{ opening_balance_form.amount.errors|join:", " }}</div>{% endif %}
+                </div>
+
+                <div class="modal-actions reconciliation-opening-modal-actions">
+                    <button type="button" class="secondary-button" data-close-opening-balance-modal>Cancel</button>
+                    <button type="submit" class="primary-button">Save Opening Balance</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+{{ expense_category_purpose_map|json_script:"reconciliation-expense-purpose-map" }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const purposeMapElement = document.getElementById("reconciliation-expense-purpose-map");
+    const openingBalanceModal = document.querySelector("[data-opening-balance-modal]");
+    const openOpeningBalanceButton = document.querySelector("[data-open-opening-balance-modal]");
+    const expenseCategorySelect = document.querySelector('[data-purpose-category="reconciliation-expense"]');
+    const expensePurposeInput = document.querySelector('[data-purpose-input="reconciliation-expense"]');
+    const expensePurposeSelect = document.querySelector('[data-purpose-select="reconciliation-expense"]');
+
+    if (
+        purposeMapElement
+        && expenseCategorySelect
+        && expensePurposeInput
+        && expensePurposeSelect
+    ) {
+        const purposeMap = JSON.parse(purposeMapElement.textContent);
+        const normalizeValue = (value) => (value || "").trim().toLowerCase();
+
+        const buildPurposeOption = (value, label = value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = label;
+            return option;
+        };
+
+        const syncPurposeOptions = ({ preserveCurrent = false } = {}) => {
+            const mappedSuggestions = purposeMap[expenseCategorySelect.value] || [];
+            const suggestions = mappedSuggestions.length
+                ? mappedSuggestions
+                : (expenseCategorySelect.value ? [expenseCategorySelect.value] : []);
+            const currentValue = (expensePurposeInput.value || "").trim();
+            const hadCurrentInSuggestions = suggestions.some(
+                (item) => normalizeValue(item) === normalizeValue(currentValue)
+            );
+
+            expensePurposeSelect.innerHTML = "";
+
+            if (!expenseCategorySelect.value) {
+                expensePurposeSelect.appendChild(
+                    buildPurposeOption("", "Select Purpose")
+                );
+                expensePurposeSelect.disabled = true;
+                expensePurposeInput.value = "";
+                return;
+            }
+
+            expensePurposeSelect.disabled = false;
+            expensePurposeSelect.appendChild(buildPurposeOption("", "Select Purpose"));
+
+            suggestions.forEach((item) => {
+                expensePurposeSelect.appendChild(buildPurposeOption(item));
+            });
+
+            if (preserveCurrent && currentValue && !hadCurrentInSuggestions) {
+                expensePurposeSelect.appendChild(buildPurposeOption(currentValue, currentValue));
+            }
+
+            if (preserveCurrent && currentValue) {
+                expensePurposeSelect.value = currentValue;
+            } else if (hadCurrentInSuggestions) {
+                expensePurposeSelect.value = currentValue;
+            } else {
+                expensePurposeSelect.value = "";
+                if (!preserveCurrent) {
+                    expensePurposeInput.value = "";
+                }
+            }
+        };
+
+        syncPurposeOptions({ preserveCurrent: true });
+
+        expenseCategorySelect.addEventListener("change", () => {
+            syncPurposeOptions();
+        });
+
+        expensePurposeSelect.addEventListener("change", () => {
+            expensePurposeInput.value = expensePurposeSelect.value;
+        });
+    }
+
+    if (!openingBalanceModal || !openOpeningBalanceButton) {
+        return;
+    }
+
+    const openingBalanceInput = openingBalanceModal.querySelector('input[name="opening-amount"]');
+
+    const updateBodyScroll = () => {
+        document.body.classList.toggle("modal-open", !openingBalanceModal.hidden);
+    };
+
+    const openOpeningBalanceModal = () => {
+        openingBalanceModal.hidden = false;
+        updateBodyScroll();
+        window.requestAnimationFrame(() => {
+            openingBalanceInput?.focus();
+            openingBalanceInput?.select();
+        });
+    };
+
+    const closeOpeningBalanceModal = () => {
+        openingBalanceModal.hidden = true;
+        updateBodyScroll();
+        openOpeningBalanceButton.focus();
+    };
+
+    updateBodyScroll();
+
+    openOpeningBalanceButton.addEventListener("click", () => {
+        openOpeningBalanceModal();
+    });
+
+    document.addEventListener("click", (event) => {
+        if (event.target.closest("[data-close-opening-balance-modal]")) {
+            closeOpeningBalanceModal();
+            return;
+        }
+
+        if (event.target === openingBalanceModal) {
+            closeOpeningBalanceModal();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !openingBalanceModal.hidden) {
+            closeOpeningBalanceModal();
+        }
+    });
+});
+</script>
+{% endblock %}

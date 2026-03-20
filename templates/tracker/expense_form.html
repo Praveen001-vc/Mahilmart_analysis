@@ -41,9 +41,11 @@
                 <div class="field-block">
                     <div class="field-label-row">
                         <label for="{{ form.category.id_for_label }}">{{ form.category.label }}{% if form.category.field.required %} *{% endif %}</label>
+                        {% if not expense_add_counter_only %}
                         <button type="button" class="field-label-action category-action-button" data-category-modal-open>
                             <span aria-hidden="true">+</span> Add Category
                         </button>
+                        {% endif %}
                     </div>
                     {{ form.category }}
                     {% if form.category.errors %}
@@ -51,19 +53,35 @@
                     {% endif %}
                 </div>
                 <div class="field-block">
-                    <label for="{{ form.title.id_for_label }}">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
-                    {{ form.title }}
+                    <label for="expense-purpose-select">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
+                    <div class="purpose-hidden-input" hidden>
+                        {{ form.title }}
+                    </div>
+                    <select
+                        id="expense-purpose-select"
+                        class="input-control"
+                        data-purpose-select="expense-form"
+                    >
+                        <option value="">Select Purpose</option>
+                    </select>
+                    <small class="help-text">Purpose suggestions change when you choose a category.</small>
                     {% if form.title.errors %}
                         <div class="field-error">{{ form.title.errors|join:", " }}</div>
                     {% endif %}
                 </div>
-                <div class="entry-inline-note" data-category-count-note>
-                    {% if category_count == 1 %}
-                        1 saved category is available for this shared role workspace.
-                    {% else %}
-                        {{ category_count }} saved categories are available for this shared role workspace.
-                    {% endif %}
-                </div>
+                {% if expense_add_counter_only %}
+                    <div class="entry-inline-note">
+                        This page uses only Counter Expense in the category field.
+                    </div>
+                {% else %}
+                    <div class="entry-inline-note" data-category-count-note>
+                        {% if category_count == 1 %}
+                            1 saved category is available for your account.
+                        {% else %}
+                            {{ category_count }} saved categories are available for your account.
+                        {% endif %}
+                    </div>
+                {% endif %}
                 <div class="entry-inline-note category-inline-feedback" data-category-inline-feedback hidden></div>
             </div>
         </article>
@@ -166,6 +184,8 @@
     </div>
 </form>
 
+{{ expense_category_purpose_map|json_script:"expense-purpose-map" }}
+
 <section class="modal-overlay" data-category-modal hidden>
     <div class="modal-card modal-card-narrow premium-panel category-modal-card" role="dialog" aria-modal="true" aria-labelledby="expense-category-modal-title">
         <div class="category-modal-shell">
@@ -213,7 +233,7 @@
                                 {{ category_count }} ready to use
                             {% endif %}
                         </strong>
-                        <p>Each saved category stays shared across this role workspace, so your team keeps one clean master list.</p>
+                        <p>Your saved categories stay linked to your account, and Counter Expense is always available by default on every device.</p>
                     </article>
                     <article class="category-modal-stat category-modal-stat-accent">
                         <span>Best For</span>
@@ -230,13 +250,103 @@
 {% block extra_scripts %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+    const purposeMapElement = document.getElementById("expense-purpose-map");
+    const purposeMap = purposeMapElement ? JSON.parse(purposeMapElement.textContent) : {};
+    const counterExpenseCategory = "{{ counter_expense_category|escapejs }}";
     const categoryModal = document.querySelector("[data-category-modal]");
     const openCategoryModalButton = document.querySelector("[data-category-modal-open]");
     const categoryForm = document.querySelector("[data-category-form]");
-    const categorySelect = document.getElementById("id_category");
+    const categorySelect = document.querySelector('[data-purpose-category="expense-form"]');
+    const purposeInput = document.querySelector('[data-purpose-input="expense-form"]');
+    const purposeSelect = document.querySelector('[data-purpose-select="expense-form"]');
     const categoryCountNote = document.querySelector("[data-category-count-note]");
     const categoryInlineFeedback = document.querySelector("[data-category-inline-feedback]");
     const modalCountSummary = document.querySelector("[data-category-modal-count]");
+
+    const buildPurposeOption = (value, label = value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        return option;
+    };
+
+    const buildUniqueSuggestions = (items) => {
+        const seen = new Set();
+        const results = [];
+
+        items.forEach((item) => {
+            const cleanedItem = (item || "").trim();
+            const normalizedItem = cleanedItem.toLowerCase();
+
+            if (!cleanedItem || seen.has(normalizedItem)) {
+                return;
+            }
+
+            seen.add(normalizedItem);
+            results.push(cleanedItem);
+        });
+
+        return results;
+    };
+
+    const counterExpenseSuggestions = buildUniqueSuggestions(Object.values(purposeMap).flat());
+
+    const syncPurposeSuggestions = ({ preserveCurrent = false } = {}) => {
+        if (!categorySelect || !purposeInput || !purposeSelect) {
+            return;
+        }
+
+        const mappedSuggestions = purposeMap[categorySelect.value] || [];
+        const suggestions = mappedSuggestions.length
+            ? mappedSuggestions
+            : (
+                categorySelect.value === counterExpenseCategory
+                    ? counterExpenseSuggestions
+                    : (categorySelect.value ? [categorySelect.value] : [])
+            );
+        const currentValue = (purposeInput.value || "").trim();
+        const currentValueLower = currentValue.toLowerCase();
+        const hasCurrentInSuggestions = suggestions.some(
+            (item) => item.trim().toLowerCase() === currentValueLower
+        );
+
+        purposeSelect.innerHTML = "";
+
+        if (!categorySelect.value) {
+            purposeSelect.appendChild(buildPurposeOption("", "Select Purpose"));
+            purposeSelect.disabled = true;
+            purposeInput.value = "";
+            return;
+        }
+
+        purposeSelect.disabled = false;
+        purposeSelect.appendChild(buildPurposeOption("", "Select Purpose"));
+
+        suggestions.forEach((optionLabel) => {
+            purposeSelect.appendChild(buildPurposeOption(optionLabel));
+        });
+
+        if (preserveCurrent && currentValue && !hasCurrentInSuggestions) {
+            purposeSelect.appendChild(buildPurposeOption(currentValue));
+        }
+
+        if (preserveCurrent && currentValue) {
+            purposeSelect.value = currentValue;
+        } else if (hasCurrentInSuggestions) {
+            purposeSelect.value = currentValue;
+        } else {
+            purposeSelect.value = "";
+            if (!preserveCurrent) {
+                purposeInput.value = "";
+            }
+        }
+    };
+
+    syncPurposeSuggestions({ preserveCurrent: true });
+    categorySelect?.addEventListener("change", syncPurposeSuggestions);
+    purposeSelect?.addEventListener("change", () => {
+        purposeInput.value = purposeSelect.value;
+    });
 
     if (!categoryModal || !openCategoryModalButton || !categoryForm || !categorySelect) {
         return;
@@ -283,10 +393,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const buildCountText = (count) => {
         if (count === 1) {
-            return "1 saved category is available for this shared role workspace.";
+            return "1 saved category is available for your account.";
         }
 
-        return `${count} saved categories are available for this shared role workspace.`;
+        return `${count} saved categories are available for your account.`;
     };
 
     const buildModalCountText = (count) => {

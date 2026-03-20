@@ -7,6 +7,8 @@ from .models import (
     IncomeRecord,
     PurchasePayment,
     PurchaseRecord,
+    ReconciliationExpenseEntry,
+    ReconciliationIncomeEntry,
     SalesLedgerRecord,
     Supplier,
     UserAccountProfile,
@@ -138,3 +140,17 @@ class UserModulePermissionAdmin(admin.ModelAdmin):
         "allow_reports",
     )
     search_fields = ("user__username",)
+
+
+@admin.register(ReconciliationIncomeEntry)
+class ReconciliationIncomeEntryAdmin(admin.ModelAdmin):
+    list_display = ("title", "source", "category", "amount", "transaction_date", "user")
+    list_filter = ("transaction_date", "payment_method")
+    search_fields = ("title", "source", "category", "notes")
+
+
+@admin.register(ReconciliationExpenseEntry)
+class ReconciliationExpenseEntryAdmin(admin.ModelAdmin):
+    list_display = ("title", "vendor", "category", "amount", "transaction_date", "user")
+    list_filter = ("transaction_date", "payment_method")
+    search_fields = ("title", "vendor", "category", "notes")

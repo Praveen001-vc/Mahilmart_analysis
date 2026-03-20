@@ -18,6 +18,9 @@ from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 from django.views.generic import CreateView, ListView, RedirectView, TemplateView, UpdateView
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -32,6 +35,7 @@ from .access_control import (
 from .expense_categories import (
     COUNTER_EXPENSE_CATEGORY,
     ensure_expense_categories_for_role,
+    get_expense_category_purpose_map,
     get_expense_category_options as get_saved_expense_category_options,
     get_or_create_role_expense_category,
     normalize_expense_category_name,
@@ -43,6 +47,9 @@ from .forms import (
     IncomeForm,
     PurchaseForm,
     PurchasePaymentForm,
+    ReconciliationExpenseForm,
+    ReconciliationIncomeForm,
+    ReconciliationOpeningBalanceForm,
     SupplierForm,
     UserManagementForm,
 )
@@ -54,6 +61,9 @@ from .models import (
     PaymentMethod,
     PurchasePayment,
     PurchaseRecord,
+    ReconciliationExpenseEntry,
+    ReconciliationIncomeEntry,
+    ReconciliationOpeningBalance,
     SalesLedgerRecord,
     SalesPaymentMode,
     Supplier,
@@ -64,6 +74,12 @@ from .user_sync import UserSyncError, sync_users_from_sqlserver
 from .user_roles import filter_queryset_by_role, get_user_role_label
 
 User = get_user_model()
+RECONCILIATION_NON_CASH_METHODS = (
+    PaymentMethod.CARD,
+    PaymentMethod.UPI,
+    PaymentMethod.BANK_TRANSFER,
+    PaymentMethod.OTHER,
+)
 
 def _sum_amount(queryset):
     return queryset.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
@@ -94,12 +110,22 @@ def get_settlement_closing_balance(
     ) - cash_settled
 
 
-def build_income_ledger_entries(user):
+def build_income_ledger_entries_for_period(user, start_date=None, end_date=None):
     entries = []
+    income_queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user)
+    settlement_queryset = filter_queryset_by_role(
+        DailyCashSettlement.objects.all(),
+        user,
+    )
 
-    for record in filter_queryset_by_role(IncomeRecord.objects.all(), user).order_by(
-        "-transaction_date", "-created_at", "-pk"
-    ):
+    if start_date is not None:
+        income_queryset = income_queryset.filter(transaction_date__gte=start_date)
+        settlement_queryset = settlement_queryset.filter(settlement_date__gte=start_date)
+    if end_date is not None:
+        income_queryset = income_queryset.filter(transaction_date__lt=end_date)
+        settlement_queryset = settlement_queryset.filter(settlement_date__lt=end_date)
+
+    for record in income_queryset.order_by("-transaction_date", "-created_at", "-pk"):
         entries.append(
             {
                 "transaction_date": record.transaction_date,
@@ -114,12 +140,7 @@ def build_income_ledger_entries(user):
             }
         )
 
-    for settlement in filter_queryset_by_role(
-        DailyCashSettlement.objects.all(),
-        user,
-    ).order_by(
-        "-settlement_date", "-updated_at", "-pk"
-    ):
+    for settlement in settlement_queryset.order_by("-settlement_date", "-updated_at", "-pk"):
         settlement_sales_cash = get_sales_cash_from_settlement(settlement)
         entries.append(
             {
@@ -143,6 +164,10 @@ def build_income_ledger_entries(user):
         reverse=True,
     )
     return entries
+
+
+def build_income_ledger_entries(user):
+    return build_income_ledger_entries_for_period(user)
 
 
 def _shift_month(month_start, months_back):
@@ -204,6 +229,660 @@ def build_monthly_overview(user, months=6, anchor_date=None):
         row["expense_width"] = round((row["expense"] / highest_total) * 100, 2)
 
     return rows
+
+
+def get_reporting_income_total(income_queryset, settlement_queryset):
+    return _sum_amount(income_queryset) + _sum_settlement_income(settlement_queryset)
+
+
+def build_reporting_monthly_overview(user, months=6, anchor_date=None):
+    anchor_date = anchor_date or date.today()
+    month_anchor = anchor_date.replace(day=1)
+    income_queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user)
+    expense_queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user)
+    settlement_queryset = filter_queryset_by_role(
+        DailyCashSettlement.objects.all(),
+        user,
+    )
+    rows = []
+
+    for months_back in range(months - 1, -1, -1):
+        month_start = _shift_month(month_anchor, months_back)
+        month_end = _next_month(month_start)
+        if month_start.year == anchor_date.year and month_start.month == anchor_date.month:
+            month_end = anchor_date + timedelta(days=1)
+
+        income_total = _sum_amount(
+            income_queryset.filter(
+                transaction_date__gte=month_start,
+                transaction_date__lt=month_end,
+            )
+        ) + _sum_settlement_income(
+            settlement_queryset.filter(
+                settlement_date__gte=month_start,
+                settlement_date__lt=month_end,
+            )
+        )
+        expense_total = _sum_amount(
+            expense_queryset.filter(
+                transaction_date__gte=month_start,
+                transaction_date__lt=month_end,
+            )
+        )
+        rows.append(
+            {
+                "label": month_start.strftime("%b %Y"),
+                "income": income_total,
+                "expense": expense_total,
+                "balance": income_total - expense_total,
+            }
+        )
+
+    highest_total = max(
+        [max(row["income"], row["expense"]) for row in rows],
+        default=Decimal("1.00"),
+    )
+    if highest_total == 0:
+        highest_total = Decimal("1.00")
+
+    for row in rows:
+        row["income_width"] = round((row["income"] / highest_total) * 100, 2)
+        row["expense_width"] = round((row["expense"] / highest_total) * 100, 2)
+
+    return rows
+
+
+def build_reporting_income_category_overview(income_queryset, settlement_queryset):
+    category_totals = {}
+
+    for row in income_queryset.values("category").annotate(total=Sum("amount")):
+        category = row["category"] or "Uncategorized"
+        category_totals[category] = category_totals.get(category, Decimal("0.00")) + (
+            row["total"] or Decimal("0.00")
+        )
+
+    settlement_total = _sum_settlement_income(settlement_queryset)
+    if settlement_total:
+        category_totals["Daily Settlement"] = category_totals.get(
+            "Daily Settlement",
+            Decimal("0.00"),
+        ) + settlement_total
+
+    ranked_rows = [
+        {"category": category, "total": total}
+        for category, total in sorted(
+            category_totals.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:5]
+    ]
+    return build_ranked_category_overview(ranked_rows)
+
+
+def get_report_month(request, parameter_name="report_month"):
+    raw_value = (request.GET.get(parameter_name) or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}", raw_value):
+        try:
+            return date.fromisoformat(f"{raw_value}-01")
+        except ValueError:
+            pass
+    return date.today().replace(day=1)
+
+
+def get_report_month_bounds(report_month):
+    month_start = report_month.replace(day=1)
+    return month_start, _next_month(month_start)
+
+
+def autosize_report_worksheet(worksheet):
+    for column_cells in worksheet.columns:
+        column_letter = get_column_letter(column_cells[0].column)
+        max_length = 0
+        for cell in column_cells:
+            cell_value = "" if cell.value is None else str(cell.value)
+            max_length = max(max_length, len(cell_value))
+        worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 12), 32)
+
+
+def style_report_export_sheet(worksheet, header_row=1):
+    header_fill = PatternFill(fill_type="solid", fgColor="163B6D")
+    header_font = Font(color="FFFFFF", bold=True)
+
+    for cell in worksheet[header_row]:
+        cell.fill = header_fill
+        cell.font = header_font
+
+    worksheet.freeze_panes = worksheet[f"A{header_row + 1}"]
+    worksheet.auto_filter.ref = worksheet.dimensions
+    autosize_report_worksheet(worksheet)
+
+
+def build_reports_excel_response(user, report_month):
+    month_start, month_end = get_report_month_bounds(report_month)
+    month_label = report_month.strftime("%B %Y")
+    manual_income_queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user).filter(
+        transaction_date__gte=month_start,
+        transaction_date__lt=month_end,
+    )
+    expense_queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user).filter(
+        transaction_date__gte=month_start,
+        transaction_date__lt=month_end,
+    ).select_related("supplier")
+    purchase_queryset = get_purchase_base_queryset(user).filter(
+        transaction_date__gte=month_start,
+        transaction_date__lt=month_end,
+    )
+    settlement_queryset = filter_queryset_by_role(
+        DailyCashSettlement.objects.all(),
+        user,
+    ).filter(
+        settlement_date__gte=month_start,
+        settlement_date__lt=month_end,
+    )
+    manual_income_total = _sum_amount(manual_income_queryset)
+    settlement_income_total = _sum_settlement_income(settlement_queryset)
+    total_sales = manual_income_total + settlement_income_total
+    total_expenses = _sum_amount(expense_queryset)
+    total_purchases = (
+        purchase_queryset.aggregate(total=Sum("total_amount"))["total"] or Decimal("0.00")
+    )
+    income_entries = build_income_ledger_entries_for_period(user, month_start, month_end)
+
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "Summary"
+    summary_sheet["A1"] = "Mahilmart Monthly Report"
+    summary_sheet["A1"].font = Font(bold=True, size=14)
+    summary_sheet.append([])
+    summary_sheet.append(["Metric", "Value"])
+    for label, value in (
+        ("Selected Month", month_label),
+        ("Manual Income", float(manual_income_total)),
+        ("Daily Settlement Income", float(settlement_income_total)),
+        ("Total Sales", float(total_sales)),
+        ("Total Expenses", float(total_expenses)),
+        ("Net Profit", float(total_sales - total_expenses)),
+        ("Total Purchases", float(total_purchases)),
+        ("Income Entries", len(income_entries)),
+        ("Expense Entries", expense_queryset.count()),
+        ("Purchase Entries", purchase_queryset.count()),
+        ("Settlement Entries", settlement_queryset.count()),
+    ):
+        summary_sheet.append([label, value])
+    style_report_export_sheet(summary_sheet, header_row=3)
+
+    income_sheet = workbook.create_sheet("Income")
+    income_sheet.append(
+        ["Date", "Title", "Source", "Category", "Payment Method", "Amount", "Entry Type"]
+    )
+    for entry in income_entries:
+        income_sheet.append(
+            [
+                entry["transaction_date"].isoformat() if entry["transaction_date"] else "",
+                entry["title"],
+                entry["source"],
+                entry["category"],
+                entry["payment_method"],
+                float(entry["amount"]),
+                entry["entry_type"].title(),
+            ]
+        )
+    style_report_export_sheet(income_sheet)
+
+    expense_sheet = workbook.create_sheet("Expenses")
+    expense_sheet.append(
+        ["Date", "Purpose", "Vendor", "Category", "Payment Method", "Amount", "Notes"]
+    )
+    for record in expense_queryset.order_by("-transaction_date", "-created_at", "-pk"):
+        expense_sheet.append(
+            [
+                record.transaction_date.isoformat() if record.transaction_date else "",
+                record.title,
+                record.supplier_display,
+                record.category,
+                record.payment_method,
+                float(record.amount),
+                record.notes,
+            ]
+        )
+    style_report_export_sheet(expense_sheet)
+
+    purchase_sheet = workbook.create_sheet("Purchases")
+    purchase_sheet.append(
+        [
+            "Date",
+            "Supplier",
+            "Purchase Type",
+            "Invoice Number",
+            "Total Amount",
+            "Paid Amount",
+            "Pending Amount",
+            "Notes",
+        ]
+    )
+    for record in purchase_queryset.order_by("-transaction_date", "-created_at", "-pk"):
+        purchase_sheet.append(
+            [
+                record.transaction_date.isoformat() if record.transaction_date else "",
+                record.supplier_name or (record.supplier.name if record.supplier else ""),
+                record.purchase_type,
+                record.invoice_number,
+                float(record.total_amount),
+                float(record.paid_amount),
+                float(record.pending_amount),
+                record.notes,
+            ]
+        )
+    style_report_export_sheet(purchase_sheet)
+
+    settlement_sheet = workbook.create_sheet("Daily Settlement")
+    settlement_sheet.append(
+        [
+            "Date",
+            "Opening Balance",
+            "GPay Settled",
+            "Cash Settled",
+            "Expense Amount",
+            "Closing Balance",
+            "Actual Sales",
+            "Cash Settled To",
+            "Notes",
+        ]
+    )
+    for settlement in settlement_queryset.order_by("-settlement_date", "-updated_at", "-pk"):
+        settlement_sheet.append(
+            [
+                settlement.settlement_date.isoformat(),
+                float(settlement.opening_balance),
+                float(settlement.gpay_settled),
+                float(settlement.cash_settled),
+                float(settlement.expense_amount),
+                float(settlement.closing_balance),
+                float(settlement.actual_sales),
+                settlement.cash_settled_to,
+                settlement.notes,
+            ]
+        )
+    style_report_export_sheet(settlement_sheet)
+
+    output = BytesIO()
+    workbook.save(output)
+    response = HttpResponse(
+        output.getvalue(),
+        content_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+    )
+    response["Content-Disposition"] = (
+        f'attachment; filename="mahilmart_report_{report_month:%Y-%m}.xlsx"'
+    )
+    return response
+
+
+def get_reconciliation_filter_values(params):
+    today = date.today()
+    start_date = parse_date((params.get("start_date") or "").strip())
+    end_date = parse_date((params.get("end_date") or "").strip())
+
+    if start_date is None and end_date is None:
+        start_date = today
+        end_date = today
+    elif start_date is None:
+        start_date = end_date
+    elif end_date is None:
+        end_date = start_date
+
+    if start_date and end_date and start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    return {
+        "start_date": start_date or today,
+        "end_date": end_date or today,
+    }
+
+
+def build_reconciliation_redirect_url(params):
+    filter_values = get_reconciliation_filter_values(params)
+    return (
+        f"{reverse('reconciliation')}?"
+        f"{urlencode(
+            {
+                'start_date': filter_values['start_date'].isoformat(),
+                'end_date': filter_values['end_date'].isoformat(),
+            }
+        )}"
+    )
+
+
+def build_reconciliation_income_entries(user, filter_values):
+    manual_queryset = filter_queryset_by_role(
+        ReconciliationIncomeEntry.objects.all(),
+        user,
+    ).filter(
+        transaction_date__gte=filter_values["start_date"],
+        transaction_date__lte=filter_values["end_date"],
+    )
+    settlement_queryset = filter_queryset_by_role(
+        DailyCashSettlement.objects.all(),
+        user,
+    ).filter(
+        settlement_date__gte=filter_values["start_date"],
+        settlement_date__lte=filter_values["end_date"],
+    ).filter(
+        Q(cash_settled__gt=0) | Q(gpay_settled__gt=0),
+    )
+
+    settlement_records = list(
+        settlement_queryset.order_by(
+            "-settlement_date",
+            "-updated_at",
+            "-pk",
+        )
+    )
+    entries = []
+    for record in manual_queryset.order_by("-transaction_date", "-created_at", "-pk"):
+        entries.append(
+            {
+                "transaction_date": record.transaction_date,
+                "title": record.title,
+                "source": record.source,
+                "category": record.category,
+                "payment_method": record.payment_method,
+                "amount": record.amount,
+                "entry_type": "manual",
+                "sort_date": record.transaction_date,
+                "sort_timestamp": record.created_at,
+            }
+        )
+
+    for settlement in settlement_records:
+        if settlement.cash_settled > 0:
+            entries.append(
+                {
+                    "transaction_date": settlement.settlement_date,
+                    "title": "Daily Cash Settlement",
+                    "source": (
+                        f"Cash settled to {settlement.cash_settled_to}"
+                        if settlement.cash_settled_to
+                        else "Automatic from Daily Cash Settlement"
+                    ),
+                    "category": "Daily Settlement",
+                    "payment_method": "Cash",
+                    "amount": settlement.cash_settled,
+                    "entry_type": "settlement",
+                    "sort_date": settlement.settlement_date,
+                    "sort_timestamp": settlement.updated_at,
+                }
+            )
+
+        if settlement.gpay_settled > 0:
+            entries.append(
+                {
+                    "transaction_date": settlement.settlement_date,
+                    "title": "Daily Card Settlement",
+                    "source": "Automatic from Daily Cash Settlement",
+                    "category": "Daily Settlement",
+                    "payment_method": "Card / UPI",
+                    "amount": settlement.gpay_settled,
+                    "entry_type": "settlement",
+                    "sort_date": settlement.settlement_date,
+                    "sort_timestamp": settlement.updated_at,
+                }
+            )
+
+    entries.sort(
+        key=lambda item: (item["sort_date"], item["sort_timestamp"]),
+        reverse=True,
+    )
+    manual_income_total = _sum_amount(manual_queryset)
+    manual_cash_income_total = _sum_amount(
+        manual_queryset.filter(payment_method=PaymentMethod.CASH)
+    )
+    settlement_income_total = (
+        sum(
+            (
+                (settlement.cash_settled or Decimal("0.00"))
+                + (settlement.gpay_settled or Decimal("0.00"))
+                for settlement in settlement_records
+            ),
+            Decimal("0.00"),
+        )
+    )
+    settlement_cash_total = sum(
+        (settlement.cash_settled or Decimal("0.00") for settlement in settlement_records),
+        Decimal("0.00"),
+    )
+    settlement_card_total = sum(
+        (settlement.gpay_settled or Decimal("0.00") for settlement in settlement_records),
+        Decimal("0.00"),
+    )
+    return {
+        "records": entries,
+        "manual_income_total": manual_income_total,
+        "manual_cash_income_total": manual_cash_income_total,
+        "settlement_income_total": settlement_income_total,
+        "settlement_cash_total": settlement_cash_total,
+        "settlement_card_total": settlement_card_total,
+    }
+
+
+def get_reconciliation_closing_balance_for_date(user, target_date):
+    opening_balance = get_reconciliation_opening_balance_for_date(user, target_date)
+    manual_income_total = _sum_amount(
+        filter_queryset_by_role(
+            ReconciliationIncomeEntry.objects.all(),
+            user,
+        ).filter(transaction_date=target_date)
+    )
+    settlement_income_total = (
+        filter_queryset_by_role(
+            DailyCashSettlement.objects.all(),
+            user,
+        )
+        .filter(settlement_date=target_date)
+        .aggregate(
+            total=Sum("cash_settled") + Sum("gpay_settled")
+        )["total"]
+        or Decimal("0.00")
+    )
+    return opening_balance + manual_income_total + settlement_income_total
+
+
+def get_first_reconciliation_activity_date(user):
+    opening_balance_date = (
+        filter_queryset_by_role(
+            ReconciliationOpeningBalance.objects.all(),
+            user,
+        )
+        .order_by("balance_date")
+        .values_list("balance_date", flat=True)
+        .first()
+    )
+    income_date = (
+        filter_queryset_by_role(
+            ReconciliationIncomeEntry.objects.all(),
+            user,
+        )
+        .order_by("transaction_date")
+        .values_list("transaction_date", flat=True)
+        .first()
+    )
+    settlement_date = (
+        filter_queryset_by_role(
+            DailyCashSettlement.objects.all(),
+            user,
+        )
+        .order_by("settlement_date")
+        .values_list("settlement_date", flat=True)
+        .first()
+    )
+    candidate_dates = [
+        value for value in (opening_balance_date, income_date, settlement_date) if value
+    ]
+    return min(candidate_dates) if candidate_dates else None
+
+
+def get_reconciliation_opening_balance_for_date(user, target_date):
+    saved_balance_record = (
+        filter_queryset_by_role(
+            ReconciliationOpeningBalance.objects.all(),
+            user,
+        )
+        .filter(balance_date=target_date)
+        .values_list("amount", flat=True)
+        .first()
+    )
+    if saved_balance_record is not None:
+        return saved_balance_record
+
+    saved_opening_balance = (
+        filter_queryset_by_role(
+            ReconciliationIncomeEntry.objects.all(),
+            user,
+        )
+        .filter(transaction_date=target_date, opening_balance__gt=0)
+        .order_by("created_at", "pk")
+        .values_list("opening_balance", flat=True)
+        .first()
+    )
+    if saved_opening_balance is not None:
+        return saved_opening_balance
+
+    first_activity_date = get_first_reconciliation_activity_date(user)
+    if first_activity_date is None or target_date <= first_activity_date:
+        return Decimal("0.00")
+
+    return get_reconciliation_closing_balance_for_date(user, target_date - timedelta(days=1))
+
+
+def get_reconciliation_split_card_balance_for_date(user, target_date):
+    settlement_card_total = (
+        filter_queryset_by_role(
+            DailyCashSettlement.objects.all(),
+            user,
+        )
+        .filter(settlement_date__lte=target_date)
+        .aggregate(total=Sum("gpay_settled"))["total"]
+        or Decimal("0.00")
+    )
+    manual_card_income_total = _sum_amount(
+        filter_queryset_by_role(
+            ReconciliationIncomeEntry.objects.all(),
+            user,
+        ).filter(
+            transaction_date__lte=target_date,
+            payment_method__in=RECONCILIATION_NON_CASH_METHODS,
+        )
+    )
+    manual_card_expense_total = _sum_amount(
+        filter_queryset_by_role(
+            ReconciliationExpenseEntry.objects.all(),
+            user,
+        ).filter(
+            transaction_date__lte=target_date,
+            payment_method__in=RECONCILIATION_NON_CASH_METHODS,
+        )
+    )
+    return settlement_card_total + manual_card_income_total - manual_card_expense_total
+
+
+def save_reconciliation_opening_balance_for_date(user, target_date, amount):
+    ReconciliationOpeningBalance.objects.update_or_create(
+        user=user,
+        balance_date=target_date,
+        defaults={"amount": amount or Decimal("0.00")},
+    )
+
+
+def build_reconciliation_expense_entries(user, filter_values):
+    manual_queryset = filter_queryset_by_role(
+        ReconciliationExpenseEntry.objects.all(),
+        user,
+    ).filter(
+        transaction_date__gte=filter_values["start_date"],
+        transaction_date__lte=filter_values["end_date"],
+    )
+    purchase_queryset = get_purchase_base_queryset(user).filter(
+        transaction_date__gte=filter_values["start_date"],
+        transaction_date__lte=filter_values["end_date"],
+    )
+
+    entries = []
+    for record in manual_queryset.order_by("-transaction_date", "-created_at", "-pk"):
+        entries.append(
+            {
+                "transaction_date": record.transaction_date,
+                "title": record.title,
+                "vendor": record.vendor,
+                "category": record.category,
+                "payment_method": record.payment_method,
+                "amount": record.amount,
+                "entry_type": "manual",
+                "sort_date": record.transaction_date,
+                "sort_timestamp": record.created_at,
+            }
+        )
+
+    for purchase in purchase_queryset.order_by("-transaction_date", "-created_at", "-pk"):
+        entries.append(
+            {
+                "transaction_date": purchase.transaction_date,
+                "title": purchase.invoice_number or "Purchase Record",
+                "vendor": purchase.supplier_name or (
+                    purchase.supplier.name if purchase.supplier_id else "-"
+                ),
+                "category": purchase.purchase_type or "Purchase",
+                "payment_method": "Purchase",
+                "amount": purchase.paid_amount,
+                "entry_type": "purchase",
+                "sort_date": purchase.transaction_date,
+                "sort_timestamp": purchase.created_at,
+            }
+        )
+
+    entries.sort(
+        key=lambda item: (item["sort_date"], item["sort_timestamp"]),
+        reverse=True,
+    )
+    manual_expense_total = _sum_amount(manual_queryset)
+    purchase_total = (
+        purchase_queryset.aggregate(total=Sum("paid_amount"))["total"]
+        or Decimal("0.00")
+    )
+    return {
+        "records": entries,
+        "manual_expense_total": manual_expense_total,
+        "purchase_total": purchase_total,
+    }
+
+
+def build_ranked_category_overview(rows):
+    category_rows = list(rows)
+    highest_total = max(
+        [row["total"] or Decimal("0.00") for row in category_rows],
+        default=Decimal("1.00"),
+    )
+    if highest_total == 0:
+        highest_total = Decimal("1.00")
+
+    aggregate_total = sum(
+        (row["total"] or Decimal("0.00") for row in category_rows),
+        Decimal("0.00"),
+    )
+    overview = []
+    for index, row in enumerate(category_rows, start=1):
+        total = row["total"] or Decimal("0.00")
+        overview.append(
+            {
+                "rank": index,
+                "category": row["category"] or "Uncategorized",
+                "total": total,
+                "width": round((total / highest_total) * 100, 2),
+                "share": round((total / aggregate_total) * 100, 1)
+                if aggregate_total
+                else Decimal("0.0"),
+            }
+        )
+    return overview
 
 
 def get_next_supplier_code():
@@ -1242,7 +1921,7 @@ class ExpenseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
             {
                 "id": "",
                 "transaction_date": date.today().isoformat(),
-                "category": "",
+                "category": COUNTER_EXPENSE_CATEGORY,
                 "purpose": "",
                 "amount": "",
                 "payment_method": PaymentMethod.CASH,
@@ -1394,6 +2073,7 @@ class ExpenseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
         context["today_total"] = _sum_amount(all_records.filter(transaction_date=today))
         context["filtered_total"] = context["page_total"]
         context["category_options"] = get_expense_category_options(user)
+        context["expense_category_purpose_map"] = get_expense_category_purpose_map()
         context["payment_method_options"] = PaymentMethod.choices
         context["entry_rows"] = self.build_entry_rows()
         context["editing_record"] = self.get_edit_record()
@@ -1412,6 +2092,7 @@ class ExpenseCreateView(ModulePermissionRequiredMixin, CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["user"] = self.request.user
+        kwargs["counter_only_category"] = True
         return kwargs
 
     def form_valid(self, form):
@@ -1421,12 +2102,16 @@ class ExpenseCreateView(ModulePermissionRequiredMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        category_choices = context["form"].fields["category"].choices
         context["supplier_count"] = filter_queryset_by_role(
             Supplier.objects.all(),
             self.request.user,
         ).count()
-        context["category_count"] = len(get_expense_category_options(self.request.user))
+        context["category_count"] = sum(1 for value, _ in category_choices if value)
+        context["counter_expense_category"] = COUNTER_EXPENSE_CATEGORY
+        context["expense_add_counter_only"] = True
         context["category_form"] = ExpenseCategoryForm()
+        context["expense_category_purpose_map"] = get_expense_category_purpose_map()
         return context
 
 
@@ -1445,7 +2130,7 @@ class ExpenseCategoryListView(ModulePermissionRequiredMixin, TemplateView):
         if form.is_valid():
             category_name = normalize_expense_category_name(form.cleaned_data["name"])
             existing = (
-                filter_queryset_by_role(ExpenseCategory.objects.all(), request.user)
+                ExpenseCategory.objects.filter(user=request.user)
                 .filter(name__iexact=category_name)
                 .first()
             )
@@ -1460,11 +2145,11 @@ class ExpenseCategoryListView(ModulePermissionRequiredMixin, TemplateView):
                                 get_expense_category_options(request.user)
                             ),
                             "message": (
-                                f"{existing.name} already exists in this role workspace."
+                                f"{existing.name} already exists for this account."
                             ),
                         }
                     )
-                messages.info(request, f"{existing.name} already exists in this role workspace.")
+                messages.info(request, f"{existing.name} already exists for this account.")
             else:
                 ExpenseCategory.objects.create(
                     user=request.user,
@@ -2408,29 +3093,311 @@ class PermissionSettingsView(AdminRequiredMixin, TemplateView):
         return context
 
 
+class ReconciliationView(ModulePermissionRequiredMixin, TemplateView):
+    permission_field = "allow_reports"
+    permission_denied_message = "You do not have access to Reconciliation."
+    template_name = "tracker/reconciliation.html"
+
+    def post(self, request, *args, **kwargs):
+        action = (request.POST.get("action") or "").strip()
+        filter_values = get_reconciliation_filter_values(request.POST)
+        opening_balance_form = ReconciliationOpeningBalanceForm(prefix="opening")
+
+        if action == "save_income":
+            income_form = ReconciliationIncomeForm(request.POST, prefix="income")
+            expense_form = ReconciliationExpenseForm(
+                prefix="expense",
+                user=request.user,
+            )
+            if income_form.is_valid():
+                entry = income_form.save(commit=False)
+                entry.user = request.user
+                entry.save()
+                save_reconciliation_opening_balance_for_date(
+                    request.user,
+                    entry.transaction_date,
+                    income_form.cleaned_data.get("opening_balance"),
+                )
+                messages.success(request, "Reconciliation income entry saved successfully.")
+                return redirect(build_reconciliation_redirect_url(request.POST))
+            messages.error(request, "Please correct the reconciliation income entry.")
+            return self.render_to_response(
+                self.get_context_data(
+                    income_form=income_form,
+                    expense_form=expense_form,
+                    opening_balance_form=opening_balance_form,
+                    filter_values=filter_values,
+                )
+            )
+
+        if action == "save_expense":
+            income_form = ReconciliationIncomeForm(prefix="income")
+            expense_form = ReconciliationExpenseForm(
+                request.POST,
+                prefix="expense",
+                user=request.user,
+            )
+            if expense_form.is_valid():
+                entry = expense_form.save(commit=False)
+                entry.user = request.user
+                entry.save()
+                messages.success(request, "Reconciliation expense entry saved successfully.")
+                return redirect(build_reconciliation_redirect_url(request.POST))
+            messages.error(request, "Please correct the reconciliation expense entry.")
+            return self.render_to_response(
+                self.get_context_data(
+                    income_form=income_form,
+                    expense_form=expense_form,
+                    opening_balance_form=opening_balance_form,
+                    filter_values=filter_values,
+                )
+            )
+
+        if action == "save_opening_balance":
+            income_form = ReconciliationIncomeForm(prefix="income")
+            expense_form = ReconciliationExpenseForm(
+                prefix="expense",
+                user=request.user,
+            )
+            opening_balance_form = ReconciliationOpeningBalanceForm(
+                request.POST,
+                prefix="opening",
+            )
+            if opening_balance_form.is_valid():
+                save_reconciliation_opening_balance_for_date(
+                    request.user,
+                    opening_balance_form.cleaned_data["balance_date"],
+                    opening_balance_form.cleaned_data["amount"],
+                )
+                messages.success(request, "Opening balance updated successfully.")
+                return redirect(build_reconciliation_redirect_url(request.POST))
+            messages.error(request, "Please correct the opening balance.")
+            return self.render_to_response(
+                self.get_context_data(
+                    income_form=income_form,
+                    expense_form=expense_form,
+                    opening_balance_form=opening_balance_form,
+                    filter_values=filter_values,
+                    opening_balance_modal_open=True,
+                )
+            )
+
+        messages.error(request, "Unknown reconciliation action.")
+        return redirect(build_reconciliation_redirect_url(request.POST))
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        filter_values = kwargs.pop(
+            "filter_values",
+            get_reconciliation_filter_values(self.request.GET),
+        )
+        income_form = kwargs.pop("income_form", ReconciliationIncomeForm(prefix="income"))
+        opening_balance_form = kwargs.pop(
+            "opening_balance_form",
+            ReconciliationOpeningBalanceForm(prefix="opening"),
+        )
+        opening_balance_modal_open = kwargs.pop("opening_balance_modal_open", False)
+        expense_form = kwargs.pop(
+            "expense_form",
+            ReconciliationExpenseForm(
+                prefix="expense",
+                user=self.request.user,
+            ),
+        )
+        income_entry_date = filter_values["end_date"]
+        if income_form.is_bound:
+            bound_income_date = parse_date(
+                (income_form.data.get(f"{income_form.prefix}-transaction_date") or "").strip()
+            )
+            if bound_income_date is not None:
+                income_entry_date = bound_income_date
+        else:
+            income_form.fields["transaction_date"].initial = income_entry_date
+            income_form.initial["transaction_date"] = income_entry_date
+            opening_balance_default = get_reconciliation_opening_balance_for_date(
+                self.request.user,
+                income_entry_date,
+            )
+            income_form.fields["opening_balance"].initial = opening_balance_default
+            income_form.initial["opening_balance"] = opening_balance_default
+
+        opening_balance_date = filter_values["start_date"]
+        if opening_balance_form.is_bound:
+            bound_balance_date = parse_date(
+                (
+                    opening_balance_form.data.get(
+                        f"{opening_balance_form.prefix}-balance_date"
+                    )
+                    or ""
+                ).strip()
+            )
+            if bound_balance_date is not None:
+                opening_balance_date = bound_balance_date
+        else:
+            opening_balance_value = get_reconciliation_opening_balance_for_date(
+                self.request.user,
+                opening_balance_date,
+            )
+            opening_balance_form.fields["balance_date"].initial = opening_balance_date
+            opening_balance_form.initial["balance_date"] = opening_balance_date
+            opening_balance_form.fields["amount"].initial = opening_balance_value
+            opening_balance_form.initial["amount"] = opening_balance_value
+
+        income_summary = build_reconciliation_income_entries(
+            self.request.user,
+            filter_values,
+        )
+        income_records = income_summary["records"]
+        expense_summary = build_reconciliation_expense_entries(
+            self.request.user,
+            filter_values,
+        )
+        expense_records = expense_summary["records"]
+        reconciliation_opening_balance = get_reconciliation_opening_balance_for_date(
+            self.request.user,
+            filter_values["start_date"],
+        )
+        manual_income_total = income_summary["manual_income_total"]
+        settlement_income_total = income_summary["settlement_income_total"]
+        split_card_balance_total = get_reconciliation_split_card_balance_for_date(
+            self.request.user,
+            filter_values["end_date"],
+        )
+        income_total = (
+            reconciliation_opening_balance
+            + manual_income_total
+            + settlement_income_total
+        )
+        manual_expense_total = expense_summary["manual_expense_total"]
+        purchase_total = expense_summary["purchase_total"]
+        expense_total = manual_expense_total + purchase_total
+        reconciliation_closing_balance = income_total
+        next_day_opening_balance = reconciliation_closing_balance
+
+        context.update(
+            {
+                "income_form": income_form,
+                "expense_form": expense_form,
+                "opening_balance_form": opening_balance_form,
+                "opening_balance_modal_open": (
+                    opening_balance_modal_open
+                    or (opening_balance_form.is_bound and opening_balance_form.errors)
+                ),
+                "reconciliation_filters": {
+                    "start_date": filter_values["start_date"].isoformat(),
+                    "end_date": filter_values["end_date"].isoformat(),
+                },
+                "reconciliation_label": (
+                    f"{filter_values['start_date']:%d-%m-%Y} "
+                    f"to {filter_values['end_date']:%d-%m-%Y}"
+                ),
+                "income_records": income_records,
+                "expense_records": expense_records,
+                "reconciliation_opening_balance_date": opening_balance_date,
+                "expense_category_purpose_map": get_expense_category_purpose_map(),
+                "income_total": income_total,
+                "settlement_income_total": settlement_income_total,
+                "manual_income_total": manual_income_total,
+                "manual_cash_income_total": income_summary["manual_cash_income_total"],
+                "settlement_cash_total": income_summary["settlement_cash_total"],
+                "settlement_card_total": income_summary["settlement_card_total"],
+                "split_card_balance_total": split_card_balance_total,
+                "reconciliation_opening_balance": reconciliation_opening_balance,
+                "reconciliation_closing_balance": reconciliation_closing_balance,
+                "next_day_opening_balance": next_day_opening_balance,
+                "manual_expense_total": manual_expense_total,
+                "purchase_total": purchase_total,
+                "expense_total": expense_total,
+                "net_total": income_total - expense_total,
+                "income_count": len(income_records),
+                "expense_count": len(expense_records),
+            }
+        )
+        return context
+
+
 class ReportsView(ModulePermissionRequiredMixin, TemplateView):
     permission_field = "allow_reports"
     permission_denied_message = "You do not have access to Reports."
     template_name = "tracker/reports.html"
 
+    def get(self, request, *args, **kwargs):
+        if (request.GET.get("export") or "").strip() == "excel":
+            return build_reports_excel_response(
+                request.user,
+                get_report_month(request),
+            )
+        return super().get(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         user = self.request.user
-        income_by_category = (
-            filter_queryset_by_role(IncomeRecord.objects.all(), user)
+        selected_report_month = get_report_month(self.request)
+        income_queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user)
+        expense_queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user)
+        settlement_queryset = filter_queryset_by_role(
+            DailyCashSettlement.objects.all(),
+            user,
+        )
+        purchase_queryset = get_purchase_base_queryset(user)
+        supplier_queryset = filter_queryset_by_role(Supplier.objects.all(), user)
+        income_by_category = build_reporting_income_category_overview(
+            income_queryset,
+            settlement_queryset,
+        )
+        expense_by_category = build_ranked_category_overview(
+            expense_queryset
             .values("category")
             .annotate(total=Sum("amount"))
             .order_by("-total")[:5]
         )
-        expense_by_category = (
-            filter_queryset_by_role(ExpenseRecord.objects.all(), user)
-            .values("category")
-            .annotate(total=Sum("amount"))
-            .order_by("-total")[:5]
+        total_sales = get_reporting_income_total(
+            income_queryset,
+            settlement_queryset,
+        )
+        total_expenses = _sum_amount(expense_queryset)
+        net_profit = total_sales - total_expenses
+        total_purchases = (
+            purchase_queryset.aggregate(total=Sum("total_amount"))["total"]
+            or Decimal("0.00")
+        )
+        monthly_overview = build_reporting_monthly_overview(user)
+        current_month_snapshot = monthly_overview[-1] if monthly_overview else None
+        best_balance_month = max(
+            monthly_overview,
+            key=lambda row: row["balance"],
+            default=None,
+        )
+        window_sales_total = sum(
+            (row["income"] for row in monthly_overview),
+            Decimal("0.00"),
+        )
+        window_expenses_total = sum(
+            (row["expense"] for row in monthly_overview),
+            Decimal("0.00"),
+        )
+        window_net_total = sum(
+            (row["balance"] for row in monthly_overview),
+            Decimal("0.00"),
         )
         context.update(
             {
-                "monthly_overview": build_monthly_overview(user),
+                "total_sales": total_sales,
+                "total_expenses": total_expenses,
+                "net_profit": net_profit,
+                "total_purchases": total_purchases,
+                "total_suppliers": supplier_queryset.count(),
+                "monthly_overview": monthly_overview,
+                "current_month_snapshot": current_month_snapshot,
+                "best_balance_month": best_balance_month,
+                "window_sales_total": window_sales_total,
+                "window_expenses_total": window_expenses_total,
+                "window_net_total": window_net_total,
+                "overall_profit_margin": round((net_profit / total_sales) * 100, 1)
+                if total_sales
+                else Decimal("0.0"),
+                "selected_report_month": selected_report_month,
+                "selected_report_month_label": selected_report_month.strftime("%B %Y"),
                 "top_income_categories": income_by_category,
                 "top_expense_categories": expense_by_category,
             }

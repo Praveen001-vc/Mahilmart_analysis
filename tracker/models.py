@@ -427,7 +427,7 @@ class ExpenseRecord(BaseRecord):
         super().save(*args, **kwargs)
         if self.user_id and self.category:
             existing_category = (
-                filter_queryset_by_role(ExpenseCategory.objects.all(), self.user)
+                ExpenseCategory.objects.filter(user=self.user)
                 .filter(name__iexact=self.category)
                 .first()
             )
@@ -436,3 +436,90 @@ class ExpenseRecord(BaseRecord):
                     user=self.user,
                     name=self.category,
                 )
+
+
+class ReconciliationBaseEntry(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="%(class)ss",
+    )
+    title = models.CharField(max_length=120)
+    category = models.CharField(max_length=80, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    transaction_date = models.DateField(default=date.today, db_index=True)
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.CASH,
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["-transaction_date", "-created_at", "-pk"]
+
+    def __str__(self):
+        return f"{self.title} - {self.amount}"
+
+
+class ReconciliationOpeningBalance(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="reconciliation_opening_balances",
+    )
+    balance_date = models.DateField(default=date.today, db_index=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-balance_date", "-updated_at", "-pk"]
+        verbose_name = "Reconciliation Opening Balance"
+        verbose_name_plural = "Reconciliation Opening Balances"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "balance_date"],
+                name="unique_reconciliation_opening_balance_per_user_date",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.balance_date} - {self.amount}"
+
+
+class ReconciliationIncomeEntry(ReconciliationBaseEntry):
+    source = models.CharField(max_length=120, blank=True)
+    opening_balance = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        blank=True,
+    )
+
+    class Meta(ReconciliationBaseEntry.Meta):
+        verbose_name = "Reconciliation Income Entry"
+        verbose_name_plural = "Reconciliation Income Entries"
+
+    def save(self, *args, **kwargs):
+        self.title = _normalize_short_text(self.title, 120)
+        self.category = _normalize_short_text(self.category, 80)
+        self.source = _normalize_short_text(self.source, 120)
+        super().save(*args, **kwargs)
+
+
+class ReconciliationExpenseEntry(ReconciliationBaseEntry):
+    vendor = models.CharField(max_length=120, blank=True)
+
+    class Meta(ReconciliationBaseEntry.Meta):
+        verbose_name = "Reconciliation Expense Entry"
+        verbose_name_plural = "Reconciliation Expense Entries"
+
+    def save(self, *args, **kwargs):
+        self.title = _normalize_short_text(self.title, 120)
+        self.category = _normalize_short_text(self.category, 80)
+        self.vendor = _normalize_short_text(self.vendor, 120)
+        super().save(*args, **kwargs)

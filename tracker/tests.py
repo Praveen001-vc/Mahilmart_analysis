@@ -3,9 +3,11 @@ import shutil
 import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from openpyxl import load_workbook
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -21,6 +23,9 @@ from .models import (
     PaymentMethod,
     PurchasePayment,
     PurchaseRecord,
+    ReconciliationExpenseEntry,
+    ReconciliationIncomeEntry,
+    ReconciliationOpeningBalance,
     SalesLedgerRecord,
     SalesPaymentMode,
     Supplier,
@@ -147,6 +152,592 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Admin Role")
         self.assertContains(response, "Dashboard")
 
+    def test_reports_page_shows_requested_summary_totals(self):
+        self.client.force_login(self.user)
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Reports Supplier",
+            contact_person="Kumar",
+            phone_number="9876500042",
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Counter Sales",
+            source="Mahilmart Store",
+            category="Retail",
+            amount=Decimal("1200.00"),
+            transaction_date=date.today(),
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Shop Expense",
+            supplier=supplier,
+            vendor=supplier.name,
+            category="Operations",
+            amount=Decimal("300.00"),
+            transaction_date=date.today(),
+        )
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier=supplier,
+            supplier_name="",
+            purchase_type="Groceries",
+            invoice_number="INV-REPORT-1",
+            total_amount=Decimal("450.00"),
+            paid_amount=Decimal("200.00"),
+            transaction_date=date.today(),
+        )
+
+        response = self.client.get(reverse("reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["total_sales"], Decimal("1200.00"))
+        self.assertEqual(response.context["total_expenses"], Decimal("300.00"))
+        self.assertEqual(response.context["net_profit"], Decimal("900.00"))
+        self.assertEqual(response.context["total_purchases"], Decimal("450.00"))
+        self.assertEqual(response.context["total_suppliers"], 1)
+        self.assertContains(response, "Total Sales")
+        self.assertContains(response, "Total Purchases")
+        self.assertContains(response, "Net Profit")
+        self.assertNotContains(response, "<th>Balance</th>", html=False)
+
+    def test_reports_page_includes_daily_settlement_income(self):
+        self.client.force_login(self.user)
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Manual Income",
+            source="Counter Sale",
+            category="Retail",
+            amount=Decimal("250.00"),
+            transaction_date=date.today(),
+        )
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=date.today(),
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("700.00"),
+            cash_settled=Decimal("300.00"),
+            expense_amount=Decimal("50.00"),
+            closing_balance=Decimal("100.00"),
+        )
+
+        response = self.client.get(reverse("reports"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["total_sales"], Decimal("1400.00"))
+        self.assertEqual(response.context["net_profit"], Decimal("1400.00"))
+        self.assertEqual(
+            response.context["monthly_overview"][-1]["income"],
+            Decimal("1400.00"),
+        )
+        self.assertEqual(
+            response.context["top_income_categories"][0]["category"],
+            "Daily Settlement",
+        )
+        self.assertContains(response, "Daily Settlement")
+
+    def test_reports_excel_download_exports_selected_month_records(self):
+        self.client.force_login(self.user)
+        selected_month = date.today().replace(day=1)
+        previous_month_date = selected_month - timedelta(days=1)
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Excel Reports Supplier",
+            contact_person="Meena",
+            phone_number="9876500099",
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Selected Month Income",
+            source="Counter Sale",
+            category="Retail",
+            amount=Decimal("250.00"),
+            transaction_date=selected_month,
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Old Income",
+            source="Old Counter",
+            category="Retail",
+            amount=Decimal("999.00"),
+            transaction_date=previous_month_date,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Selected Month Expense",
+            supplier=supplier,
+            vendor=supplier.name,
+            category="Operations",
+            amount=Decimal("100.00"),
+            transaction_date=selected_month,
+        )
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier=supplier,
+            supplier_name="",
+            purchase_type="Groceries",
+            invoice_number="INV-EXCEL-1",
+            total_amount=Decimal("450.00"),
+            paid_amount=Decimal("200.00"),
+            transaction_date=selected_month,
+        )
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=selected_month,
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("700.00"),
+            cash_settled=Decimal("300.00"),
+            expense_amount=Decimal("50.00"),
+            closing_balance=Decimal("100.00"),
+        )
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=previous_month_date,
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("100.00"),
+            cash_settled=Decimal("100.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("0.00"),
+        )
+
+        response = self.client.get(
+            reverse("reports"),
+            {
+                "report_month": selected_month.strftime("%Y-%m"),
+                "export": "excel",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        self.assertIn(
+            f'mahilmart_report_{selected_month.strftime("%Y-%m")}.xlsx',
+            response["Content-Disposition"],
+        )
+
+        workbook = load_workbook(BytesIO(response.content), data_only=True)
+        self.assertEqual(
+            workbook.sheetnames,
+            ["Summary", "Income", "Expenses", "Purchases", "Daily Settlement"],
+        )
+
+        summary_sheet = workbook["Summary"]
+        summary_values = {
+            row[0]: row[1]
+            for row in summary_sheet.iter_rows(min_row=4, max_col=2, values_only=True)
+            if row[0]
+        }
+        self.assertEqual(summary_values["Selected Month"], selected_month.strftime("%B %Y"))
+        self.assertEqual(summary_values["Daily Settlement Income"], 1150)
+        self.assertEqual(summary_values["Total Sales"], 1400)
+        self.assertEqual(summary_values["Total Expenses"], 100)
+        self.assertEqual(summary_values["Total Purchases"], 450)
+
+        income_titles = [
+            row[1]
+            for row in workbook["Income"].iter_rows(min_row=2, values_only=True)
+            if row[1]
+        ]
+        self.assertIn("Selected Month Income", income_titles)
+        self.assertIn("Daily Settlement Income", income_titles)
+        self.assertNotIn("Old Income", income_titles)
+
+    def test_reconciliation_page_shows_income_and_expense_in_one_place(self):
+        self.client.force_login(self.user)
+        ReconciliationIncomeEntry.objects.create(
+            user=self.user,
+            title="Reconciliation Cash Collection",
+            source="Separate Counter",
+            category="Retail",
+            amount=Decimal("300.00"),
+            transaction_date=date.today(),
+        )
+        ReconciliationExpenseEntry.objects.create(
+            user=self.user,
+            title="Reconciliation Office Expense",
+            vendor="Office",
+            category="Operations",
+            amount=Decimal("120.00"),
+            transaction_date=date.today(),
+        )
+
+        response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["manual_income_total"], Decimal("300.00"))
+        self.assertEqual(response.context["settlement_income_total"], Decimal("0.00"))
+        self.assertEqual(response.context["income_total"], Decimal("300.00"))
+        self.assertEqual(response.context["expense_total"], Decimal("120.00"))
+        self.assertEqual(response.context["net_total"], Decimal("180.00"))
+        self.assertEqual(response.context["income_count"], 1)
+        self.assertEqual(response.context["expense_count"], 1)
+        self.assertContains(response, "Add reconciliation income")
+        self.assertContains(response, "Add reconciliation expense")
+        self.assertContains(response, "Reconciliation Cash Collection")
+        self.assertContains(response, "Reconciliation Office Expense")
+
+    def test_reconciliation_page_defaults_to_current_date_only(self):
+        self.client.force_login(self.user)
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        tomorrow = today + timedelta(days=1)
+
+        ReconciliationIncomeEntry.objects.create(
+            user=self.user,
+            title="Yesterday Income",
+            source="Old Range",
+            category="Retail",
+            amount=Decimal("100.00"),
+            transaction_date=yesterday,
+        )
+        ReconciliationIncomeEntry.objects.create(
+            user=self.user,
+            title="Today Income",
+            source="Current Day",
+            category="Retail",
+            amount=Decimal("250.00"),
+            transaction_date=today,
+        )
+        ReconciliationExpenseEntry.objects.create(
+            user=self.user,
+            title="Tomorrow Expense",
+            vendor="Future",
+            category="Ops",
+            amount=Decimal("80.00"),
+            transaction_date=tomorrow,
+        )
+
+        response = self.client.get(reverse("reconciliation"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["reconciliation_filters"]["start_date"], today.isoformat())
+        self.assertEqual(response.context["reconciliation_filters"]["end_date"], today.isoformat())
+        self.assertEqual(response.context["income_count"], 1)
+        self.assertEqual(response.context["expense_count"], 0)
+        self.assertContains(response, "Today Income")
+        self.assertNotContains(response, "Yesterday Income")
+        self.assertNotContains(response, "Tomorrow Expense")
+
+    def test_reconciliation_page_includes_cash_and_card_amounts_from_daily_settlement(self):
+        self.client.force_login(self.user)
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=date.today(),
+            opening_balance=Decimal("100.00"),
+            gpay_settled=Decimal("250.00"),
+            cash_settled=Decimal("400.00"),
+            cash_settled_to="Admin Counter",
+            expense_amount=Decimal("50.00"),
+            closing_balance=Decimal("100.00"),
+            notes="Shift closed",
+        )
+        ReconciliationExpenseEntry.objects.create(
+            user=self.user,
+            title="Recon Cash Drop Expense",
+            vendor="Office Safe",
+            category="Transfer",
+            amount=Decimal("120.00"),
+            transaction_date=date.today(),
+        )
+
+        response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["manual_income_total"], Decimal("0.00"))
+        self.assertEqual(response.context["settlement_cash_total"], Decimal("400.00"))
+        self.assertEqual(response.context["settlement_card_total"], Decimal("250.00"))
+        self.assertEqual(response.context["split_card_balance_total"], Decimal("250.00"))
+        self.assertEqual(response.context["reconciliation_opening_balance"], Decimal("0.00"))
+        self.assertEqual(response.context["reconciliation_closing_balance"], Decimal("650.00"))
+        self.assertEqual(response.context["next_day_opening_balance"], Decimal("650.00"))
+        self.assertEqual(response.context["settlement_income_total"], Decimal("650.00"))
+        self.assertEqual(response.context["income_total"], Decimal("650.00"))
+        self.assertEqual(response.context["expense_total"], Decimal("120.00"))
+        self.assertEqual(response.context["net_total"], Decimal("530.00"))
+        self.assertEqual(response.context["income_count"], 2)
+        self.assertContains(response, "Daily Cash Settlement")
+        self.assertContains(response, "Daily Card Settlement")
+        self.assertContains(response, "Cash settled to Admin Counter")
+
+    def test_reconciliation_page_includes_purchase_records_in_expense_history(self):
+        self.client.force_login(self.user)
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Recon Purchase Supplier",
+            contact_person="Selvam",
+            phone_number="9876500033",
+        )
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier=supplier,
+            supplier_name="",
+            purchase_type="Stock Purchase",
+            invoice_number="PUR-1001",
+            total_amount=Decimal("875.00"),
+            paid_amount=Decimal("400.00"),
+            transaction_date=date.today(),
+        )
+
+        response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["manual_expense_total"], Decimal("0.00"))
+        self.assertEqual(response.context["purchase_total"], Decimal("400.00"))
+        self.assertEqual(response.context["expense_total"], Decimal("400.00"))
+        self.assertEqual(response.context["expense_count"], 1)
+        self.assertContains(response, "PUR-1001")
+        self.assertContains(response, "Stock Purchase")
+        self.assertContains(response, "Recon Purchase Supplier")
+
+    def test_reconciliation_income_entry_saves_opening_balance(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("reconciliation"),
+            {
+                "action": "save_income",
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+                "income-title": "Opening Balance Income Entry",
+                "income-source": "Recon Source",
+                "income-category": "Recon Category",
+                "income-amount": "450.00",
+                "income-opening_balance": "125.00",
+                "income-transaction_date": date.today().isoformat(),
+                "income-payment_method": PaymentMethod.CASH,
+                "income-notes": "Opening balance tracked",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        entry = ReconciliationIncomeEntry.objects.get(title="Opening Balance Income Entry")
+        self.assertEqual(entry.opening_balance, Decimal("125.00"))
+        self.assertTrue(
+            ReconciliationOpeningBalance.objects.filter(
+                user=self.user,
+                balance_date=date.today(),
+                amount=Decimal("125.00"),
+            ).exists()
+        )
+
+    def test_reconciliation_opening_balance_uses_previous_day_closing_balance(self):
+        self.client.force_login(self.user)
+        yesterday = date.today() - timedelta(days=1)
+        today = date.today()
+
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=yesterday,
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("300.00"),
+            cash_settled=Decimal("500.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("0.00"),
+        )
+        ReconciliationIncomeEntry.objects.create(
+            user=self.user,
+            title="Yesterday Manual Income",
+            source="Separate Counter",
+            category="Retail",
+            amount=Decimal("200.00"),
+            opening_balance=Decimal("0.00"),
+            transaction_date=yesterday,
+        )
+
+        response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": today.isoformat(),
+                "end_date": today.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["reconciliation_opening_balance"], Decimal("1000.00"))
+        self.assertEqual(response.context["income_form"].initial["opening_balance"], Decimal("1000.00"))
+
+    def test_reconciliation_opening_balance_popup_saves_override(self):
+        self.client.force_login(self.user)
+        today = date.today()
+
+        response = self.client.post(
+            reverse("reconciliation"),
+            {
+                "action": "save_opening_balance",
+                "start_date": today.isoformat(),
+                "end_date": today.isoformat(),
+                "opening-balance_date": today.isoformat(),
+                "opening-amount": "825.00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            ReconciliationOpeningBalance.objects.filter(
+                user=self.user,
+                balance_date=today,
+                amount=Decimal("825.00"),
+            ).exists()
+        )
+
+        page = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": today.isoformat(),
+                "end_date": today.isoformat(),
+            },
+        )
+
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.context["reconciliation_opening_balance"], Decimal("825.00"))
+        self.assertEqual(page.context["income_total"], Decimal("825.00"))
+        self.assertEqual(page.context["net_total"], Decimal("825.00"))
+        self.assertContains(page, "data-open-opening-balance-modal")
+        self.assertContains(page, "Save Opening Balance")
+
+    def test_reconciliation_split_card_balance_carries_forward_and_uses_card_entries(self):
+        self.client.force_login(self.user)
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=today,
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("1000.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("0.00"),
+        )
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=tomorrow,
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("250.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("0.00"),
+        )
+        ReconciliationIncomeEntry.objects.create(
+            user=self.user,
+            title="Card Income",
+            source="Swipe Machine",
+            category="Card",
+            amount=Decimal("200.00"),
+            opening_balance=Decimal("0.00"),
+            transaction_date=tomorrow,
+            payment_method=PaymentMethod.CARD,
+        )
+        ReconciliationIncomeEntry.objects.create(
+            user=self.user,
+            title="Cash Income",
+            source="Counter",
+            category="Cash",
+            amount=Decimal("300.00"),
+            opening_balance=Decimal("0.00"),
+            transaction_date=tomorrow,
+            payment_method=PaymentMethod.CASH,
+        )
+        ReconciliationExpenseEntry.objects.create(
+            user=self.user,
+            title="Card Expense",
+            vendor="Gateway Fee",
+            category="Card",
+            amount=Decimal("50.00"),
+            transaction_date=tomorrow,
+            payment_method=PaymentMethod.CARD,
+        )
+
+        response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": tomorrow.isoformat(),
+                "end_date": tomorrow.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["settlement_card_total"], Decimal("250.00"))
+        self.assertEqual(response.context["split_card_balance_total"], Decimal("1400.00"))
+        self.assertEqual(response.context["reconciliation_opening_balance"], Decimal("1000.00"))
+        self.assertEqual(response.context["income_total"], Decimal("1750.00"))
+        self.assertEqual(response.context["reconciliation_closing_balance"], Decimal("1750.00"))
+        self.assertContains(response, "Split card balance")
+
+    def test_reconciliation_entries_are_separate_from_income_and_expense_pages(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("reconciliation"),
+            {
+                "action": "save_income",
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+                "income-title": "Separate Income Entry",
+                "income-source": "Recon Source",
+                "income-category": "Recon Category",
+                "income-amount": "450.00",
+                "income-transaction_date": date.today().isoformat(),
+                "income-payment_method": PaymentMethod.CASH,
+                "income-notes": "Reconciliation only",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            ReconciliationIncomeEntry.objects.filter(title="Separate Income Entry").exists()
+        )
+        self.assertFalse(IncomeRecord.objects.filter(title="Separate Income Entry").exists())
+
+        income_page = self.client.get(reverse("income-list"))
+        self.assertNotContains(income_page, "Separate Income Entry")
+
+        response = self.client.post(
+            reverse("reconciliation"),
+            {
+                "action": "save_expense",
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+                "expense-title": "Separate Expense Entry",
+                "expense-vendor": "Recon Vendor",
+                "expense-category": "Recon Expense",
+                "expense-amount": "210.00",
+                "expense-transaction_date": date.today().isoformat(),
+                "expense-payment_method": PaymentMethod.CASH,
+                "expense-notes": "Reconciliation expense only",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(
+            ReconciliationExpenseEntry.objects.filter(title="Separate Expense Entry").exists()
+        )
+        self.assertFalse(ExpenseRecord.objects.filter(title="Separate Expense Entry").exists())
+
+        expense_page = self.client.get(reverse("expense-list"))
+        self.assertNotContains(expense_page, "Separate Expense Entry")
+
     def test_expense_add_page_includes_suppliers_from_same_role(self):
         peer_admin = get_user_model().objects.create_superuser(
             username="peer_admin_supplier",
@@ -165,25 +756,102 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Role Shared Supplier")
 
-    def test_expense_add_page_includes_categories_from_same_role(self):
+    def test_expense_add_page_does_not_include_categories_from_same_role(self):
         peer_admin = get_user_model().objects.create_superuser(
             username="peer_admin_category",
             password="PeerPass123!",
         )
         ExpenseCategory.objects.create(
             user=peer_admin,
-            name="Stationery",
+            name="Peer Only Category",
         )
 
         self.client.force_login(self.admin_user)
         response = self.client.get(reverse("expense-add"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Stationery")
+        self.assertNotContains(response, "Peer Only Category")
         self.assertContains(response, "Purpose")
-        self.assertContains(response, "Add Category")
-        self.assertContains(response, "data-category-modal-open")
-        self.assertContains(response, "data-category-form")
+        self.assertContains(response, "Manage Categories")
+        self.assertEqual(
+            list(response.context["form"].fields["category"].choices),
+            [
+                ("", "Select Category"),
+                (COUNTER_EXPENSE_CATEGORY, COUNTER_EXPENSE_CATEGORY),
+            ],
+        )
+
+    def test_expense_add_page_auto_creates_categories_without_default_selection(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("expense-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            ExpenseCategory.objects.filter(
+                user=self.user,
+                name=COUNTER_EXPENSE_CATEGORY,
+            ).exists()
+        )
+        self.assertFalse(response.context["form"].fields["category"].initial)
+        self.assertContains(response, "Select Category")
+        self.assertContains(response, 'data-purpose-category="expense-form"', html=False)
+        self.assertContains(response, 'data-purpose-select="expense-form"', html=False)
+        self.assertContains(response, 'id="expense-purpose-select"', html=False)
+        self.assertEqual(
+            list(response.context["form"].fields["category"].choices),
+            [
+                ("", "Select Category"),
+                (COUNTER_EXPENSE_CATEGORY, COUNTER_EXPENSE_CATEGORY),
+            ],
+        )
+        self.assertContains(response, COUNTER_EXPENSE_CATEGORY)
+        self.assertTrue(
+            ExpenseCategory.objects.filter(
+                user=self.user,
+                name="Utility Expenses",
+            ).exists()
+        )
+        self.assertContains(response, "Electricity Bill")
+
+    def test_expense_add_page_has_no_default_category_for_another_user(self):
+        other_user = get_user_model().objects.create_user(
+            username="expense_user_two",
+            password="StrongPass456!",
+        )
+        self.client.force_login(other_user)
+
+        response = self.client.get(reverse("expense-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["form"].fields["category"].initial)
+        self.assertContains(response, "Select Category")
+        self.assertContains(response, COUNTER_EXPENSE_CATEGORY)
+        self.assertEqual(
+            list(response.context["form"].fields["category"].choices),
+            [
+                ("", "Select Category"),
+                (COUNTER_EXPENSE_CATEGORY, COUNTER_EXPENSE_CATEGORY),
+            ],
+        )
+        self.assertTrue(
+            ExpenseCategory.objects.filter(
+                user=other_user,
+                name=COUNTER_EXPENSE_CATEGORY,
+            ).exists()
+        )
+
+    def test_reconciliation_page_uses_expense_category_purpose_library(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("reconciliation"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-purpose-category="reconciliation-expense"', html=False)
+        self.assertContains(response, 'data-purpose-select="reconciliation-expense"', html=False)
+        self.assertContains(response, 'id="reconciliation-purpose-select"', html=False)
+        self.assertContains(response, "Utility Expenses")
+        self.assertContains(response, "Electricity Bill")
 
     def test_expense_category_page_creates_category(self):
         self.client.force_login(self.user)
@@ -357,7 +1025,7 @@ class TrackerViewsTests(TestCase):
                 "title": "Electricity Bill",
                 "supplier": "",
                 "vendor": "TNEB",
-                "category": "Utilities",
+                "category": COUNTER_EXPENSE_CATEGORY,
                 "amount": "1800.00",
                 "transaction_date": date.today().isoformat(),
                 "payment_method": "Cash",
@@ -369,12 +1037,7 @@ class TrackerViewsTests(TestCase):
         record = ExpenseRecord.objects.get(title="Electricity Bill")
         self.assertEqual(record.vendor, "TNEB")
         self.assertIsNone(record.supplier)
-        self.assertTrue(
-            ExpenseCategory.objects.filter(
-                user=self.user,
-                name="Utilities",
-            ).exists()
-        )
+        self.assertEqual(record.category, COUNTER_EXPENSE_CATEGORY)
 
     def test_income_add_page_renders_entry_master_layout(self):
         self.client.force_login(self.user)
@@ -425,6 +1088,18 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(expense.vendor, "Auto Fare")
         self.assertEqual(expense.category, "Transport")
         self.assertEqual(expense.amount, Decimal("354.00"))
+
+    def test_expense_list_defaults_new_row_to_counter_expense(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("expense-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["entry_rows"][0]["category"],
+            COUNTER_EXPENSE_CATEGORY,
+        )
+        self.assertContains(response, COUNTER_EXPENSE_CATEGORY)
 
     def test_daily_settlement_expense_total_counts_only_counter_expense(self):
         self.client.force_login(self.user)
@@ -757,6 +1432,22 @@ class TrackerViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sync Suppliers")
+
+    def test_supplier_list_includes_mobile_friendly_table_labels(self):
+        self.client.force_login(self.user)
+        Supplier.objects.create(
+            user=self.user,
+            name="Mobile Supplier",
+            contact_person="Selvi",
+            phone_number="9876500099",
+        )
+
+        response = self.client.get(reverse("supplier-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "supplier-data-table")
+        self.assertContains(response, 'data-label="Supplier Name"', html=False)
+        self.assertContains(response, 'data-label="Phone Number"', html=False)
 
     @patch("tracker.views.sync_suppliers_from_sqlserver")
     def test_supplier_list_sync_button_triggers_supplier_sync(self, sync_mock):
@@ -1529,6 +2220,16 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sync Users From SQL Server")
 
+    def test_user_list_includes_mobile_friendly_table_labels(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("user-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "user-data-table")
+        self.assertContains(response, 'data-label="User Name"', html=False)
+        self.assertContains(response, 'data-label="Action"', html=False)
+
     def test_permission_settings_page_renders_for_admin(self):
         self.client.force_login(self.admin_user)
 
@@ -1545,6 +2246,15 @@ class TrackerViewsTests(TestCase):
         self.assertTrue(
             UserModulePermission.objects.filter(user=self.user).exists()
         )
+
+    def test_navigation_shows_separate_reconciliation_when_reports_are_allowed(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Separate Reconciliation")
+        self.assertContains(response, reverse("reconciliation"))
 
     def test_admin_can_update_user_module_permission_from_settings_page(self):
         permission_record = UserModulePermission.objects.create(user=self.user)
@@ -1592,6 +2302,7 @@ class TrackerViewsTests(TestCase):
         self.assertNotContains(response, reverse("expense-add"))
         self.assertNotContains(response, reverse("supplier-add"))
         self.assertNotContains(response, reverse("reports"))
+        self.assertNotContains(response, reverse("reconciliation"))
         self.assertContains(response, "No quick actions are enabled for this user.")
 
     def test_blocked_module_redirects_to_first_accessible_page(self):

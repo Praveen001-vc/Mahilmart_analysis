@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Users | Mahilmart{% endblock %}
+{% block body_class %}app-shell user-list-shell{% endblock %}
 
 {% block content %}
 <section class="page-heading premium-panel">
@@ -44,7 +45,7 @@
 
     {% if users %}
         <div class="table-shell">
-            <table class="data-table">
+            <table class="data-table user-data-table">
                 <thead>
                     <tr>
                         <th>User Name</th>
@@ -57,11 +58,11 @@
                 <tbody>
                     {% for user in users %}
                         <tr>
-                            <td>{{ user.username }}</td>
-                            <td>{{ user.master_name_display }}</td>
-                            <td>{{ user.role_label }}</td>
-                            <td>{{ user.status_label }}</td>
-                            <td>
+                            <td data-label="User Name">{{ user.username }}</td>
+                            <td data-label="Master Name">{{ user.master_name_display }}</td>
+                            <td data-label="Role">{{ user.role_label }}</td>
+                            <td data-label="Status">{{ user.status_label }}</td>
+                            <td data-label="Action">
                                 <a class="table-link" href="{% url 'user-edit' user.pk %}">Edit</a>
                             </td>
                         </tr>
