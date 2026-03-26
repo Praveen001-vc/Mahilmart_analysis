@@ -8,7 +8,7 @@
     <div>
         <span class="eyebrow">Expense Category Master</span>
         <h1>Manage Expense Categories</h1>
-        <p>Create reusable categories for expenses. These categories are shared by the same role workspace.</p>
+        <p>Create reusable categories for expenses. Your saved categories belong to your account, and Counter Expense is available by default on every device.</p>
     </div>
     <div class="hero-actions">
         <a class="secondary-button" href="{{ next_url }}">Back to Expense</a>
@@ -48,7 +48,7 @@
         </div>
         <div class="entry-card-body">
             <div class="entry-inline-note">
-                {{ category_count }} categories available in this shared role workspace.
+                {{ category_count }} categories available for your account.
             </div>
             {% if category_records %}
                 <div class="category-master-list">

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Suppliers | Mahilmart{% endblock %}
+{% block body_class %}app-shell supplier-list-shell{% endblock %}
 
 {% block content %}
 <section class="page-heading premium-panel">
@@ -35,7 +36,7 @@
 
     {% if suppliers %}
         <div class="table-shell">
-            <table class="data-table">
+            <table class="data-table supplier-data-table">
                 <thead>
                     <tr>
                         <th>Supplier ID</th>
@@ -49,12 +50,12 @@
                 <tbody>
                     {% for supplier in suppliers %}
                         <tr>
-                            <td>{{ supplier.supplier_code|default:"Pending" }}</td>
-                            <td>{{ supplier.name }}</td>
-                            <td>{{ supplier.contact_person }}</td>
-                            <td>{{ supplier.phone_number }}</td>
-                            <td>{{ supplier.status }}</td>
-                            <td>Rs. {{ supplier.opening_balance }}</td>
+                            <td data-label="Supplier ID">{{ supplier.supplier_code|default:"Pending" }}</td>
+                            <td data-label="Supplier Name">{{ supplier.name }}</td>
+                            <td data-label="Contact Person">{{ supplier.contact_person }}</td>
+                            <td data-label="Phone Number">{{ supplier.phone_number }}</td>
+                            <td data-label="Status">{{ supplier.status }}</td>
+                            <td data-label="Opening Balance">Rs. {{ supplier.opening_balance }}</td>
                         </tr>
                     {% endfor %}
                 </tbody>

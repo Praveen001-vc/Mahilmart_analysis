@@ -91,7 +91,11 @@
                             class="input-control"
                             value="{{ row.transaction_date }}"
                         >
-                        <select name="entry_category" class="input-control">
+                        <select
+                            name="entry_category"
+                            class="input-control"
+                            data-purpose-category="expense-ledger"
+                        >
                             <option value="">Select Category</option>
                             {% for option in category_options %}
                                 <option value="{{ option }}"{% if option == row.category %} selected{% endif %}>{{ option }}</option>
@@ -103,7 +107,10 @@
                             class="input-control"
                             value="{{ row.purpose }}"
                             placeholder="Purpose"
+                            data-purpose-input="expense-ledger"
+                            list="expense-ledger-purpose-options"
                         >
+                        <datalist id="expense-ledger-purpose-options"></datalist>
                         <input
                             type="number"
                             name="entry_amount"
@@ -273,4 +280,40 @@
         <div class="empty-state">No expense records available for the selected filters.</div>
     {% endif %}
 </section>
+{{ expense_category_purpose_map|json_script:"expense-ledger-purpose-map" }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const purposeMapElement = document.getElementById("expense-ledger-purpose-map");
+    const categorySelect = document.querySelector('[data-purpose-category="expense-ledger"]');
+    const purposeInput = document.querySelector('[data-purpose-input="expense-ledger"]');
+    const purposeOptions = document.getElementById("expense-ledger-purpose-options");
+
+    if (!purposeMapElement || !categorySelect || !purposeInput || !purposeOptions) {
+        return;
+    }
+
+    const purposeMap = JSON.parse(purposeMapElement.textContent);
+
+    const syncPurposeSuggestions = () => {
+        const suggestions = purposeMap[categorySelect.value] || [];
+        purposeOptions.innerHTML = "";
+
+        suggestions.forEach((optionLabel) => {
+            const option = document.createElement("option");
+            option.value = optionLabel;
+            purposeOptions.appendChild(option);
+        });
+
+        if (suggestions.length === 1 && !(purposeInput.value || "").trim()) {
+            purposeInput.value = suggestions[0];
+        }
+    };
+
+    syncPurposeSuggestions();
+    categorySelect.addEventListener("change", syncPurposeSuggestions);
+});
+</script>
 {% endblock %}

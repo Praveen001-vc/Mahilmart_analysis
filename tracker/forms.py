@@ -9,11 +9,15 @@ from .models import (
     ExpenseRecord,
     IncomeRecord,
     PurchaseRecord,
+    ReconciliationExpenseEntry,
+    ReconciliationIncomeEntry,
+    ReconciliationOpeningBalance,
     Supplier,
     UserAccountProfile,
     UserModulePermission,
 )
-from .expense_categories import ensure_expense_categories_for_role
+from .expense_categories import COUNTER_EXPENSE_CATEGORY
+from .expense_categories import get_expense_category_options as get_saved_expense_category_options
 from .user_roles import (
     USER_ROLE_CHOICES,
     USER_ROLE_STAFF,
@@ -82,20 +86,34 @@ class ExpenseForm(StyledModelForm):
         widget=forms.Select(attrs={"class": "input-control"}),
     )
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, counter_only_category=False, **kwargs):
         super().__init__(*args, **kwargs)
         queryset = Supplier.objects.none()
         category_options = []
         if user is not None:
             queryset = filter_queryset_by_role(Supplier.objects.all(), user)
-            category_options = list(
-                ensure_expense_categories_for_role(user).values_list("name", flat=True)
+            saved_category_options = get_saved_expense_category_options(user)
+            category_options = (
+                [COUNTER_EXPENSE_CATEGORY]
+                if counter_only_category
+                else saved_category_options
             )
         self.fields["supplier"].queryset = queryset
         self.fields["supplier"].empty_label = "No saved supplier"
         self.fields["supplier"].required = False
-        current_category = (self.initial.get("category") or getattr(self.instance, "category", "")).strip()
-        if current_category and current_category not in category_options:
+        self.fields["category"].widget.attrs["data-purpose-category"] = "expense-form"
+        self.fields["title"].widget.attrs["data-purpose-input"] = "expense-form"
+        self.fields["title"].widget.attrs["autocomplete"] = "off"
+        current_category = (
+            (self.data.get(self.add_prefix("category")) if self.is_bound else "")
+            or self.initial.get("category")
+            or getattr(self.instance, "category", "")
+        ).strip()
+        if (
+            current_category
+            and current_category not in category_options
+            and not counter_only_category
+        ):
             category_options.append(current_category)
         self.fields["category"].choices = [
             ("", "Select Category"),
@@ -151,7 +169,7 @@ class ExpenseCategoryForm(StyledModelForm):
             "name": "Category Name",
         }
         help_texts = {
-            "name": "Create a reusable expense category for this shared role workspace.",
+            "name": "Create a reusable expense category for your account.",
         }
 
 
@@ -205,6 +223,102 @@ class DailyCashSettlementForm(StyledModelForm):
         return cleaned_data
 
 
+class ReconciliationIncomeForm(StyledModelForm):
+    class Meta:
+        model = ReconciliationIncomeEntry
+        fields = [
+            "title",
+            "source",
+            "category",
+            "amount",
+            "transaction_date",
+            "payment_method",
+            "notes",
+        ]
+        widgets = {
+            "title": StyledModelForm.text_widget,
+            "source": StyledModelForm.text_widget,
+            "category": StyledModelForm.text_widget,
+            "amount": StyledModelForm.money_widget,
+            "transaction_date": StyledModelForm.date_widget,
+            "payment_method": StyledModelForm.select_widget,
+            "notes": StyledModelForm.note_widget,
+        }
+        labels = {
+            "title": "Income Title",
+            "source": "Source / Reference",
+        }
+
+
+class ReconciliationExpenseForm(StyledModelForm):
+    category = forms.ChoiceField(
+        choices=(),
+        widget=forms.Select(attrs={"class": "input-control"}),
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        category_options = get_saved_expense_category_options(user) if user is not None else []
+        self.fields["category"].widget.attrs["data-purpose-category"] = "reconciliation-expense"
+        self.fields["title"].widget.attrs["data-purpose-input"] = "reconciliation-expense"
+        self.fields["title"].widget.attrs["autocomplete"] = "off"
+        current_category = (
+            (self.data.get(self.add_prefix("category")) if self.is_bound else "")
+            or self.initial.get("category")
+            or getattr(self.instance, "category", "")
+        ).strip()
+        if current_category and current_category not in category_options:
+            category_options.append(current_category)
+        self.fields["category"].choices = [
+            ("", "Select Category"),
+            *[(option, option) for option in category_options],
+        ]
+
+    class Meta:
+        model = ReconciliationExpenseEntry
+        fields = [
+            "title",
+            "vendor",
+            "category",
+            "amount",
+            "transaction_date",
+            "payment_method",
+            "notes",
+        ]
+        widgets = {
+            "title": StyledModelForm.text_widget,
+            "vendor": StyledModelForm.text_widget,
+            "category": StyledModelForm.text_widget,
+            "amount": StyledModelForm.money_widget,
+            "transaction_date": StyledModelForm.date_widget,
+            "payment_method": StyledModelForm.select_widget,
+            "notes": StyledModelForm.note_widget,
+        }
+        labels = {
+            "title": "Purpose",
+            "vendor": "Vendor / Paid To",
+        }
+
+
+class ReconciliationOpeningBalanceForm(StyledModelForm):
+    class Meta:
+        model = ReconciliationOpeningBalance
+        fields = ["balance_date", "amount"]
+        widgets = {
+            "balance_date": forms.HiddenInput(),
+            "amount": StyledModelForm.money_widget,
+        }
+        labels = {
+            "amount": "Opening Balance",
+        }
+
+    def clean_amount(self):
+        amount = self.cleaned_data.get("amount")
+        if amount is not None and amount < 0:
+            raise ValidationError("Amount cannot be less than zero.")
+        return amount
+
+
 class PurchaseForm(StyledModelForm):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -218,6 +332,22 @@ class PurchaseForm(StyledModelForm):
         self.fields["purchase_type"].required = True
         self.fields["total_amount"].required = True
         self.fields["paid_amount"].required = True
+        current_purchase_type = (
+            (self.data.get(self.add_prefix("purchase_type")) if self.is_bound else "")
+            or self.initial.get("purchase_type")
+            or getattr(self.instance, "purchase_type", "")
+        ).strip()
+        purchase_type_choices = [
+            ("", "Select Type"),
+            ("Cash", "Cash"),
+            ("Card", "Card"),
+        ]
+        if current_purchase_type and current_purchase_type not in {
+            value for value, _label in purchase_type_choices
+        }:
+            purchase_type_choices.append((current_purchase_type, current_purchase_type))
+        self.fields["purchase_type"].widget.choices = purchase_type_choices
+        self.fields["purchase_type"].help_text = "Choose Cash or Card."
 
     class Meta:
         model = PurchaseRecord
@@ -234,7 +364,7 @@ class PurchaseForm(StyledModelForm):
         widgets = {
             "supplier": StyledModelForm.select_widget,
             "supplier_name": StyledModelForm.text_widget,
-            "purchase_type": StyledModelForm.text_widget,
+            "purchase_type": StyledModelForm.select_widget,
             "invoice_number": StyledModelForm.text_widget,
             "total_amount": StyledModelForm.money_widget,
             "paid_amount": StyledModelForm.money_widget,

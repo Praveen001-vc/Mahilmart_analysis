@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Reconciliation Summary | Mahilmart{% endblock %}
+{% block body_class %}app-shell daily-settlement-shell reconciliation-shell reconciliation-summary-shell{% endblock %}
+
+{% block content %}
+<div class="header-bar reconciliation-header-bar">
+    <div>
+        <h1>Reconciliation summary</h1>
+        <p class="reconciliation-subtitle">Open the totals-only view for the selected dates, then switch back to history whenever you need row-level detail.</p>
+    </div>
+    <div class="reconciliation-header-actions">
+        <a href="{{ reconciliation_history_url }}" class="secondary-button">Open History Page</a>
+        <a href="{% url 'reports' %}" class="back-btn">Back to Reports</a>
+    </div>
+</div>
+
+<div class="date-strip reconciliation-date-strip">
+    <div class="date-range">
+        <span class="date-label">{{ reconciliation_label }}</span>
+        <p class="reconciliation-date-help">Choose the period to review totals for income, expenses, and carry-forward balance.</p>
+    </div>
+
+    <form method="get" action="{% url 'reconciliation-summary' %}" class="date-form reconciliation-date-form">
+        <input type="hidden" name="view" value="{{ reconciliation_history_view }}" data-history-view-input>
+        <input
+            id="reconciliation-summary-start-date"
+            type="date"
+            name="start_date"
+            value="{{ reconciliation_filters.start_date }}"
+        >
+        <input
+            id="reconciliation-summary-end-date"
+            type="date"
+            name="end_date"
+            value="{{ reconciliation_filters.end_date }}"
+        >
+        <button type="submit">Apply</button>
+        <a href="{% url 'reconciliation-summary' %}">Reset</a>
+    </form>
+</div>
+
+<section class="reconciliation-summary-stage">
+    <div class="recent-mini reconciliation-summary-mini">
+        <span class="recent-label">Rows:</span>
+        <span class="recent-item active">{{ income_count }} income</span>
+        <span class="recent-item">{{ expense_count }} expense</span>
+    </div>
+
+    <div class="reconciliation-summary-page-card">
+        {% include "tracker/includes/reconciliation_summary_card.html" %}
+    </div>
+</section>
+
+{% include "tracker/includes/reconciliation_opening_balance_modal.html" %}
+{% endblock %}
+
+{% block extra_scripts %}
+{% include "tracker/includes/reconciliation_page_scripts.html" %}
+{% endblock %}

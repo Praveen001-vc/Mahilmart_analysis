@@ -51,6 +51,7 @@
                     {% endif %}
                     {% if perm.allow_reports %}
                         <a href="{% url 'reports' %}">Reports</a>
+                        <a href="{% url 'reconciliation' %}">Reconciliation History</a>
                     {% endif %}
                     {% if request.user.is_superuser %}
                         <a href="{% url 'user-list' %}">Users</a>

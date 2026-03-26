@@ -168,4 +168,9 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "login"
 
+# Keep users signed in unless they explicitly log out.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_SAVE_EVERY_REQUEST = True
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

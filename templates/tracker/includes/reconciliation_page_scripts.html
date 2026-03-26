@@ -1,0 +1,90 @@
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const historyToggle = document.querySelector("[data-history-toggle]");
+    const historyPanels = Array.from(document.querySelectorAll("[data-history-panel]"));
+    const historyLabels = Array.from(document.querySelectorAll("[data-history-label]"));
+    const historyViewInputs = Array.from(document.querySelectorAll("[data-history-view-input]"));
+    const openingBalanceModal = document.querySelector("[data-opening-balance-modal]");
+    const openOpeningBalanceButton = document.querySelector("[data-open-opening-balance-modal]");
+
+    const setHistoryView = (view) => {
+        historyPanels.forEach((panel) => {
+            panel.hidden = panel.dataset.historyPanel !== view;
+        });
+
+        historyLabels.forEach((label) => {
+            label.classList.toggle("is-active", label.dataset.historyLabel === view);
+        });
+
+        historyViewInputs.forEach((input) => {
+            input.value = view;
+        });
+
+        if (historyToggle) {
+            historyToggle.checked = view === "expense";
+        }
+
+        if (historyToggle) {
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set("view", view);
+            window.history.replaceState({}, "", currentUrl);
+        }
+    };
+
+    if (historyToggle) {
+        historyToggle.addEventListener("change", () => {
+            setHistoryView(historyToggle.checked ? "expense" : "income");
+        });
+
+        setHistoryView(historyToggle.checked ? "expense" : "income");
+    }
+
+    if (!openingBalanceModal || !openOpeningBalanceButton) {
+        return;
+    }
+
+    const openingBalanceInput = openingBalanceModal.querySelector('input[name="opening-amount"]');
+
+    const updateBodyScroll = () => {
+        document.body.classList.toggle("modal-open", !openingBalanceModal.hidden);
+    };
+
+    const openOpeningBalanceModal = () => {
+        openingBalanceModal.hidden = false;
+        updateBodyScroll();
+        window.requestAnimationFrame(() => {
+            openingBalanceInput?.focus();
+            openingBalanceInput?.select();
+        });
+    };
+
+    const closeOpeningBalanceModal = () => {
+        openingBalanceModal.hidden = true;
+        updateBodyScroll();
+        openOpeningBalanceButton.focus();
+    };
+
+    updateBodyScroll();
+
+    openOpeningBalanceButton.addEventListener("click", () => {
+        openOpeningBalanceModal();
+    });
+
+    document.addEventListener("click", (event) => {
+        if (event.target.closest("[data-close-opening-balance-modal]")) {
+            closeOpeningBalanceModal();
+            return;
+        }
+
+        if (event.target === openingBalanceModal) {
+            closeOpeningBalanceModal();
+        }
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !openingBalanceModal.hidden) {
+            closeOpeningBalanceModal();
+        }
+    });
+});
+</script>

@@ -78,6 +78,9 @@
                 <div class="field-block">
                     <label for="{{ form.purchase_type.id_for_label }}">{{ form.purchase_type.label }}{% if form.purchase_type.field.required %} *{% endif %}</label>
                     {{ form.purchase_type }}
+                    {% if form.purchase_type.help_text %}
+                        <small class="help-text">{{ form.purchase_type.help_text }}</small>
+                    {% endif %}
                     {% if form.purchase_type.errors %}
                         <div class="field-error">{{ form.purchase_type.errors|join:", " }}</div>
                     {% endif %}
