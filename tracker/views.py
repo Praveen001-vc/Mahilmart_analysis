@@ -106,12 +106,19 @@ def get_settlement_closing_balance(
     sales_ledger_cash,
     expense_amount,
     cash_settled,
+    cash_denomination_total=Decimal("0.00"),
 ):
-    return get_cash_in_hand_amount(
+    cash_in_hand = get_cash_in_hand_amount(
         opening_balance,
         sales_ledger_cash,
         expense_amount,
-    ) - cash_settled
+    )
+    cash_difference = get_cash_difference_amount(
+        cash_denomination_total,
+        cash_in_hand,
+    )
+    shortage_adjustment = min(cash_difference, Decimal("0.00"))
+    return (cash_in_hand - cash_settled) + shortage_adjustment
 
 
 def build_income_ledger_entries_for_period(user, start_date=None, end_date=None):
@@ -1466,7 +1473,7 @@ def build_settlement_autofill_summary(user, settlement_date):
     }
 
 
-def build_settlement_preview(values):
+def build_settlement_preview(values, cash_denomination_total=Decimal("0.00")):
     opening_balance = parse_money_value(values.get("opening_balance"))
     sales_ledger_cash = parse_money_value(values.get("sales_ledger_cash"))
     gpay_settled = parse_money_value(values.get("gpay_settled"))
@@ -1477,13 +1484,14 @@ def build_settlement_preview(values):
         sales_ledger_cash,
         expense_amount,
         cash_settled,
+        cash_denomination_total,
     )
     cash_in_hand = get_cash_in_hand_amount(
         opening_balance,
         sales_ledger_cash,
         expense_amount,
     )
-    total_amount = gpay_settled + cash_settled + expense_amount + closing_balance
+    total_amount = opening_balance + sales_ledger_cash + gpay_settled
     actual_sales = total_amount - opening_balance
     return {
         "opening_balance": opening_balance,
@@ -2377,7 +2385,10 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 loaded_settlement,
                 autofill_summary,
             )
-            preview = build_settlement_preview(preview_values)
+            preview = build_settlement_preview(
+                preview_values,
+                cash_denomination_total=loaded_settlement.cash_denomination_total,
+            )
             form = DailyCashSettlementForm(
                 instance=loaded_settlement,
                 initial={
@@ -2394,7 +2405,8 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                     "gpay_settled": autofill_summary["gpay_settled"],
                     "cash_settled": Decimal("0.00"),
                     "expense_amount": autofill_summary["expense_amount"],
-                }
+                },
+                cash_denomination_total=Decimal("0.00"),
             )
             form = DailyCashSettlementForm(
                 initial={
@@ -2509,6 +2521,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
             "cash_denominations",
             self.get_cash_denominations(loaded_settlement=loaded_settlement),
         )
+        cash_denomination_total = get_cash_denominations_total(cash_denominations)
         autofill_summary = build_settlement_autofill_summary(
             self.request.user,
             selected_entry_date,
@@ -2526,7 +2539,8 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
         settlement_records = self.get_settlement_queryset(filter_values)
         credit_bill_records = self.get_credit_bill_queryset(selected_entry_date)
         settlement_preview = build_settlement_preview(
-            self.get_preview_source(form, loaded_settlement, autofill_summary)
+            self.get_preview_source(form, loaded_settlement, autofill_summary),
+            cash_denomination_total=cash_denomination_total,
         )
         if loaded_settlement and not form.is_bound:
             autofill_summary = {
@@ -2535,13 +2549,11 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 "gpay_settled": settlement_preview["gpay_settled"],
                 "cash_in_hand": settlement_preview["cash_in_hand"],
             }
-            cash_denomination_total = get_cash_denominations_total(cash_denominations)
             cash_difference = get_cash_difference_amount(
                 cash_denomination_total,
                 settlement_preview["cash_in_hand"],
             )
         else:
-            cash_denomination_total = get_cash_denominations_total(cash_denominations)
             cash_difference = get_cash_difference_amount(
                 cash_denomination_total,
                 settlement_preview["cash_in_hand"],
@@ -2601,6 +2613,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
             params=request.POST,
             loaded_settlement=loaded_settlement,
         )
+        cash_denomination_total = get_cash_denominations_total(cash_denominations)
         selected_date_autofill = build_settlement_autofill_summary(
             request.user,
             selected_entry_date,
@@ -2641,14 +2654,22 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 autofill_summary["sales_ledger_cash"],
                 settlement.expense_amount,
                 settlement.cash_settled,
+                cash_denomination_total,
             )
             if closing_balance < 0:
-                form.add_error(
-                    "cash_settled",
-                    (
+                if settlement.cash_settled > cash_in_hand:
+                    error_message = (
                         "Cash settled cannot be greater than cash in hand "
                         f"of Rs. {format_money(cash_in_hand)}."
-                    ),
+                    )
+                else:
+                    error_message = (
+                        "Cash settled cannot be greater than cash denomination total "
+                        f"of Rs. {format_money(cash_denomination_total)}."
+                    )
+                form.add_error(
+                    "cash_settled",
+                    error_message,
                 )
                 return self.render_to_response(
                     self.get_context_data(
@@ -2660,6 +2681,15 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                     )
                 )
             settlement.closing_balance = closing_balance
+            settlement._expected_cash_in_hand = cash_in_hand
+            settlement._expected_total_amount = (
+                settlement.opening_balance
+                + autofill_summary["sales_ledger_cash"]
+                + settlement.gpay_settled
+            )
+            settlement._expected_actual_sales = (
+                settlement._expected_total_amount - settlement.opening_balance
+            )
             settlement.cash_denominations = cash_denominations
             settlement.save()
             messages.success(
