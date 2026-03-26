@@ -1104,9 +1104,10 @@ class TrackerViewsTests(TestCase):
             reverse("daily-settlement"),
             {
                 "settlement_date": today_value,
+                "opening_balance": "200.00",
                 "gpay_settled": "200.00",
                 "cash_settled": "150.00",
-                "cash_denominations": "",
+                "cash_denominations": json.dumps({"200": 1}),
                 "cash_settled_to": "Shared Counter",
                 "closing_balance": "75.00",
                 "notes": "Updated by another admin account",
@@ -1158,6 +1159,7 @@ class TrackerViewsTests(TestCase):
                 "settlement_date": date.today().isoformat(),
                 "gpay_settled": "0.00",
                 "cash_settled": "200.00",
+                "cash_denominations": json.dumps({"500": 1, "200": 1}),
                 "cash_settled_to": "Admin",
                 "closing_balance": "0.00",
                 "notes": "Updated from settlement page",
@@ -1837,7 +1839,7 @@ class TrackerViewsTests(TestCase):
         )
         self.assertEqual(
             response.context["settlement_preview"]["closing_balance"],
-            Decimal("616.00"),
+            Decimal("0.00"),
         )
         self.assertContains(response, "Daily Cash Settlement")
         self.assertNotContains(response, 'name="opening_balance"', html=False)
@@ -1870,7 +1872,7 @@ class TrackerViewsTests(TestCase):
                 "opening_balance": "900.00",
                 "gpay_settled": "0.00",
                 "cash_settled": "200.00",
-                "cash_denominations": "",
+                "cash_denominations": json.dumps({"500": 1, "200": 2}),
                 "cash_settled_to": "Admin Counter",
                 "closing_balance": "0.00",
                 "notes": "Adjusted opening balance",
@@ -2038,6 +2040,7 @@ class TrackerViewsTests(TestCase):
                 "opening_balance": "9999.00",
                 "gpay_settled": "1000.00",
                 "cash_settled": "500.00",
+                "cash_denominations": json.dumps({"500": 1, "20": 2, "1": 1}),
                 "cash_settled_to": "Admin Counter",
                 "expense_amount": "9999.00",
                 "closing_balance": "300.00",
@@ -2110,6 +2113,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(settlement.cash_difference, Decimal("409.00"))
         self.assertEqual(settlement.closing_balance, Decimal("540.00"))
         self.assertEqual(settlement.total_amount, Decimal("1741.00"))
+        self.assertEqual(settlement.actual_sales, Decimal("1000.00"))
 
     def test_daily_settlement_post_keeps_gpay_equal_to_sales_ledger_value(self):
         self.client.force_login(self.user)
@@ -2175,6 +2179,7 @@ class TrackerViewsTests(TestCase):
             opening_balance=Decimal("100.00"),
             gpay_settled=Decimal("450.00"),
             cash_settled=Decimal("50.00"),
+            cash_denominations={"100": 1},
             cash_settled_to="Counter A",
             expense_amount=Decimal("0.00"),
             closing_balance=Decimal("50.00"),
@@ -2205,7 +2210,7 @@ class TrackerViewsTests(TestCase):
         )
         self.assertEqual(
             response.context["settlement_preview"]["closing_balance"],
-            Decimal("500.00"),
+            Decimal("50.00"),
         )
         self.assertContains(response, "Saved before sales edit")
 
@@ -2215,7 +2220,7 @@ class TrackerViewsTests(TestCase):
                 "settlement_date": target_date.isoformat(),
                 "gpay_settled": "0.00",
                 "cash_settled": "50.00",
-                "cash_denominations": "",
+                "cash_denominations": json.dumps({"100": 1}),
                 "cash_settled_to": "Counter A",
                 "closing_balance": "0.00",
                 "notes": "Updated after sales split edit",
@@ -2226,7 +2231,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 302)
         settlement.refresh_from_db()
         self.assertEqual(settlement.gpay_settled, Decimal("0.00"))
-        self.assertEqual(settlement.closing_balance, Decimal("500.00"))
+        self.assertEqual(settlement.closing_balance, Decimal("50.00"))
         self.assertEqual(settlement.actual_sales, Decimal("450.00"))
         self.assertEqual(settlement.notes, "Updated after sales split edit")
 
@@ -2281,8 +2286,14 @@ class TrackerViewsTests(TestCase):
             cash_denominations={"500": 1, "200": 2},
             cash_settled_to="Night Admin",
             expense_amount=Decimal("50.00"),
-            closing_balance=Decimal("650.00"),
+            closing_balance=Decimal("700.00"),
             notes="Saved settlement snapshot",
+        )
+        DailyCashSettlement.objects.filter(pk=settlement.pk).update(
+            cash_in_hand=Decimal("900.00"),
+            cash_difference=Decimal("0.00"),
+            total_amount=Decimal("1150.00"),
+            actual_sales=Decimal("1050.00"),
         )
         ExpenseRecord.objects.create(
             user=self.user,

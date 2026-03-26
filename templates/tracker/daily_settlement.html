@@ -161,7 +161,7 @@
                     {% endif %}
                     
                     <div class="form-row">
-                        <span class="row-label">Closure balance:</span>
+                        <span class="row-label">Closing balance:</span>
                         <input type="number" name="closing_balance" id="closing-balance" 
                                class="row-input" step="0.01" readonly value="{{ form.closing_balance.value|default:'0' }}">
                     </div>
@@ -492,7 +492,7 @@ document.addEventListener("DOMContentLoaded", function() {
         const cashInHand = calculateCashInHand();
         const cashSettled = toNumber(cashSettledInput?.value);
         const denominationTotal = calculateDenomTotal();
-        const closing = cashInHand - cashSettled;
+        const closing = (cashInHand - cashSettled) + Math.min(denominationTotal - cashInHand, 0);
         const actualSales = total - getOpeningBalance();
         const diff = denominationTotal - cashInHand;
         

@@ -308,14 +308,29 @@ class DailyCashSettlement(models.Model):
         self.cash_denomination_total = _get_cash_denomination_total(
             self.cash_denominations
         )
-        self.cash_in_hand = self.cash_settled + self.closing_balance
-        self.total_amount = (
-            self.gpay_settled
-            + self.cash_settled
-            + self.expense_amount
-            + self.closing_balance
-        )
-        self.actual_sales = self.total_amount - self.opening_balance
+        expected_cash_in_hand = getattr(self, "_expected_cash_in_hand", None)
+        expected_total_amount = getattr(self, "_expected_total_amount", None)
+        expected_actual_sales = getattr(self, "_expected_actual_sales", None)
+
+        if expected_cash_in_hand is None:
+            self.cash_in_hand = self.cash_settled + self.closing_balance
+        else:
+            self.cash_in_hand = expected_cash_in_hand
+
+        if expected_total_amount is None:
+            self.total_amount = (
+                self.gpay_settled
+                + self.cash_settled
+                + self.expense_amount
+                + self.closing_balance
+            )
+        else:
+            self.total_amount = expected_total_amount
+
+        if expected_actual_sales is None:
+            self.actual_sales = self.total_amount - self.opening_balance
+        else:
+            self.actual_sales = expected_actual_sales
         self.cash_difference = self.cash_denomination_total - self.cash_in_hand
         super().save(*args, **kwargs)
 
