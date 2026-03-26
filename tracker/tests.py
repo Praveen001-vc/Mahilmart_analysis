@@ -1930,7 +1930,7 @@ class TrackerViewsTests(TestCase):
             sale_date=date.today(),
             customer_name="Cash Customer",
             net_amount=Decimal("100.00"),
-            received_amount=Decimal("120.00"),
+            received_amount=Decimal("80.00"),
             balance_amount=Decimal("0.00"),
             payment_mode=SalesPaymentMode.CASH,
         )

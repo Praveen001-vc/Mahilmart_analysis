@@ -1364,11 +1364,10 @@ def build_sales_settlement_summary(settlement_date):
             gpay_total += record.split_card_amount
             continue
 
-        effective_amount = get_effective_sales_payment_amount(record)
         if record.payment_mode == SalesPaymentMode.CARD:
-            gpay_total += effective_amount
+            gpay_total += get_effective_sales_payment_amount(record)
         elif record.payment_mode == SalesPaymentMode.CASH:
-            cash_total += effective_amount
+            cash_total += record.net_amount
 
     return {
         "gpay_settled": gpay_total,
