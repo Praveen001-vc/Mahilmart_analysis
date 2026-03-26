@@ -2,7 +2,9 @@
 
 Mahilmart Expense Tracking is a Django-based finance application for managing income, expenses, suppliers, purchases, reports, and user access in one premium-style web interface.
 
-This project now runs separately on Django + PostgreSQL only. Microsoft SQL Server integration has been removed from the application flow.
+Primary app data runs on Django + PostgreSQL. The project also includes optional SQL Server sync utilities for sales, suppliers, and users, a purchase-source inspection command for `PurMas_Table` and payment-table discovery, plus a CSV import path for purchase-master style data.
+
+Full project documentation is available in [PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md).
 
 ## Tech Stack
 
@@ -19,7 +21,7 @@ This project now runs separately on Django + PostgreSQL only. Microsoft SQL Serv
 - Income entry and income history
 - Expense entry for both supplier and general expenses
 - Supplier master with mandatory supplier details
-- Manual purchase module stored in PostgreSQL
+- Purchase module with manual entry and SQL Server sync into PostgreSQL
 - Premium invoice PDF download for purchase records
 - Admin-only user management with create, edit, active, and inactive control
 - Reports page with monthly overview and top categories
@@ -114,7 +116,27 @@ From `requirements.txt`:
 
 - `Django==5.2.4`
 - `psycopg[binary]==3.2.9`
+- `pyodbc==5.3.0`
 - `python-dotenv==1.0.1`
+- `openpyxl==3.1.5`
+
+## SQL Server Purchase Inspection
+
+Use this command when purchase master rows come from `dbo.PurMas_Table` and you need to find the matching payment-related source tables or columns before building a full sync.
+
+```powershell
+python manage.py inspect_sqlserver_purchases --date-from 2026-03-01 --date-to 2026-03-26
+python manage.py inspect_sqlserver_purchases --supplier "Aachi" --keyword pay --keyword bal
+python manage.py inspect_sqlserver_purchases --preview-table dbo.PayMas_Table --json
+```
+
+The command:
+
+- previews filtered `PurMas_Table` purchase rows
+- searches `INFORMATION_SCHEMA.COLUMNS` for payment-like table and column names
+- optionally previews a candidate payment table
+
+The `/purchases/` page also includes a sync button that imports filtered `PurMas_Table` rows into `PurchaseRecord`.
 
 ## URL Pages
 
@@ -221,7 +243,7 @@ Business rule:
 
 ### PurchaseRecord
 
-Stores manual purchase records inside PostgreSQL.
+Stores manual and SQL-synced purchase records inside PostgreSQL.
 
 Main fields:
 
@@ -244,6 +266,7 @@ Business rules:
 - `transaction_date` is automatically set from the system date if left empty.
 - `pending_amount` is automatically calculated as `total_amount - paid_amount`.
 - Manual purchase records are tagged with an internal manual source reference.
+- SQL Server `PurMas_Table` rows can be synced from the purchase list page and are tagged with a SQL source reference.
 
 ### UserAccountProfile
 

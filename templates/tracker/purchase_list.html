@@ -4,20 +4,45 @@
 {% block body_class %}app-shell purchase-list-shell{% endblock %}
 
 {% block content %}
-<section class="page-heading premium-panel">
+<section class="page-heading premium-panel purchase-page-heading">
     <div>
         <span class="eyebrow">Purchase Ledger</span>
         <h1>Purchase Records</h1>
-        <p>Manual PostgreSQL purchase entries with supplier name, invoice number, paid amount, pending amount, and file download.</p>
+        <p>Manual and SQL Server synced purchase entries with supplier name, invoice number, paid amount, pending amount, and file download.</p>
     </div>
-    <a class="primary-button" href="{% url 'purchase-add' %}">Add Purchase</a>
+    <div class="hero-actions">
+        <div class="purchase-sync-meta">
+            <span>SQL Synced Purchases</span>
+            <strong>{{ synced_purchase_count }}</strong>
+            <small class="muted-text">
+                {% if is_default_today_view %}
+                    Sync imports only today&apos;s PurMas purchase rows by default.
+                {% else %}
+                    Sync uses the supplier, invoice, and date filters currently selected on this page.
+                {% endif %}
+            </small>
+        </div>
+        <form method="post" action="{% url 'purchase-list' %}" class="inline-action-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="sync_purchases">
+            <input type="hidden" name="supplier_name" value="{{ purchase_filters.supplier_name }}">
+            <input type="hidden" name="invoice_number" value="{{ purchase_filters.invoice_number }}">
+            <input type="hidden" name="saved_by" value="{{ purchase_filters.saved_by }}">
+            <input type="hidden" name="pending_amount" value="{{ purchase_filters.pending_amount }}">
+            <input type="hidden" name="has_pending" value="{{ purchase_filters.has_pending }}">
+            <input type="hidden" name="date_from" value="{{ purchase_filters.date_from }}">
+            <input type="hidden" name="date_to" value="{{ purchase_filters.date_to }}">
+            <button type="submit" class="secondary-button">Sync Purchases From SQL Server</button>
+        </form>
+        <a class="primary-button" href="{% url 'purchase-add' %}">Add Purchase</a>
+    </div>
 </section>
 
 <div class="purchase-layout">
     <aside class="premium-panel filter-panel filter-sidebar">
         <form method="get" action="{% url 'purchase-list' %}" class="financial-form">
             <span class="eyebrow">Filter Purchases</span>
-            <h2>Find exact purchase entries</h2>
+            <h2>Find purchase entries</h2>
             {% if is_default_today_view %}
                 <p class="muted-text">Default view shows only {{ default_view_date|date:"d-m-Y" }} purchase records.</p>
             {% elif has_active_filters %}
@@ -25,6 +50,12 @@
             {% else %}
                 <p class="muted-text">Default view shows only today&apos;s purchase records. Choose a filter below to change it.</p>
             {% endif %}
+            <input
+                type="hidden"
+                name="has_pending"
+                value="{{ purchase_filters.has_pending }}"
+                data-filter-hidden-value="has_pending"
+            >
 
             <div class="filter-toggle-row">
                 <button
@@ -51,7 +82,7 @@
                 <button
                     type="button"
                     class="secondary-button filter-chip"
-                    data-filter-toggle="pending_amount"
+                    data-filter-toggle="has_pending"
                 >
                     Pending Amount
                 </button>
@@ -107,22 +138,6 @@
                     </div>
                 </div>
 
-                <div class="filter-field-card" data-filter-field="pending_amount" hidden>
-                    <div class="field-block">
-                        <label for="filter-pending-amount">Pending Amount</label>
-                        <input
-                            id="filter-pending-amount"
-                            type="number"
-                            name="pending_amount"
-                            class="input-control"
-                            value="{{ purchase_filters.pending_amount }}"
-                            min="0"
-                            step="0.01"
-                            placeholder="Exact pending amount"
-                        >
-                    </div>
-                </div>
-
                 <div class="filter-field-card filter-field-card-wide" data-filter-field="date_range" hidden>
                     <div class="filter-date-grid">
                         <div class="field-block">
@@ -157,7 +172,11 @@
     </aside>
 
     <div class="purchase-main">
-        <section class="stats-grid compact-grid compact-grid-3">
+        <section class="stats-grid purchase-stats-grid">
+            <article class="stat-card premium-panel">
+                <span>SQL Synced Bills</span>
+                <strong>{{ synced_purchase_count }}</strong>
+            </article>
             <article class="stat-card premium-panel">
                 <span>{% if is_default_today_view %}Today&apos;s Purchase Bills{% else %}Total Purchase Bills{% endif %}</span>
                 <strong>{{ page_count }}</strong>
@@ -419,9 +438,11 @@
 {% block extra_scripts %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+    const filterForm = document.querySelector(".filter-panel .financial-form");
     const filterButtons = Array.from(document.querySelectorAll("[data-filter-toggle]"));
     const filterFields = Array.from(document.querySelectorAll("[data-filter-field]"));
     const filterStage = document.querySelector("[data-filter-stage]");
+    const pendingFilterInput = document.querySelector('[data-filter-hidden-value="has_pending"]');
     const detailModal = document.querySelector("[data-purchase-detail-modal]");
     const payModal = document.querySelector("[data-purchase-pay-modal]");
     const detailLoading = detailModal.querySelector("[data-detail-loading]");
@@ -437,11 +458,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const payNotesInput = payForm.querySelector('textarea[name="notes"]');
     let currentPurchase = null;
 
+    const getFilterInputs = (targetKey) => {
+        const field = document.querySelector(`[data-filter-field="${targetKey}"]`);
+        const inputs = field ? Array.from(field.querySelectorAll("input")) : [];
+        const hiddenInput = document.querySelector(`[data-filter-hidden-value="${targetKey}"]`);
+        if (hiddenInput) {
+            inputs.push(hiddenInput);
+        }
+        return inputs;
+    };
+
     const updateFilterButtonState = () => {
         filterButtons.forEach((button) => {
             const targetKey = button.dataset.filterToggle;
-            const field = document.querySelector(`[data-filter-field="${targetKey}"]`);
-            const inputs = field ? Array.from(field.querySelectorAll("input")) : [];
+            const inputs = getFilterInputs(targetKey);
             const hasValue = inputs.some((input) => (input.value || "").trim() !== "");
             button.classList.toggle("has-value", hasValue);
         });
@@ -481,13 +511,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const getInitialFilterTarget = () => {
         const filledButton = filterButtons.find((button) => {
-            const field = document.querySelector(`[data-filter-field="${button.dataset.filterToggle}"]`);
-            if (!field) {
+            const targetKey = button.dataset.filterToggle;
+            if (targetKey === "has_pending") {
                 return false;
             }
-            return Array.from(field.querySelectorAll("input")).some(
-                (input) => (input.value || "").trim() !== ""
-            );
+            return getFilterInputs(targetKey).some((input) => (input.value || "").trim() !== "");
         });
 
         return filledButton ? filledButton.dataset.filterToggle : "";
@@ -496,6 +524,13 @@ document.addEventListener("DOMContentLoaded", () => {
     filterButtons.forEach((button) => {
         button.addEventListener("click", () => {
             const targetKey = button.dataset.filterToggle;
+            if (targetKey === "has_pending" && pendingFilterInput && filterForm) {
+                pendingFilterInput.value = pendingFilterInput.value ? "" : "1";
+                updateFilterButtonState();
+                openFilterField("");
+                filterForm.requestSubmit();
+                return;
+            }
             const isAlreadyOpen = button.classList.contains("is-active");
             openFilterField(isAlreadyOpen ? "" : targetKey);
         });

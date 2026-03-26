@@ -336,3 +336,8 @@ def sync_sales_from_sqlserver(date_from=None, date_to=None, batch_size=2000):
         connection.close()
 
     return stats
+
+
+
+
+    

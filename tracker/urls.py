@@ -18,6 +18,7 @@ from .views import (
     PurchaseListView,
     PurchasePaymentCreateView,
     PermissionSettingsView,
+    ReconciliationSummaryView,
     ReconciliationView,
     ReportsView,
     SalesListView,
@@ -60,6 +61,11 @@ urlpatterns = [
     path("expenses/add/", ExpenseCreateView.as_view(), name="expense-add"),
     path("expenses/categories/", ExpenseCategoryListView.as_view(), name="expense-category-list"),
     path("expenses/settlement/", DailySettlementView.as_view(), name="daily-settlement"),
+    path(
+        "reports/reconciliation/summary/",
+        ReconciliationSummaryView.as_view(),
+        name="reconciliation-summary",
+    ),
     path("reports/reconciliation/", ReconciliationView.as_view(), name="reconciliation"),
     path("reports/", ReportsView.as_view(), name="reports"),
 ]

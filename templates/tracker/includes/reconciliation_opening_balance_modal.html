@@ -1,0 +1,64 @@
+<section
+    class="modal-overlay"
+    data-opening-balance-modal
+    {% if not opening_balance_modal_open %}hidden{% endif %}
+>
+    <div
+        class="modal-card modal-card-narrow premium-panel reconciliation-opening-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reconciliation-opening-balance-title"
+    >
+        <div class="reconciliation-opening-modal-shell">
+            <div class="modal-header reconciliation-opening-modal-header">
+                <div class="reconciliation-opening-modal-copy">
+                    <span class="reconciliation-opening-modal-chip">Opening Balance</span>
+                    <h2 id="reconciliation-opening-balance-title">Edit opening balance</h2>
+                    <p class="reconciliation-opening-modal-note">
+                        Update the opening balance for {{ reconciliation_opening_balance_date|date:"d-m-Y" }} for this history view.
+                    </p>
+                </div>
+                <button type="button" class="ghost-button" data-close-opening-balance-modal>Close</button>
+            </div>
+
+            <form method="post" action="{{ opening_balance_form_action_url }}" class="reconciliation-opening-modal-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save_opening_balance">
+                <input type="hidden" name="start_date" value="{{ reconciliation_filters.start_date }}">
+                <input type="hidden" name="end_date" value="{{ reconciliation_filters.end_date }}">
+                <input type="hidden" name="view" value="{{ reconciliation_history_view }}" data-history-view-input>
+                {{ opening_balance_form.balance_date }}
+
+                {% if opening_balance_form.non_field_errors %}
+                    <div class="field-error">
+                        {% for error in opening_balance_form.non_field_errors %}
+                            <div>{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <div class="modal-summary-grid reconciliation-opening-modal-summary">
+                    <article class="detail-card">
+                        <span>Selected Date</span>
+                        <strong>{{ reconciliation_opening_balance_date|date:"d-m-Y" }}</strong>
+                    </article>
+                    <article class="detail-card">
+                        <span>Current Balance</span>
+                        <strong>Rs. {{ reconciliation_opening_balance }}</strong>
+                    </article>
+                </div>
+
+                <div class="field-block">
+                    <label for="{{ opening_balance_form.amount.id_for_label }}">{{ opening_balance_form.amount.label }}</label>
+                    {{ opening_balance_form.amount }}
+                    {% if opening_balance_form.amount.errors %}<div class="field-error">{{ opening_balance_form.amount.errors|join:", " }}</div>{% endif %}
+                </div>
+
+                <div class="modal-actions reconciliation-opening-modal-actions">
+                    <button type="button" class="secondary-button" data-close-opening-balance-modal>Cancel</button>
+                    <button type="submit" class="primary-button">Save Opening Balance</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>

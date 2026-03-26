@@ -47,8 +47,6 @@ from .forms import (
     IncomeForm,
     PurchaseForm,
     PurchasePaymentForm,
-    ReconciliationExpenseForm,
-    ReconciliationIncomeForm,
     ReconciliationOpeningBalanceForm,
     SupplierForm,
     UserManagementForm,
@@ -61,12 +59,17 @@ from .models import (
     PaymentMethod,
     PurchasePayment,
     PurchaseRecord,
-    ReconciliationExpenseEntry,
     ReconciliationIncomeEntry,
     ReconciliationOpeningBalance,
     SalesLedgerRecord,
     SalesPaymentMode,
     Supplier,
+)
+from .purchase_helpers import sync_purchase_to_expense
+from .purchase_sync import (
+    PurchaseSyncError,
+    SQLSERVER_PURCHASE_SOURCE_PREFIX,
+    sync_purchases_from_sqlserver,
 )
 from .sales_sync import SalesSyncError, sync_sales_from_sqlserver
 from .supplier_sync import SupplierSyncError, sync_suppliers_from_sqlserver
@@ -80,6 +83,7 @@ RECONCILIATION_NON_CASH_METHODS = (
     PaymentMethod.BANK_TRANSFER,
     PaymentMethod.OTHER,
 )
+MANUAL_PURCHASE_SOURCE_PREFIX = "MANUAL:"
 
 def _sum_amount(queryset):
     return queryset.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
@@ -540,22 +544,43 @@ def get_reconciliation_filter_values(params):
     }
 
 
-def build_reconciliation_redirect_url(params):
-    filter_values = get_reconciliation_filter_values(params)
+def get_reconciliation_history_view(params):
+    selected_view = (params.get("view") or "").strip().lower()
+    return "expense" if selected_view == "expense" else "income"
+
+
+def build_reconciliation_url(
+    filter_values,
+    history_view="income",
+    route_name="reconciliation",
+):
+    resolved_history_view = (
+        "expense" if str(history_view).strip().lower() == "expense" else "income"
+    )
     return (
-        f"{reverse('reconciliation')}?"
+        f"{reverse(route_name)}?"
         f"{urlencode(
             {
                 'start_date': filter_values['start_date'].isoformat(),
                 'end_date': filter_values['end_date'].isoformat(),
+                'view': resolved_history_view,
             }
         )}"
     )
 
 
+def build_reconciliation_redirect_url(params, route_name="reconciliation"):
+    filter_values = get_reconciliation_filter_values(params)
+    return build_reconciliation_url(
+        filter_values,
+        get_reconciliation_history_view(params),
+        route_name=route_name,
+    )
+
+
 def build_reconciliation_income_entries(user, filter_values):
     manual_queryset = filter_queryset_by_role(
-        ReconciliationIncomeEntry.objects.all(),
+        IncomeRecord.objects.all(),
         user,
     ).filter(
         transaction_date__gte=filter_values["start_date"],
@@ -588,7 +613,7 @@ def build_reconciliation_income_entries(user, filter_values):
                 "category": record.category,
                 "payment_method": record.payment_method,
                 "amount": record.amount,
-                "entry_type": "manual",
+                "entry_type": "income",
                 "sort_date": record.transaction_date,
                 "sort_timestamp": record.created_at,
             }
@@ -669,7 +694,7 @@ def get_reconciliation_closing_balance_for_date(user, target_date):
     opening_balance = get_reconciliation_opening_balance_for_date(user, target_date)
     manual_income_total = _sum_amount(
         filter_queryset_by_role(
-            ReconciliationIncomeEntry.objects.all(),
+            IncomeRecord.objects.all(),
             user,
         ).filter(transaction_date=target_date)
     )
@@ -684,7 +709,33 @@ def get_reconciliation_closing_balance_for_date(user, target_date):
         )["total"]
         or Decimal("0.00")
     )
-    return opening_balance + manual_income_total + settlement_income_total
+    manual_cash_expense_total = _sum_amount(
+        filter_queryset_by_role(
+            ExpenseRecord.objects.all(),
+            user,
+        ).filter(
+            transaction_date=target_date,
+            payment_method=PaymentMethod.CASH,
+        )
+    )
+    purchase_cash_total = sum(
+        (
+            purchase.paid_amount or Decimal("0.00")
+            for purchase in get_purchase_base_queryset(user).filter(
+                transaction_date=target_date,
+            )
+            if get_reconciliation_purchase_payment_method(purchase.purchase_type)
+            == PaymentMethod.CASH
+        ),
+        Decimal("0.00"),
+    )
+    return (
+        opening_balance
+        + manual_income_total
+        + settlement_income_total
+        - manual_cash_expense_total
+        - purchase_cash_total
+    )
 
 
 def get_first_reconciliation_activity_date(user):
@@ -699,10 +750,25 @@ def get_first_reconciliation_activity_date(user):
     )
     income_date = (
         filter_queryset_by_role(
-            ReconciliationIncomeEntry.objects.all(),
+            IncomeRecord.objects.all(),
             user,
         )
         .order_by("transaction_date")
+        .values_list("transaction_date", flat=True)
+        .first()
+    )
+    expense_date = (
+        filter_queryset_by_role(
+            ExpenseRecord.objects.all(),
+            user,
+        )
+        .order_by("transaction_date")
+        .values_list("transaction_date", flat=True)
+        .first()
+    )
+    purchase_date = (
+        get_purchase_base_queryset(user)
+        .order_by("transaction_date", "created_at", "pk")
         .values_list("transaction_date", flat=True)
         .first()
     )
@@ -716,7 +782,15 @@ def get_first_reconciliation_activity_date(user):
         .first()
     )
     candidate_dates = [
-        value for value in (opening_balance_date, income_date, settlement_date) if value
+        value
+        for value in (
+            opening_balance_date,
+            income_date,
+            expense_date,
+            purchase_date,
+            settlement_date,
+        )
+        if value
     ]
     return min(candidate_dates) if candidate_dates else None
 
@@ -766,7 +840,7 @@ def get_reconciliation_split_card_balance_for_date(user, target_date):
     )
     manual_card_income_total = _sum_amount(
         filter_queryset_by_role(
-            ReconciliationIncomeEntry.objects.all(),
+            IncomeRecord.objects.all(),
             user,
         ).filter(
             transaction_date__lte=target_date,
@@ -775,7 +849,7 @@ def get_reconciliation_split_card_balance_for_date(user, target_date):
     )
     manual_card_expense_total = _sum_amount(
         filter_queryset_by_role(
-            ReconciliationExpenseEntry.objects.all(),
+            ExpenseRecord.objects.all(),
             user,
         ).filter(
             transaction_date__lte=target_date,
@@ -793,11 +867,28 @@ def save_reconciliation_opening_balance_for_date(user, target_date, amount):
     )
 
 
+def get_reconciliation_purchase_payment_method(purchase_type):
+    normalized_purchase_type = (purchase_type or "").strip()
+    if not normalized_purchase_type:
+        return PaymentMethod.CASH
+
+    if normalized_purchase_type.casefold() == PaymentMethod.CASH.casefold():
+        return PaymentMethod.CASH
+
+    if any(
+        normalized_purchase_type.casefold() == method.casefold()
+        for method in RECONCILIATION_NON_CASH_METHODS
+    ):
+        return normalized_purchase_type
+
+    return PaymentMethod.CASH
+
+
 def build_reconciliation_expense_entries(user, filter_values):
     manual_queryset = filter_queryset_by_role(
-        ReconciliationExpenseEntry.objects.all(),
+        ExpenseRecord.objects.all(),
         user,
-    ).filter(
+    ).select_related("supplier").filter(
         transaction_date__gte=filter_values["start_date"],
         transaction_date__lte=filter_values["end_date"],
     )
@@ -807,22 +898,31 @@ def build_reconciliation_expense_entries(user, filter_values):
     )
 
     entries = []
+    purchase_cash_total = Decimal("0.00")
+    purchase_non_cash_total = Decimal("0.00")
     for record in manual_queryset.order_by("-transaction_date", "-created_at", "-pk"):
         entries.append(
             {
                 "transaction_date": record.transaction_date,
                 "title": record.title,
-                "vendor": record.vendor,
+                "vendor": record.supplier_display,
                 "category": record.category,
                 "payment_method": record.payment_method,
                 "amount": record.amount,
-                "entry_type": "manual",
+                "entry_type": "expense",
                 "sort_date": record.transaction_date,
                 "sort_timestamp": record.created_at,
             }
         )
 
     for purchase in purchase_queryset.order_by("-transaction_date", "-created_at", "-pk"):
+        purchase_payment_method = get_reconciliation_purchase_payment_method(
+            purchase.purchase_type
+        )
+        if purchase_payment_method == PaymentMethod.CASH:
+            purchase_cash_total += purchase.paid_amount or Decimal("0.00")
+        else:
+            purchase_non_cash_total += purchase.paid_amount or Decimal("0.00")
         entries.append(
             {
                 "transaction_date": purchase.transaction_date,
@@ -831,7 +931,7 @@ def build_reconciliation_expense_entries(user, filter_values):
                     purchase.supplier.name if purchase.supplier_id else "-"
                 ),
                 "category": purchase.purchase_type or "Purchase",
-                "payment_method": "Purchase",
+                "payment_method": purchase_payment_method,
                 "amount": purchase.paid_amount,
                 "entry_type": "purchase",
                 "sort_date": purchase.transaction_date,
@@ -844,6 +944,12 @@ def build_reconciliation_expense_entries(user, filter_values):
         reverse=True,
     )
     manual_expense_total = _sum_amount(manual_queryset)
+    manual_cash_expense_total = _sum_amount(
+        manual_queryset.filter(payment_method=PaymentMethod.CASH)
+    )
+    manual_non_cash_expense_total = _sum_amount(
+        manual_queryset.filter(payment_method__in=RECONCILIATION_NON_CASH_METHODS)
+    )
     purchase_total = (
         purchase_queryset.aggregate(total=Sum("paid_amount"))["total"]
         or Decimal("0.00")
@@ -851,6 +957,10 @@ def build_reconciliation_expense_entries(user, filter_values):
     return {
         "records": entries,
         "manual_expense_total": manual_expense_total,
+        "manual_cash_expense_total": manual_cash_expense_total,
+        "manual_non_cash_expense_total": manual_non_cash_expense_total,
+        "purchase_cash_total": purchase_cash_total,
+        "purchase_non_cash_total": purchase_non_cash_total,
         "purchase_total": purchase_total,
     }
 
@@ -916,29 +1026,63 @@ def get_selected_date(request, parameter_name="as_of_date"):
 def get_purchase_base_queryset(user):
     queryset = filter_queryset_by_role(PurchaseRecord.objects.all(), user)
     return (
-        queryset.filter(Q(source_reference__startswith="MANUAL:") | Q(source_reference=""))
+        queryset.filter(
+            Q(source_reference__startswith=MANUAL_PURCHASE_SOURCE_PREFIX)
+            | Q(source_reference__startswith=SQLSERVER_PURCHASE_SOURCE_PREFIX)
+            | Q(source_reference="")
+        )
         .select_related("supplier", "user")
     )
 
 
-def get_raw_purchase_filter_values(request):
+def get_raw_purchase_filter_values(params):
+    has_pending_value = (params.get("has_pending") or "").strip()
     return {
-        "supplier_name": (request.GET.get("supplier_name") or "").strip(),
-        "invoice_number": (request.GET.get("invoice_number") or "").strip(),
-        "saved_by": (request.GET.get("saved_by") or "").strip(),
-        "pending_amount": (request.GET.get("pending_amount") or "").strip(),
-        "date_from": (request.GET.get("date_from") or "").strip(),
-        "date_to": (request.GET.get("date_to") or "").strip(),
+        "supplier_name": (params.get("supplier_name") or "").strip(),
+        "invoice_number": (params.get("invoice_number") or "").strip(),
+        "saved_by": (params.get("saved_by") or "").strip(),
+        "pending_amount": (params.get("pending_amount") or "").strip(),
+        "has_pending": "1" if has_pending_value else "",
+        "date_from": (params.get("date_from") or "").strip(),
+        "date_to": (params.get("date_to") or "").strip(),
     }
 
 
-def get_purchase_filter_values(request):
-    filter_values = get_raw_purchase_filter_values(request)
+def get_purchase_filter_values(params):
+    filter_values = get_raw_purchase_filter_values(params)
     if not any(filter_values.values()):
         today_value = date.today().isoformat()
         filter_values["date_from"] = today_value
         filter_values["date_to"] = today_value
+    elif filter_values["date_from"] and not filter_values["date_to"]:
+        filter_values["date_to"] = filter_values["date_from"]
+    elif filter_values["date_to"] and not filter_values["date_from"]:
+        filter_values["date_from"] = filter_values["date_to"]
     return filter_values
+
+
+def get_purchase_redirect_params(params):
+    redirect_params = {}
+    for key in (
+        "supplier_name",
+        "invoice_number",
+        "saved_by",
+        "pending_amount",
+        "has_pending",
+        "date_from",
+        "date_to",
+    ):
+        value = (params.get(key) or "").strip()
+        if value:
+            redirect_params[key] = value
+    return redirect_params
+
+
+def build_purchase_redirect_url(params):
+    redirect_params = get_purchase_redirect_params(params)
+    if not redirect_params:
+        return reverse("purchase-list")
+    return f"{reverse('purchase-list')}?{urlencode(redirect_params)}"
 
 
 def apply_purchase_filters(queryset, filter_values):
@@ -946,6 +1090,7 @@ def apply_purchase_filters(queryset, filter_values):
     invoice_number = filter_values["invoice_number"]
     saved_by = filter_values["saved_by"]
     pending_amount = filter_values["pending_amount"]
+    has_pending = filter_values["has_pending"]
     date_from = parse_date(filter_values["date_from"])
     date_to = parse_date(filter_values["date_to"])
 
@@ -959,7 +1104,10 @@ def apply_purchase_filters(queryset, filter_values):
         try:
             queryset = queryset.filter(pending_amount=Decimal(pending_amount))
         except InvalidOperation:
-            pass
+            if has_pending:
+                queryset = queryset.filter(pending_amount__gt=Decimal("0.00"))
+    elif has_pending:
+        queryset = queryset.filter(pending_amount__gt=Decimal("0.00"))
     if date_from and date_to and date_from > date_to:
         date_from, date_to = date_to, date_from
     if date_from:
@@ -1545,34 +1693,6 @@ def build_purchase_invoice_response(purchase):
 
 def format_money(amount):
     return f"{amount:.2f}"
-
-
-def sync_purchase_to_expense(purchase):
-    extra_notes = purchase.notes.strip()
-    notes = [
-        "Auto-created from purchase entry",
-        f"Invoice No: {purchase.invoice_number}",
-        f"Purchase Type: {purchase.purchase_type}",
-        f"Paid Amount: {purchase.paid_amount}",
-        f"Pending Amount: {purchase.pending_amount}",
-    ]
-    if extra_notes:
-        notes.append(f"Purchase Notes: {extra_notes}")
-
-    ExpenseRecord.objects.update_or_create(
-        user=purchase.user,
-        source_reference=f"PURCHASE:{purchase.source_reference}",
-        defaults={
-            "title": f"Purchase - {purchase.invoice_number}",
-            "supplier": purchase.supplier,
-            "vendor": purchase.supplier_name,
-            "category": "Purchase",
-            "amount": purchase.total_amount,
-            "transaction_date": purchase.transaction_date,
-            "payment_method": PaymentMethod.OTHER,
-            "notes": " | ".join(notes),
-        },
-    )
 
 
 def create_purchase_payment(
@@ -2569,12 +2689,48 @@ class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView)
 
     def get_queryset(self):
         queryset = get_purchase_base_queryset(self.request.user)
-        queryset = apply_purchase_filters(queryset, get_purchase_filter_values(self.request))
+        queryset = apply_purchase_filters(
+            queryset,
+            get_purchase_filter_values(self.request.GET),
+        )
         return queryset.order_by("-transaction_date", "-created_at", "-pk")
+
+    def post(self, request, *args, **kwargs):
+        action = (request.POST.get("action") or "").strip()
+        if action != "sync_purchases":
+            return redirect(build_purchase_redirect_url(request.POST))
+
+        purchase_filters = get_purchase_filter_values(request.POST)
+        try:
+            stats = sync_purchases_from_sqlserver(
+                user=request.user,
+                date_from=parse_date(purchase_filters["date_from"]),
+                date_to=parse_date(purchase_filters["date_to"]),
+                supplier_name=purchase_filters["supplier_name"],
+                invoice_number=purchase_filters["invoice_number"],
+            )
+        except PurchaseSyncError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(
+                request,
+                "Purchase sync completed. "
+                f"{stats.fetched_count} rows processed, "
+                f"{stats.inserted_count} inserted, "
+                f"{stats.refreshed_count} refreshed, "
+                f"{stats.skipped_count} skipped.",
+            )
+        return redirect(build_purchase_redirect_url(purchase_filters))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         records = self.get_queryset()
+        synced_purchase_queryset = filter_queryset_by_role(
+            PurchaseRecord.objects.filter(
+                source_reference__startswith=SQLSERVER_PURCHASE_SOURCE_PREFIX
+            ),
+            self.request.user,
+        )
         context["page_count"] = records.count()
         context["page_total"] = (
             records.aggregate(total=Sum("total_amount"))["total"] or Decimal("0.00")
@@ -2585,12 +2741,13 @@ class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView)
         context["pending_total"] = (
             records.aggregate(total=Sum("pending_amount"))["total"] or Decimal("0.00")
         )
-        raw_filter_values = get_raw_purchase_filter_values(self.request)
-        filter_values = get_purchase_filter_values(self.request)
+        raw_filter_values = get_raw_purchase_filter_values(self.request.GET)
+        filter_values = get_purchase_filter_values(self.request.GET)
         context["purchase_filters"] = filter_values
         context["has_active_filters"] = any(raw_filter_values.values())
         context["is_default_today_view"] = not context["has_active_filters"]
         context["default_view_date"] = date.today()
+        context["synced_purchase_count"] = synced_purchase_queryset.count()
         return context
 
 
@@ -3093,72 +3250,22 @@ class PermissionSettingsView(AdminRequiredMixin, TemplateView):
         return context
 
 
-class ReconciliationView(ModulePermissionRequiredMixin, TemplateView):
+class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
     permission_field = "allow_reports"
     permission_denied_message = "You do not have access to Reconciliation."
-    template_name = "tracker/reconciliation.html"
+    redirect_route_name = "reconciliation"
+
+    def get_redirect_url(self, params):
+        return build_reconciliation_redirect_url(
+            params,
+            route_name=self.redirect_route_name,
+        )
 
     def post(self, request, *args, **kwargs):
         action = (request.POST.get("action") or "").strip()
-        filter_values = get_reconciliation_filter_values(request.POST)
-        opening_balance_form = ReconciliationOpeningBalanceForm(prefix="opening")
-
-        if action == "save_income":
-            income_form = ReconciliationIncomeForm(request.POST, prefix="income")
-            expense_form = ReconciliationExpenseForm(
-                prefix="expense",
-                user=request.user,
-            )
-            if income_form.is_valid():
-                entry = income_form.save(commit=False)
-                entry.user = request.user
-                entry.save()
-                save_reconciliation_opening_balance_for_date(
-                    request.user,
-                    entry.transaction_date,
-                    income_form.cleaned_data.get("opening_balance"),
-                )
-                messages.success(request, "Reconciliation income entry saved successfully.")
-                return redirect(build_reconciliation_redirect_url(request.POST))
-            messages.error(request, "Please correct the reconciliation income entry.")
-            return self.render_to_response(
-                self.get_context_data(
-                    income_form=income_form,
-                    expense_form=expense_form,
-                    opening_balance_form=opening_balance_form,
-                    filter_values=filter_values,
-                )
-            )
-
-        if action == "save_expense":
-            income_form = ReconciliationIncomeForm(prefix="income")
-            expense_form = ReconciliationExpenseForm(
-                request.POST,
-                prefix="expense",
-                user=request.user,
-            )
-            if expense_form.is_valid():
-                entry = expense_form.save(commit=False)
-                entry.user = request.user
-                entry.save()
-                messages.success(request, "Reconciliation expense entry saved successfully.")
-                return redirect(build_reconciliation_redirect_url(request.POST))
-            messages.error(request, "Please correct the reconciliation expense entry.")
-            return self.render_to_response(
-                self.get_context_data(
-                    income_form=income_form,
-                    expense_form=expense_form,
-                    opening_balance_form=opening_balance_form,
-                    filter_values=filter_values,
-                )
-            )
-
         if action == "save_opening_balance":
-            income_form = ReconciliationIncomeForm(prefix="income")
-            expense_form = ReconciliationExpenseForm(
-                prefix="expense",
-                user=request.user,
-            )
+            filter_values = get_reconciliation_filter_values(request.POST)
+            history_view = get_reconciliation_history_view(request.POST)
             opening_balance_form = ReconciliationOpeningBalanceForm(
                 request.POST,
                 prefix="opening",
@@ -3170,20 +3277,22 @@ class ReconciliationView(ModulePermissionRequiredMixin, TemplateView):
                     opening_balance_form.cleaned_data["amount"],
                 )
                 messages.success(request, "Opening balance updated successfully.")
-                return redirect(build_reconciliation_redirect_url(request.POST))
+                return redirect(self.get_redirect_url(request.POST))
             messages.error(request, "Please correct the opening balance.")
             return self.render_to_response(
                 self.get_context_data(
-                    income_form=income_form,
-                    expense_form=expense_form,
                     opening_balance_form=opening_balance_form,
                     filter_values=filter_values,
+                    history_view=history_view,
                     opening_balance_modal_open=True,
                 )
             )
 
-        messages.error(request, "Unknown reconciliation action.")
-        return redirect(build_reconciliation_redirect_url(request.POST))
+        messages.info(
+            request,
+            "Add new records from the Income and Expenses pages. This screen only shows their history.",
+        )
+        return redirect(self.get_redirect_url(request.POST))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -3191,35 +3300,15 @@ class ReconciliationView(ModulePermissionRequiredMixin, TemplateView):
             "filter_values",
             get_reconciliation_filter_values(self.request.GET),
         )
-        income_form = kwargs.pop("income_form", ReconciliationIncomeForm(prefix="income"))
+        history_view = kwargs.pop(
+            "history_view",
+            get_reconciliation_history_view(self.request.GET),
+        )
         opening_balance_form = kwargs.pop(
             "opening_balance_form",
             ReconciliationOpeningBalanceForm(prefix="opening"),
         )
         opening_balance_modal_open = kwargs.pop("opening_balance_modal_open", False)
-        expense_form = kwargs.pop(
-            "expense_form",
-            ReconciliationExpenseForm(
-                prefix="expense",
-                user=self.request.user,
-            ),
-        )
-        income_entry_date = filter_values["end_date"]
-        if income_form.is_bound:
-            bound_income_date = parse_date(
-                (income_form.data.get(f"{income_form.prefix}-transaction_date") or "").strip()
-            )
-            if bound_income_date is not None:
-                income_entry_date = bound_income_date
-        else:
-            income_form.fields["transaction_date"].initial = income_entry_date
-            income_form.initial["transaction_date"] = income_entry_date
-            opening_balance_default = get_reconciliation_opening_balance_for_date(
-                self.request.user,
-                income_entry_date,
-            )
-            income_form.fields["opening_balance"].initial = opening_balance_default
-            income_form.initial["opening_balance"] = opening_balance_default
 
         opening_balance_date = filter_values["start_date"]
         if opening_balance_form.is_bound:
@@ -3269,15 +3358,21 @@ class ReconciliationView(ModulePermissionRequiredMixin, TemplateView):
             + settlement_income_total
         )
         manual_expense_total = expense_summary["manual_expense_total"]
+        manual_cash_expense_total = expense_summary["manual_cash_expense_total"]
+        manual_non_cash_expense_total = expense_summary["manual_non_cash_expense_total"]
+        purchase_cash_total = expense_summary["purchase_cash_total"]
+        purchase_non_cash_total = expense_summary["purchase_non_cash_total"]
         purchase_total = expense_summary["purchase_total"]
+        cash_expense_total = manual_cash_expense_total + purchase_cash_total
+        non_cash_expense_total = (
+            manual_non_cash_expense_total + purchase_non_cash_total
+        )
         expense_total = manual_expense_total + purchase_total
-        reconciliation_closing_balance = income_total
+        reconciliation_closing_balance = income_total - cash_expense_total
         next_day_opening_balance = reconciliation_closing_balance
 
         context.update(
             {
-                "income_form": income_form,
-                "expense_form": expense_form,
                 "opening_balance_form": opening_balance_form,
                 "opening_balance_modal_open": (
                     opening_balance_modal_open
@@ -3291,10 +3386,21 @@ class ReconciliationView(ModulePermissionRequiredMixin, TemplateView):
                     f"{filter_values['start_date']:%d-%m-%Y} "
                     f"to {filter_values['end_date']:%d-%m-%Y}"
                 ),
+                "reconciliation_history_view": history_view,
+                "reconciliation_history_url": build_reconciliation_url(
+                    filter_values,
+                    history_view,
+                    route_name="reconciliation",
+                ),
+                "reconciliation_summary_url": build_reconciliation_url(
+                    filter_values,
+                    history_view,
+                    route_name="reconciliation-summary",
+                ),
+                "opening_balance_form_action_url": reverse(self.redirect_route_name),
                 "income_records": income_records,
                 "expense_records": expense_records,
                 "reconciliation_opening_balance_date": opening_balance_date,
-                "expense_category_purpose_map": get_expense_category_purpose_map(),
                 "income_total": income_total,
                 "settlement_income_total": settlement_income_total,
                 "manual_income_total": manual_income_total,
@@ -3306,7 +3412,13 @@ class ReconciliationView(ModulePermissionRequiredMixin, TemplateView):
                 "reconciliation_closing_balance": reconciliation_closing_balance,
                 "next_day_opening_balance": next_day_opening_balance,
                 "manual_expense_total": manual_expense_total,
+                "manual_cash_expense_total": manual_cash_expense_total,
+                "manual_non_cash_expense_total": manual_non_cash_expense_total,
+                "purchase_cash_total": purchase_cash_total,
+                "purchase_non_cash_total": purchase_non_cash_total,
                 "purchase_total": purchase_total,
+                "cash_expense_total": cash_expense_total,
+                "non_cash_expense_total": non_cash_expense_total,
                 "expense_total": expense_total,
                 "net_total": income_total - expense_total,
                 "income_count": len(income_records),
@@ -3314,6 +3426,15 @@ class ReconciliationView(ModulePermissionRequiredMixin, TemplateView):
             }
         )
         return context
+
+
+class ReconciliationView(ReconciliationWorkspaceView):
+    template_name = "tracker/reconciliation.html"
+
+
+class ReconciliationSummaryView(ReconciliationWorkspaceView):
+    template_name = "tracker/reconciliation_summary.html"
+    redirect_route_name = "reconciliation-summary"
 
 
 class ReportsView(ModulePermissionRequiredMixin, TemplateView):

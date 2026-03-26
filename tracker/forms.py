@@ -231,7 +231,6 @@ class ReconciliationIncomeForm(StyledModelForm):
             "source",
             "category",
             "amount",
-            "opening_balance",
             "transaction_date",
             "payment_method",
             "notes",
@@ -241,7 +240,6 @@ class ReconciliationIncomeForm(StyledModelForm):
             "source": StyledModelForm.text_widget,
             "category": StyledModelForm.text_widget,
             "amount": StyledModelForm.money_widget,
-            "opening_balance": StyledModelForm.money_widget,
             "transaction_date": StyledModelForm.date_widget,
             "payment_method": StyledModelForm.select_widget,
             "notes": StyledModelForm.note_widget,
@@ -249,7 +247,6 @@ class ReconciliationIncomeForm(StyledModelForm):
         labels = {
             "title": "Income Title",
             "source": "Source / Reference",
-            "opening_balance": "Opening Balance",
         }
 
 
@@ -335,6 +332,22 @@ class PurchaseForm(StyledModelForm):
         self.fields["purchase_type"].required = True
         self.fields["total_amount"].required = True
         self.fields["paid_amount"].required = True
+        current_purchase_type = (
+            (self.data.get(self.add_prefix("purchase_type")) if self.is_bound else "")
+            or self.initial.get("purchase_type")
+            or getattr(self.instance, "purchase_type", "")
+        ).strip()
+        purchase_type_choices = [
+            ("", "Select Type"),
+            ("Cash", "Cash"),
+            ("Card", "Card"),
+        ]
+        if current_purchase_type and current_purchase_type not in {
+            value for value, _label in purchase_type_choices
+        }:
+            purchase_type_choices.append((current_purchase_type, current_purchase_type))
+        self.fields["purchase_type"].widget.choices = purchase_type_choices
+        self.fields["purchase_type"].help_text = "Choose Cash or Card."
 
     class Meta:
         model = PurchaseRecord
@@ -351,7 +364,7 @@ class PurchaseForm(StyledModelForm):
         widgets = {
             "supplier": StyledModelForm.select_widget,
             "supplier_name": StyledModelForm.text_widget,
-            "purchase_type": StyledModelForm.text_widget,
+            "purchase_type": StyledModelForm.select_widget,
             "invoice_number": StyledModelForm.text_widget,
             "total_amount": StyledModelForm.money_widget,
             "paid_amount": StyledModelForm.money_widget,

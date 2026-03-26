@@ -414,8 +414,61 @@ p {
     align-items: start;
 }
 
+.purchase-page-heading {
+    align-items: center;
+}
+
+.purchase-list-shell .hero-actions {
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.purchase-list-shell .hero-actions > * {
+    flex: 0 0 auto;
+}
+
 .purchase-main {
     min-width: 0;
+}
+
+.purchase-sync-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 250px;
+    max-width: 320px;
+}
+
+.purchase-sync-meta span {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.purchase-sync-meta strong {
+    color: var(--ink);
+    font-size: 1.45rem;
+    line-height: 1.1;
+}
+
+.purchase-sync-meta small {
+    max-width: 320px;
+}
+
+.purchase-list-shell .hero-actions .primary-button,
+.purchase-list-shell .hero-actions .secondary-button {
+    min-height: 44px;
+    white-space: nowrap;
+}
+
+.purchase-stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.purchase-stats-grid .stat-card {
+    min-height: 92px;
 }
 
 .filter-sidebar {
@@ -6509,6 +6562,14 @@ body.modal-open {
     margin-bottom: 20px;
 }
 
+.reconciliation-shell .reconciliation-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .reconciliation-shell .header-bar h1 {
     font-size: 28px;
     font-weight: 600;
@@ -6606,6 +6667,41 @@ body.modal-open {
     padding: 6px 12px;
 }
 
+.reconciliation-summary-shell .page-shell {
+    width: min(1400px, calc(100% - 36px));
+    margin: 18px auto 26px;
+}
+
+.reconciliation-summary-stage {
+    display: grid;
+    gap: 18px;
+}
+
+.reconciliation-summary-mini {
+    justify-content: flex-start;
+}
+
+.reconciliation-summary-page-card {
+    width: 100%;
+    margin: 0;
+}
+
+.reconciliation-summary-shell .reconciliation-summary-card .reconciliation-metric-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+
+.reconciliation-summary-shell .reconciliation-summary-card .reconciliation-metric-row,
+.reconciliation-summary-shell .reconciliation-summary-card .reconciliation-settlement-panel {
+    height: 100%;
+}
+
+.reconciliation-summary-shell .reconciliation-summary-card .reconciliation-metric-row-editable,
+.reconciliation-summary-shell .reconciliation-summary-card .reconciliation-settlement-panel {
+    grid-column: span 2;
+}
+
 .reconciliation-shell .main-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 320px;
@@ -6649,6 +6745,14 @@ body.modal-open {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+}
+
+.reconciliation-shell .reconciliation-header-tools {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
     flex-wrap: wrap;
 }
 
@@ -6724,6 +6828,254 @@ body.modal-open {
     color: #64748b;
     font-size: 14px;
     line-height: 1.5;
+}
+
+.reconciliation-shell .reconciliation-history-copy {
+    margin: 0 0 20px;
+    color: #475569;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.reconciliation-shell .reconciliation-history-copy a {
+    color: #2563eb;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.reconciliation-shell .reconciliation-history-copy a:hover {
+    text-decoration: underline;
+}
+
+.reconciliation-shell .reconciliation-view-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border: 1px solid #dbe4f0;
+    border-radius: 999px;
+    background: #f8fbff;
+}
+
+.reconciliation-shell .reconciliation-view-label {
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 600;
+    transition: color 0.2s ease;
+}
+
+.reconciliation-shell .reconciliation-view-label.is-active {
+    color: #0f172a;
+}
+
+.reconciliation-shell .reconciliation-view-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 52px;
+    height: 30px;
+    cursor: pointer;
+}
+
+.reconciliation-shell .reconciliation-view-switch input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.reconciliation-shell .reconciliation-view-slider {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%);
+    overflow: hidden;
+    transition: background 0.2s ease;
+}
+
+.reconciliation-shell .reconciliation-view-slider::before {
+    content: "";
+    position: absolute;
+    inset: 7px 9px;
+    border-radius: 999px;
+    background:
+        radial-gradient(circle at 18% 50%, rgba(255, 255, 255, 0.38) 0 2px, transparent 2px),
+        radial-gradient(circle at 48% 50%, rgba(255, 255, 255, 0.28) 0 2px, transparent 2px),
+        radial-gradient(circle at 78% 50%, rgba(255, 255, 255, 0.18) 0 2px, transparent 2px);
+    opacity: 0.7;
+    animation: reconciliation-toggle-speed 1s linear infinite;
+}
+
+.reconciliation-shell .reconciliation-view-runner {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.16);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.reconciliation-shell .reconciliation-view-runner-figure {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    animation: reconciliation-runner-bounce 0.55s ease-in-out infinite;
+}
+
+.reconciliation-shell .reconciliation-view-runner-figure span {
+    position: absolute;
+    display: block;
+    border-radius: 999px;
+}
+
+.reconciliation-shell .runner-head {
+    top: 4px;
+    left: 9px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2563eb;
+}
+
+.reconciliation-shell .runner-torso {
+    top: 9px;
+    left: 11px;
+    width: 2px;
+    height: 7px;
+    background: #1d4ed8;
+    transform: rotate(18deg);
+    transform-origin: top center;
+}
+
+.reconciliation-shell .runner-arm,
+.reconciliation-shell .runner-leg {
+    left: 11px;
+    width: 2px;
+    transform-origin: top center;
+}
+
+.reconciliation-shell .runner-arm {
+    top: 10px;
+    height: 7px;
+    background: #3b82f6;
+}
+
+.reconciliation-shell .runner-leg {
+    top: 15px;
+    height: 8px;
+    background: #0f172a;
+}
+
+.reconciliation-shell .runner-arm-front {
+    animation: reconciliation-runner-arm-front 0.55s ease-in-out infinite alternate;
+}
+
+.reconciliation-shell .runner-arm-back {
+    animation: reconciliation-runner-arm-back 0.55s ease-in-out infinite alternate;
+}
+
+.reconciliation-shell .runner-leg-front {
+    animation: reconciliation-runner-leg-front 0.55s ease-in-out infinite alternate;
+}
+
+.reconciliation-shell .runner-leg-back {
+    animation: reconciliation-runner-leg-back 0.55s ease-in-out infinite alternate;
+}
+
+.reconciliation-shell .reconciliation-view-switch input:checked + .reconciliation-view-slider {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.reconciliation-shell .reconciliation-view-switch input:checked + .reconciliation-view-slider .reconciliation-view-runner {
+    transform: translateX(22px);
+}
+
+@keyframes reconciliation-toggle-speed {
+    0% {
+        transform: translateX(-14px);
+        opacity: 0.2;
+    }
+
+    40% {
+        opacity: 0.7;
+    }
+
+    100% {
+        transform: translateX(14px);
+        opacity: 0.2;
+    }
+}
+
+@keyframes reconciliation-runner-bounce {
+    0%,
+    100% {
+        transform: translateY(0) rotate(-4deg);
+    }
+
+    50% {
+        transform: translateY(-1px) rotate(4deg);
+    }
+}
+
+@keyframes reconciliation-runner-arm-front {
+    from {
+        transform: rotate(48deg);
+    }
+
+    to {
+        transform: rotate(-34deg);
+    }
+}
+
+@keyframes reconciliation-runner-arm-back {
+    from {
+        transform: rotate(-58deg);
+    }
+
+    to {
+        transform: rotate(28deg);
+    }
+}
+
+@keyframes reconciliation-runner-leg-front {
+    from {
+        transform: rotate(28deg);
+    }
+
+    to {
+        transform: rotate(-42deg);
+    }
+}
+
+@keyframes reconciliation-runner-leg-back {
+    from {
+        transform: rotate(-52deg);
+    }
+
+    to {
+        transform: rotate(24deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reconciliation-shell .reconciliation-view-slider::before,
+    .reconciliation-shell .reconciliation-view-runner-figure,
+    .reconciliation-shell .runner-arm-front,
+    .reconciliation-shell .runner-arm-back,
+    .reconciliation-shell .runner-leg-front,
+    .reconciliation-shell .runner-leg-back {
+        animation: none;
+    }
+}
+
+.reconciliation-shell .reconciliation-history-stack {
+    display: grid;
+    gap: 24px;
 }
 
 .reconciliation-shell .reconciliation-entry-form {
@@ -7026,6 +7378,11 @@ body.modal-open {
     font-variant-numeric: tabular-nums;
 }
 
+.reconciliation-shell .reconciliation-expense-panel .reconciliation-settlement-head strong,
+.reconciliation-shell .reconciliation-expense-panel .reconciliation-settlement-item strong {
+    color: #d95563;
+}
+
 .reconciliation-shell .reconciliation-opening-modal-card {
     width: min(560px, 100%);
     padding: 24px;
@@ -7196,6 +7553,13 @@ body.modal-open {
     margin-bottom: 4px;
 }
 
+.reconciliation-shell .reconciliation-card-copy {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .reconciliation-table {
     min-width: 640px;
 }
@@ -7244,6 +7608,10 @@ body.modal-open {
     .reconciliation-history-grid {
         grid-template-columns: 1fr;
     }
+
+    .reconciliation-summary-shell .reconciliation-summary-card .reconciliation-metric-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 @media (max-width: 820px) {
@@ -7285,6 +7653,7 @@ body.modal-open {
     .reconciliation-shell .date-strip,
     .reconciliation-shell .date-form,
     .reconciliation-shell .date-header,
+    .reconciliation-shell .reconciliation-header-tools,
     .reconciliation-card-head,
     .reconciliation-shell .form-buttons {
         flex-direction: column;
@@ -7297,6 +7666,15 @@ body.modal-open {
         grid-template-columns: 1fr;
     }
 
+    .reconciliation-summary-shell .reconciliation-summary-card .reconciliation-metric-list {
+        grid-template-columns: 1fr;
+    }
+
+    .reconciliation-summary-shell .reconciliation-summary-card .reconciliation-metric-row-editable,
+    .reconciliation-summary-shell .reconciliation-summary-card .reconciliation-settlement-panel {
+        grid-column: span 1;
+    }
+
     .reconciliation-shell .section-body {
         padding-left: 0;
     }
@@ -7305,7 +7683,9 @@ body.modal-open {
     .reconciliation-shell .btn-clear,
     .reconciliation-shell .date-form button,
     .reconciliation-shell .date-form a,
-    .reconciliation-shell .date-form input[type="date"] {
+    .reconciliation-shell .date-form input[type="date"],
+    .reconciliation-shell .reconciliation-header-actions .secondary-button,
+    .reconciliation-shell .reconciliation-header-actions .back-btn {
         width: 100%;
         text-align: center;
     }
