@@ -2111,9 +2111,43 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(settlement.cash_denomination_total, Decimal("950.00"))
         self.assertEqual(settlement.cash_in_hand, Decimal("541.00"))
         self.assertEqual(settlement.cash_difference, Decimal("409.00"))
-        self.assertEqual(settlement.closing_balance, Decimal("540.00"))
+        self.assertEqual(settlement.closing_balance, Decimal("949.00"))
         self.assertEqual(settlement.total_amount, Decimal("1741.00"))
         self.assertEqual(settlement.actual_sales, Decimal("1000.00"))
+
+    def test_daily_settlement_preview_adds_positive_cash_difference_to_closing_balance(self):
+        self.client.force_login(self.user)
+        target_date = date.today()
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=target_date,
+            opening_balance=Decimal("100.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("100.00"),
+            cash_denominations={"500": 1},
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("0.00"),
+        )
+
+        response = self.client.get(
+            reverse("daily-settlement"),
+            {
+                "selected_date": target_date.isoformat(),
+                "entry_date": target_date.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["settlement_preview"]["cash_in_hand"],
+            Decimal("100.00"),
+        )
+        self.assertEqual(response.context["cash_denomination_total"], Decimal("500.00"))
+        self.assertEqual(response.context["cash_difference"], Decimal("400.00"))
+        self.assertEqual(
+            response.context["settlement_preview"]["closing_balance"],
+            Decimal("400.00"),
+        )
 
     def test_daily_settlement_post_keeps_gpay_equal_to_sales_ledger_value(self):
         self.client.force_login(self.user)
@@ -2608,6 +2642,86 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "INV-2001")
         self.assertContains(response, "300.00")
         self.assertContains(response, self.user.username)
+
+    def test_purchase_list_search_filters_supplier_invoice_and_saved_by(self):
+        self.client.force_login(self.user)
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Search Supplier",
+            purchase_type="Type 1",
+            invoice_number="INV-SEARCH-1",
+            total_amount=Decimal("500.00"),
+            paid_amount=Decimal("200.00"),
+        )
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Another Supplier",
+            purchase_type="Type 2",
+            invoice_number="INV-OTHER-2",
+            total_amount=Decimal("800.00"),
+            paid_amount=Decimal("300.00"),
+        )
+
+        response = self.client.get(
+            reverse("purchase-list"),
+            {"search": "SEARCH"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Search Supplier")
+        self.assertContains(response, "INV-SEARCH-1")
+        self.assertNotContains(response, "INV-OTHER-2")
+
+    def test_purchase_list_uses_ten_row_pagination_with_page_links(self):
+        self.client.force_login(self.user)
+
+        for index in range(1, 13):
+            PurchaseRecord.objects.create(
+                user=self.user,
+                supplier_name=f"Pagination Supplier {index}",
+                purchase_type="Type 1",
+                invoice_number=f"PAGE-{index:02d}",
+                total_amount=Decimal("500.00"),
+                paid_amount=Decimal("200.00"),
+                transaction_date=date.today(),
+            )
+
+        first_page = self.client.get(reverse("purchase-list"))
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(first_page.context["page_obj"].paginator.per_page, 10)
+        self.assertEqual(first_page.context["page_obj"].number, 1)
+        self.assertEqual(first_page.context["page_obj"].paginator.num_pages, 2)
+        self.assertEqual(first_page.context["next_page_url"], f"{reverse('purchase-list')}?page=2")
+        self.assertEqual(
+            [item["number"] for item in first_page.context["pagination_links"]],
+            [1, 2],
+        )
+        self.assertContains(first_page, "Page 1 of 2")
+        self.assertEqual(len(first_page.context["records"]), 10)
+        self.assertIn(
+            "PAGE-12",
+            [record.invoice_number for record in first_page.context["records"]],
+        )
+        self.assertNotIn(
+            "PAGE-01",
+            [record.invoice_number for record in first_page.context["records"]],
+        )
+
+        second_page = self.client.get(reverse("purchase-list"), {"page": 2})
+
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(second_page.context["page_obj"].number, 2)
+        self.assertEqual(second_page.context["previous_page_url"], f"{reverse('purchase-list')}?page=1")
+        self.assertEqual(len(second_page.context["records"]), 2)
+        self.assertIn(
+            "PAGE-01",
+            [record.invoice_number for record in second_page.context["records"]],
+        )
+        self.assertIn(
+            "PAGE-02",
+            [record.invoice_number for record in second_page.context["records"]],
+        )
 
     def test_purchase_create_page_saves_manual_purchase_with_file(self):
         self.client.force_login(self.user)

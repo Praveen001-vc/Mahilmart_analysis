@@ -492,9 +492,9 @@ document.addEventListener("DOMContentLoaded", function() {
         const cashInHand = calculateCashInHand();
         const cashSettled = toNumber(cashSettledInput?.value);
         const denominationTotal = calculateDenomTotal();
-        const closing = (cashInHand - cashSettled) + Math.min(denominationTotal - cashInHand, 0);
-        const actualSales = total - getOpeningBalance();
         const diff = denominationTotal - cashInHand;
+        const closing = (cashInHand - cashSettled) + diff;
+        const actualSales = total - getOpeningBalance();
         
         // Update displays
         if (totalAmountSpan) totalAmountSpan.textContent = `₹${total.toFixed(2)}`;
