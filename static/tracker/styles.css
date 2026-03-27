@@ -7587,6 +7587,612 @@ body.modal-open {
     color: #64748b;
 }
 
+.purchase-daily-shell {
+    background: #f5f5f5;
+}
+
+.purchase-daily-shell .page-shell {
+    width: min(1480px, calc(100% - 34px));
+}
+
+.purchase-daily-shell .purchase-ui-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    margin-bottom: 20px;
+}
+
+.purchase-daily-shell .purchase-ui-header h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.purchase-daily-shell .purchase-ui-header p {
+    margin: 0;
+    max-width: 760px;
+    color: #64748b;
+    line-height: 1.6;
+}
+
+.purchase-daily-shell .purchase-ui-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.purchase-daily-shell .purchase-top-filter {
+    margin-bottom: 10px;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    border: 0;
+}
+
+.purchase-daily-shell .purchase-top-filter-head {
+    display: none;
+}
+
+.purchase-daily-shell .purchase-top-filter-head h2 {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.2;
+    color: #0f172a;
+}
+
+.purchase-daily-shell .purchase-top-filter-head p {
+    display: none;
+}
+
+.purchase-daily-shell .purchase-top-filter .purchase-form-kicker {
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+
+.purchase-daily-shell .purchase-top-filter-grid {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.purchase-daily-shell .purchase-top-filter-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.purchase-daily-shell .purchase-top-filter-field label,
+.purchase-daily-shell .purchase-top-filter-toggle span {
+    font-size: 12px;
+    font-weight: 600;
+    color: #334155;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+.purchase-daily-shell .purchase-top-filter-field-wide {
+    flex: 1 1 320px;
+    min-width: 260px;
+}
+
+.purchase-daily-shell .purchase-top-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: auto;
+    padding: 0 2px;
+    color: #334155;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.purchase-daily-shell .purchase-top-filter-toggle input {
+    width: 16px;
+    height: 16px;
+}
+
+.purchase-daily-shell .purchase-top-filter-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+}
+
+.purchase-daily-shell .purchase-top-filter-pills {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex: 0 0 auto;
+}
+
+.purchase-daily-shell .purchase-ui-link,
+.purchase-daily-shell .purchase-ui-secondary,
+.purchase-daily-shell .purchase-ui-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #475569;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.purchase-daily-shell .purchase-ui-secondary {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    color: #1d4ed8;
+}
+
+.purchase-daily-shell .purchase-ui-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    border: 1px solid #2563eb;
+    background: #3b82f6;
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.purchase-daily-shell .purchase-ui-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.1);
+}
+
+.purchase-daily-shell .purchase-ui-strip-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.purchase-daily-shell .purchase-strip-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.purchase-daily-shell .purchase-ui-strip-copy small {
+    color: #64748b;
+}
+
+.purchase-daily-shell .purchase-sync-form {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.purchase-daily-shell .purchase-main-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 24px;
+    align-items: start;
+}
+
+.purchase-daily-shell .purchase-form-column {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.purchase-daily-shell .purchase-filter-form,
+.purchase-daily-shell .purchase-side-card,
+.purchase-daily-shell .purchase-records-section {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(15, 23, 42, 0.05);
+}
+
+.purchase-daily-shell .purchase-filter-form {
+    padding: 24px;
+}
+
+.purchase-daily-shell .purchase-form-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.purchase-daily-shell .purchase-form-kicker {
+    display: inline-block;
+    margin-bottom: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #2563eb;
+}
+
+.purchase-daily-shell .purchase-form-head h2 {
+    margin: 0 0 8px;
+    font-size: 22px;
+    color: #0f172a;
+}
+
+.purchase-daily-shell .purchase-form-head p {
+    margin: 0;
+    max-width: 620px;
+    color: #64748b;
+}
+
+.purchase-daily-shell .purchase-mini-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.purchase-daily-shell .purchase-mini-pill {
+    padding: 5px 9px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.purchase-daily-shell .purchase-top-filter .purchase-mini-pill {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+.purchase-daily-shell .purchase-sections-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+}
+
+.purchase-daily-shell .purchase-section {
+    padding: 24px;
+}
+
+.purchase-daily-shell .purchase-summary-section {
+    margin: 0;
+    padding: 0;
+}
+
+.purchase-daily-shell .purchase-section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.purchase-daily-shell .purchase-section-head h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.purchase-daily-shell .purchase-section-head p {
+    margin: 6px 0 0;
+    color: #64748b;
+}
+
+.purchase-daily-shell .purchase-section-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #1e293b;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.purchase-daily-shell .purchase-section-body {
+    padding-left: 44px;
+}
+
+.purchase-daily-shell .purchase-field-row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 14px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.purchase-daily-shell .purchase-field-row:last-child {
+    border-bottom: none;
+}
+
+.purchase-daily-shell .purchase-field-row label {
+    font-size: 15px;
+    font-weight: 500;
+    color: #475569;
+}
+
+.purchase-daily-shell .purchase-row-input {
+    width: 100%;
+    max-width: 260px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 15px;
+}
+
+.purchase-daily-shell .purchase-top-filter-field .purchase-row-input {
+    width: 190px;
+    max-width: none;
+}
+
+.purchase-daily-shell .purchase-top-filter-field-wide .purchase-row-input {
+    width: 100%;
+    min-width: 280px;
+    max-width: 360px;
+}
+
+.purchase-daily-shell .purchase-row-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.purchase-daily-shell .purchase-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 12px 0;
+    color: #334155;
+    font-weight: 500;
+}
+
+.purchase-daily-shell .purchase-toggle-row input {
+    width: 18px;
+    height: 18px;
+}
+
+.purchase-daily-shell .purchase-field-note {
+    margin-top: 8px;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.purchase-daily-shell .purchase-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 2px solid #e2e8f0;
+}
+
+.purchase-daily-shell .purchase-filter-action {
+    min-height: 32px;
+    padding: 5px 12px;
+    border-radius: 7px;
+    font-size: 13px;
+}
+
+.purchase-daily-shell .purchase-records-section {
+    padding: 24px;
+}
+
+.purchase-daily-shell .purchase-records-head {
+    margin-bottom: 12px;
+}
+
+.purchase-daily-shell .purchase-records-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin: 0 0 18px 44px;
+    color: #475569;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.purchase-daily-shell .purchase-record-table-shell {
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+}
+
+.purchase-daily-shell .purchase-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+}
+
+.purchase-daily-shell .purchase-pagination-status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.purchase-daily-shell .purchase-pagination-page {
+    font-weight: 600;
+    color: #334155;
+}
+
+.purchase-daily-shell .purchase-pagination-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.purchase-daily-shell .purchase-pagination-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    min-height: 32px;
+    padding: 5px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    background: #fff;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.purchase-daily-shell .purchase-pagination-link:hover {
+    background: #f8fafc;
+}
+
+.purchase-daily-shell .purchase-pagination-link.is-current,
+.purchase-daily-shell .purchase-pagination-link.is-next {
+    border-color: #2563eb;
+    background: #3b82f6;
+    color: #fff;
+}
+
+.purchase-daily-shell .purchase-table-pay {
+    min-height: 34px;
+    padding: 6px 12px;
+    border-radius: 7px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #334155;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.purchase-daily-shell .purchase-table-pay:hover {
+    background: #f8fafc;
+}
+
+.purchase-daily-shell .purchase-side-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.purchase-daily-shell .purchase-side-card {
+    padding: 20px;
+}
+
+.purchase-daily-shell .purchase-side-card h3 {
+    margin: 0 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e2e8f0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.purchase-daily-shell .purchase-side-stat-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.purchase-daily-shell .purchase-side-stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.purchase-daily-shell .purchase-side-stat-row span {
+    color: #475569;
+}
+
+.purchase-daily-shell .purchase-side-stat-row strong {
+    color: #0f172a;
+}
+
+.purchase-daily-shell .purchase-side-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.purchase-daily-shell .purchase-side-action {
+    width: 100%;
+}
+
+.purchase-daily-shell .purchase-recent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.purchase-daily-shell .purchase-recent-record {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 11px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: #f8fafc;
+    text-align: left;
+    cursor: pointer;
+}
+
+.purchase-daily-shell .purchase-recent-record:hover {
+    background: #f1f5f9;
+}
+
+.purchase-daily-shell .purchase-recent-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.purchase-daily-shell .purchase-recent-copy strong {
+    color: #0f172a;
+}
+
+.purchase-daily-shell .purchase-recent-copy small {
+    color: #64748b;
+}
+
+.purchase-daily-shell .purchase-recent-amount {
+    color: #b45309;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.purchase-daily-shell .purchase-empty-note {
+    margin: 0;
+    color: #94a3b8;
+    text-align: center;
+}
+
 @media (max-width: 1180px) {
     .report-stage-head {
         flex-direction: column;
@@ -7611,6 +8217,23 @@ body.modal-open {
 
     .reconciliation-summary-shell .reconciliation-summary-card .reconciliation-metric-list {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .purchase-daily-shell .purchase-main-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .purchase-daily-shell .purchase-side-column {
+        order: -1;
+    }
+
+    .purchase-daily-shell .purchase-top-filter-grid {
+        flex-wrap: wrap;
+    }
+
+    .purchase-daily-shell .purchase-top-filter-pills {
+        margin-left: 0;
+        width: 100%;
     }
 }
 
@@ -7698,6 +8321,51 @@ body.modal-open {
         grid-template-columns: 1fr;
     }
 
+    .purchase-daily-shell .purchase-ui-header,
+    .purchase-daily-shell .purchase-ui-strip,
+    .purchase-daily-shell .purchase-form-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .purchase-daily-shell .purchase-ui-header-actions,
+    .purchase-daily-shell .purchase-mini-pills {
+        justify-content: flex-start;
+    }
+
+    .purchase-daily-shell .purchase-top-filter-grid {
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+
+    .purchase-daily-shell .purchase-top-filter-field,
+    .purchase-daily-shell .purchase-top-filter-toggle,
+    .purchase-daily-shell .purchase-top-filter-actions,
+    .purchase-daily-shell .purchase-top-filter-pills {
+        width: 100%;
+    }
+
+    .purchase-daily-shell .purchase-top-filter-field {
+        justify-content: space-between;
+    }
+
+    .purchase-daily-shell .purchase-top-filter-field .purchase-row-input,
+    .purchase-daily-shell .purchase-top-filter-field-wide .purchase-row-input {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .purchase-daily-shell .purchase-top-filter-actions,
+    .purchase-daily-shell .purchase-top-filter-pills {
+        margin-left: 0;
+    }
+
+    .purchase-daily-shell .purchase-sections-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
     .report-category-row {
         grid-template-columns: auto minmax(0, 1fr);
     }
@@ -7773,5 +8441,45 @@ body.modal-open {
     .report-category-headline {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .purchase-daily-shell .purchase-field-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .purchase-daily-shell .purchase-row-input {
+        max-width: none;
+    }
+
+    .purchase-daily-shell .purchase-top-filter {
+        padding: 0;
+    }
+
+    .purchase-daily-shell .purchase-section-body {
+        padding-left: 0;
+    }
+
+    .purchase-daily-shell .purchase-records-summary {
+        margin-left: 0;
+    }
+
+    .purchase-daily-shell .purchase-form-actions {
+        flex-direction: column-reverse;
+    }
+
+    .purchase-daily-shell .purchase-top-filter-actions {
+        flex-direction: row;
+    }
+
+    .purchase-daily-shell .purchase-pagination-nav {
+        width: 100%;
+    }
+
+    .purchase-daily-shell .purchase-ui-primary,
+    .purchase-daily-shell .purchase-ui-secondary,
+    .purchase-daily-shell .purchase-ui-clear,
+    .purchase-daily-shell .purchase-ui-link {
+        width: 100%;
     }
 }

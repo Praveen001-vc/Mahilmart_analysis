@@ -1,217 +1,119 @@
 {% extends "base.html" %}
 
 {% block title %}Purchases | Mahilmart{% endblock %}
-{% block body_class %}app-shell purchase-list-shell{% endblock %}
+{% block body_class %}app-shell purchase-list-shell purchase-daily-shell{% endblock %}
 
 {% block content %}
-<section class="page-heading premium-panel purchase-page-heading">
+<div class="purchase-ui-header">
     <div>
-        <span class="eyebrow">Purchase Ledger</span>
         <h1>Purchase Records</h1>
-        <p>Manual and SQL Server synced purchase entries with supplier name, invoice number, paid amount, pending amount, and file download.</p>
+        
     </div>
-    <div class="hero-actions">
-        <div class="purchase-sync-meta">
-            <span>SQL Synced Purchases</span>
-            <strong>{{ synced_purchase_count }}</strong>
-            <small class="muted-text">
-                {% if is_default_today_view %}
-                    Sync imports only today&apos;s PurMas purchase rows by default.
-                {% else %}
-                    Sync uses the supplier, invoice, and date filters currently selected on this page.
-                {% endif %}
-            </small>
-        </div>
-        <form method="post" action="{% url 'purchase-list' %}" class="inline-action-form">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="sync_purchases">
-            <input type="hidden" name="supplier_name" value="{{ purchase_filters.supplier_name }}">
-            <input type="hidden" name="invoice_number" value="{{ purchase_filters.invoice_number }}">
-            <input type="hidden" name="saved_by" value="{{ purchase_filters.saved_by }}">
-            <input type="hidden" name="pending_amount" value="{{ purchase_filters.pending_amount }}">
-            <input type="hidden" name="has_pending" value="{{ purchase_filters.has_pending }}">
-            <input type="hidden" name="date_from" value="{{ purchase_filters.date_from }}">
-            <input type="hidden" name="date_to" value="{{ purchase_filters.date_to }}">
-            <button type="submit" class="secondary-button">Sync Purchases From SQL Server</button>
-        </form>
-        <a class="primary-button" href="{% url 'purchase-add' %}">Add Purchase</a>
+    <div class="purchase-ui-header-actions">
+        
+        <a class="purchase-ui-primary" href="{% url 'purchase-add' %}">Add Purchase</a>
     </div>
-</section>
+</div>
 
-<div class="purchase-layout">
-    <aside class="premium-panel filter-panel filter-sidebar">
-        <form method="get" action="{% url 'purchase-list' %}" class="financial-form">
-            <span class="eyebrow">Filter Purchases</span>
-            <h2>Find purchase entries</h2>
-            {% if is_default_today_view %}
-                <p class="muted-text">Default view shows only {{ default_view_date|date:"d-m-Y" }} purchase records.</p>
-            {% elif has_active_filters %}
-                <p class="muted-text">Showing filtered purchase records.</p>
-            {% else %}
-                <p class="muted-text">Default view shows only today&apos;s purchase records. Choose a filter below to change it.</p>
-            {% endif %}
+<form method="get" action="{% url 'purchase-list' %}" class="purchase-top-filter">
+    <div class="purchase-top-filter-grid">
+        <div class="purchase-top-filter-field purchase-top-filter-field-wide">
+            <label for="purchase-search">Search</label>
             <input
-                type="hidden"
-                name="has_pending"
-                value="{{ purchase_filters.has_pending }}"
-                data-filter-hidden-value="has_pending"
+                id="purchase-search"
+                type="text"
+                name="search"
+                class="purchase-row-input"
+                value="{{ purchase_filters.search }}"
+                placeholder="Supplier, invoice, or saved by"
             >
+        </div>
+        <div class="purchase-top-filter-field">
+            <label for="filter-date-from">From</label>
+            <input
+                id="filter-date-from"
+                type="date"
+                name="date_from"
+                class="purchase-row-input"
+                value="{{ purchase_filters.date_from }}"
+            >
+        </div>
+        <div class="purchase-top-filter-field">
+            <label for="filter-date-to">To</label>
+            <input
+                id="filter-date-to"
+                type="date"
+                name="date_to"
+                class="purchase-row-input"
+                value="{{ purchase_filters.date_to }}"
+            >
+        </div>
+        <label class="purchase-top-filter-toggle" for="purchase-has-pending">
+            <span>Pending only</span>
+            <input
+                id="purchase-has-pending"
+                type="checkbox"
+                name="has_pending"
+                value="1"
+                {% if purchase_filters.has_pending %}checked{% endif %}
+            >
+        </label>
+        <div class="purchase-top-filter-actions">
+            <a class="purchase-ui-clear purchase-filter-action" href="{% url 'purchase-list' %}">Clear</a>
+            <button type="submit" class="purchase-ui-primary purchase-filter-action">Search</button>
+        </div>
+        
+    </div>
+</form>
 
-            <div class="filter-toggle-row">
-                <button
-                    type="button"
-                    class="secondary-button filter-chip"
-                    data-filter-toggle="supplier_name"
-                >
-                    Supplier Name
-                </button>
-                <button
-                    type="button"
-                    class="secondary-button filter-chip"
-                    data-filter-toggle="invoice_number"
-                >
-                    Invoice Number
-                </button>
-                <button
-                    type="button"
-                    class="secondary-button filter-chip"
-                    data-filter-toggle="saved_by"
-                >
-                    Saved By
-                </button>
-                <button
-                    type="button"
-                    class="secondary-button filter-chip"
-                    data-filter-toggle="has_pending"
-                >
-                    Pending Amount
-                </button>
-                <button
-                    type="button"
-                    class="secondary-button filter-chip"
-                    data-filter-toggle="date_range"
-                >
-                    Date Range Optional
-                </button>
-            </div>
+<div class="purchase-ui-strip">
+    <div class="purchase-ui-strip-copy">
+        {% if is_default_today_view %}
+            <span class="purchase-strip-label">Today view: {{ default_view_date|date:"d-m-Y" }}</span>
+            <small>Only today&apos;s purchase records are shown until you apply your own filter.</small>
+        {% elif has_active_filters %}
+            <span class="purchase-strip-label">Filtered purchase view</span>
+            <small>Supplier, invoice, saved by, pending, and date filters are applied to this list.</small>
+        {% else %}
+            <span class="purchase-strip-label">Purchase view</span>
+            <small>Review all stored purchase entries and their current payment status.</small>
+        {% endif %}
+    </div>
+    <form method="post" action="{% url 'purchase-list' %}" class="purchase-sync-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="sync_purchases">
+        <input type="hidden" name="search" value="{{ purchase_filters.search }}">
+        <input type="hidden" name="supplier_name" value="{{ purchase_filters.supplier_name }}">
+        <input type="hidden" name="invoice_number" value="{{ purchase_filters.invoice_number }}">
+        <input type="hidden" name="saved_by" value="{{ purchase_filters.saved_by }}">
+        <input type="hidden" name="pending_amount" value="{{ purchase_filters.pending_amount }}">
+        <input type="hidden" name="has_pending" value="{{ purchase_filters.has_pending }}">
+        <input type="hidden" name="date_from" value="{{ purchase_filters.date_from }}">
+        <input type="hidden" name="date_to" value="{{ purchase_filters.date_to }}">
+        <button type="submit" class="purchase-ui-secondary">Sync Purchases From SQL Server</button>
+    </form>
+</div>
 
-            <div class="filter-stage" data-filter-stage hidden>
-                <div class="filter-field-card" data-filter-field="supplier_name" hidden>
-                    <div class="field-block">
-                        <label for="filter-supplier-name">Supplier Name</label>
-                        <input
-                            id="filter-supplier-name"
-                            type="text"
-                            name="supplier_name"
-                            class="input-control"
-                            value="{{ purchase_filters.supplier_name }}"
-                            placeholder="Search supplier"
-                        >
-                    </div>
-                </div>
-
-                <div class="filter-field-card" data-filter-field="invoice_number" hidden>
-                    <div class="field-block">
-                        <label for="filter-invoice-number">Invoice Number</label>
-                        <input
-                            id="filter-invoice-number"
-                            type="text"
-                            name="invoice_number"
-                            class="input-control"
-                            value="{{ purchase_filters.invoice_number }}"
-                            placeholder="Search invoice"
-                        >
-                    </div>
-                </div>
-
-                <div class="filter-field-card" data-filter-field="saved_by" hidden>
-                    <div class="field-block">
-                        <label for="filter-saved-by">Saved By</label>
-                        <input
-                            id="filter-saved-by"
-                            type="text"
-                            name="saved_by"
-                            class="input-control"
-                            value="{{ purchase_filters.saved_by }}"
-                            placeholder="Search username"
-                        >
-                    </div>
-                </div>
-
-                <div class="filter-field-card filter-field-card-wide" data-filter-field="date_range" hidden>
-                    <div class="filter-date-grid">
-                        <div class="field-block">
-                            <label for="filter-date-from">Date From Optional</label>
-                            <input
-                                id="filter-date-from"
-                                type="date"
-                                name="date_from"
-                                class="input-control"
-                                value="{{ purchase_filters.date_from }}"
-                            >
-                        </div>
-                        <div class="field-block">
-                            <label for="filter-date-to">Date To Optional</label>
-                            <input
-                                id="filter-date-to"
-                                type="date"
-                                name="date_to"
-                                class="input-control"
-                                value="{{ purchase_filters.date_to }}"
-                            >
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-actions filter-form-actions">
-                <button type="submit" class="primary-button">Apply Filters</button>
-                <a class="secondary-button" href="{% url 'purchase-list' %}">Clear Filters</a>
-            </div>
-        </form>
-    </aside>
-
-    <div class="purchase-main">
-        <section class="stats-grid purchase-stats-grid">
-            <article class="stat-card premium-panel">
-                <span>SQL Synced Bills</span>
-                <strong>{{ synced_purchase_count }}</strong>
-            </article>
-            <article class="stat-card premium-panel">
-                <span>{% if is_default_today_view %}Today&apos;s Purchase Bills{% else %}Total Purchase Bills{% endif %}</span>
-                <strong>{{ page_count }}</strong>
-            </article>
-            <article class="stat-card premium-panel">
-                <span>{% if is_default_today_view %}Today&apos;s Total Amount{% else %}Total Amount{% endif %}</span>
-                <strong>Rs. {{ page_total }}</strong>
-            </article>
-            <article class="stat-card premium-panel">
-                <span>{% if is_default_today_view %}Today&apos;s Paid Amount{% else %}Paid Amount{% endif %}</span>
-                <strong>Rs. {{ paid_total }}</strong>
-            </article>
-            <article class="stat-card premium-panel">
-                <span>{% if is_default_today_view %}Today&apos;s Pending Amount{% else %}Pending Amount{% endif %}</span>
-                <strong>Rs. {{ pending_total }}</strong>
-            </article>
-        </section>
-
-        <section
-            class="premium-panel"
-            data-auto-load-table
-            data-batch-size="50"
-            data-total-count="{{ page_count }}"
-            data-next-url="{{ next_page_url }}"
-        >
-            <div class="panel-heading">
+<div class="purchase-main-layout">
+    <div class="purchase-form-column">
+        <section class="purchase-section purchase-records-section">
+            <div class="purchase-section-head purchase-records-head">
+                <span class="purchase-section-num">III</span>
                 <div>
-                    <span class="eyebrow">Detailed View</span>
-                    <h2>Purchase table</h2>
+                    <h3>Purchase Records</h3>
+                    <p>Open invoice details, download files, or add a payment from the same list.</p>
                 </div>
-                <p class="muted-text">50 rows load at a time. Scroll down to load more automatically.</p>
+            </div>
+
+            <div class="purchase-records-summary">
+                <span>Total bills: {{ page_count }}</span>
+                <span>Total amount: Rs. {{ page_total }}</span>
+                <span>Paid: Rs. {{ paid_total }}</span>
+                <span>Pending: Rs. {{ pending_total }}</span>
             </div>
 
             {% if records %}
-                <div class="table-shell">
+                <div class="table-shell purchase-record-table-shell">
                     <table class="data-table purchase-data-table">
                         <thead>
                             <tr>
@@ -262,7 +164,7 @@
                                         {% if record.pending_amount > 0 %}
                                             <button
                                                 type="button"
-                                                class="secondary-button table-pay-button"
+                                                class="purchase-table-pay"
                                                 data-purchase-pay-trigger
                                                 data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
                                             >
@@ -277,21 +179,91 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="auto-load-footer">
-                    <div class="auto-load-status" data-load-status>
-                        Showing {{ visible_count }} of {{ page_count }} records.
+                <div class="purchase-pagination">
+                    <div class="purchase-pagination-status">
+                        Showing {{ showing_from }} to {{ showing_to }} of {{ page_count }} records.
+                        {% if page_obj %}
+                            <span class="purchase-pagination-page">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                        {% endif %}
                     </div>
-                    {% if next_page_url %}
-                        <a class="secondary-button auto-load-link" data-next-link href="{{ next_page_url }}">
-                            Load next 50
-                        </a>
+                    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+                        <nav class="purchase-pagination-nav" aria-label="Purchase pagination">
+                            {% if previous_page_url %}
+                                <a class="purchase-pagination-link" href="{{ previous_page_url }}">Previous</a>
+                            {% endif %}
+                            {% for page_link in pagination_links %}
+                                {% if page_link.is_current %}
+                                    <span class="purchase-pagination-link is-current" aria-current="page">{{ page_link.number }}</span>
+                                {% else %}
+                                    <a class="purchase-pagination-link" href="{{ page_link.url }}">{{ page_link.number }}</a>
+                                {% endif %}
+                            {% endfor %}
+                            {% if next_page_url %}
+                                <a class="purchase-pagination-link is-next" href="{{ next_page_url }}">Next</a>
+                            {% endif %}
+                        </nav>
                     {% endif %}
-                    <div class="auto-load-sentinel" data-load-sentinel aria-hidden="true"></div>
                 </div>
             {% else %}
                 <div class="empty-state">No purchase records available yet. Add your first purchase entry.</div>
             {% endif %}
         </section>
+    </div>
+
+    <div class="purchase-side-column">
+        <div class="purchase-side-card">
+            <h3>Purchase Snapshot</h3>
+            <div class="purchase-side-stat-list">
+                <div class="purchase-side-stat-row">
+                    <span>SQL Synced Bills</span>
+                    <strong>{{ synced_purchase_count }}</strong>
+                </div>
+                <div class="purchase-side-stat-row">
+                    <span>Visible Bills</span>
+                    <strong>{{ page_count }}</strong>
+                </div>
+                <div class="purchase-side-stat-row">
+                    <span>Total Amount</span>
+                    <strong>Rs. {{ page_total }}</strong>
+                </div>
+                <div class="purchase-side-stat-row">
+                    <span>Paid Amount</span>
+                    <strong class="positive">Rs. {{ paid_total }}</strong>
+                </div>
+                <div class="purchase-side-stat-row">
+                    <span>Pending Amount</span>
+                    <strong class="negative">Rs. {{ pending_total }}</strong>
+                </div>
+            </div>
+            <div class="purchase-side-actions">
+                <a class="purchase-ui-primary purchase-side-action" href="{% url 'purchase-add' %}">Add Purchase</a>
+                <a class="purchase-ui-clear purchase-side-action" href="{% url 'purchase-list' %}">Reset View</a>
+            </div>
+        </div>
+
+        <div class="purchase-side-card">
+            <h3>Recent Purchases</h3>
+            {% if recent_records %}
+                <div class="purchase-recent-list">
+                    {% for record in recent_records %}
+                        <button
+                            type="button"
+                            class="purchase-recent-record"
+                            data-purchase-trigger
+                            data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
+                        >
+                            <span class="purchase-recent-copy">
+                                <strong>{{ record.invoice_number }}</strong>
+                                <small>{{ record.supplier_name|default:"-" }}</small>
+                            </span>
+                            <span class="purchase-recent-amount">Rs. {{ record.pending_amount }}</span>
+                        </button>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="purchase-empty-note">No recent purchase entries found for this view.</p>
+            {% endif %}
+        </div>
     </div>
 </div>
 
@@ -438,11 +410,6 @@
 {% block extra_scripts %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    const filterForm = document.querySelector(".filter-panel .financial-form");
-    const filterButtons = Array.from(document.querySelectorAll("[data-filter-toggle]"));
-    const filterFields = Array.from(document.querySelectorAll("[data-filter-field]"));
-    const filterStage = document.querySelector("[data-filter-stage]");
-    const pendingFilterInput = document.querySelector('[data-filter-hidden-value="has_pending"]');
     const detailModal = document.querySelector("[data-purchase-detail-modal]");
     const payModal = document.querySelector("[data-purchase-pay-modal]");
     const detailLoading = detailModal.querySelector("[data-detail-loading]");
@@ -457,94 +424,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const payAmountInput = payForm.querySelector('input[name="amount"]');
     const payNotesInput = payForm.querySelector('textarea[name="notes"]');
     let currentPurchase = null;
-
-    const getFilterInputs = (targetKey) => {
-        const field = document.querySelector(`[data-filter-field="${targetKey}"]`);
-        const inputs = field ? Array.from(field.querySelectorAll("input")) : [];
-        const hiddenInput = document.querySelector(`[data-filter-hidden-value="${targetKey}"]`);
-        if (hiddenInput) {
-            inputs.push(hiddenInput);
-        }
-        return inputs;
-    };
-
-    const updateFilterButtonState = () => {
-        filterButtons.forEach((button) => {
-            const targetKey = button.dataset.filterToggle;
-            const inputs = getFilterInputs(targetKey);
-            const hasValue = inputs.some((input) => (input.value || "").trim() !== "");
-            button.classList.toggle("has-value", hasValue);
-        });
-    };
-
-    const openFilterField = (targetKey = "") => {
-        let opened = false;
-        const showOptionalDateRange = targetKey && targetKey !== "date_range";
-        let focusTarget = null;
-
-        filterFields.forEach((field) => {
-            const fieldKey = field.dataset.filterField;
-            const isTarget = fieldKey === targetKey;
-            const shouldShow = isTarget || (showOptionalDateRange && fieldKey === "date_range");
-
-            field.hidden = !shouldShow;
-            if (shouldShow) {
-                opened = true;
-                if (isTarget) {
-                    focusTarget = field.querySelector("input");
-                }
-            }
-        });
-
-        if (focusTarget) {
-            focusTarget.focus();
-        }
-
-        filterButtons.forEach((button) => {
-            button.classList.toggle("is-active", button.dataset.filterToggle === targetKey);
-        });
-
-        if (filterStage) {
-            filterStage.hidden = !opened;
-        }
-    };
-
-    const getInitialFilterTarget = () => {
-        const filledButton = filterButtons.find((button) => {
-            const targetKey = button.dataset.filterToggle;
-            if (targetKey === "has_pending") {
-                return false;
-            }
-            return getFilterInputs(targetKey).some((input) => (input.value || "").trim() !== "");
-        });
-
-        return filledButton ? filledButton.dataset.filterToggle : "";
-    };
-
-    filterButtons.forEach((button) => {
-        button.addEventListener("click", () => {
-            const targetKey = button.dataset.filterToggle;
-            if (targetKey === "has_pending" && pendingFilterInput && filterForm) {
-                pendingFilterInput.value = pendingFilterInput.value ? "" : "1";
-                updateFilterButtonState();
-                openFilterField("");
-                filterForm.requestSubmit();
-                return;
-            }
-            const isAlreadyOpen = button.classList.contains("is-active");
-            openFilterField(isAlreadyOpen ? "" : targetKey);
-        });
-    });
-
-    filterFields.forEach((field) => {
-        field.querySelectorAll("input").forEach((input) => {
-            input.addEventListener("input", updateFilterButtonState);
-            input.addEventListener("change", updateFilterButtonState);
-        });
-    });
-
-    updateFilterButtonState();
-    openFilterField(getInitialFilterTarget());
 
     const escapeHtml = (value) => {
         const div = document.createElement("div");

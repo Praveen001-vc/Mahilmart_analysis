@@ -117,8 +117,7 @@ def get_settlement_closing_balance(
         cash_denomination_total,
         cash_in_hand,
     )
-    shortage_adjustment = min(cash_difference, Decimal("0.00"))
-    return (cash_in_hand - cash_settled) + shortage_adjustment
+    return (cash_in_hand - cash_settled) + cash_difference
 
 
 def build_income_ledger_entries_for_period(user, start_date=None, end_date=None):
@@ -1045,6 +1044,7 @@ def get_purchase_base_queryset(user):
 def get_raw_purchase_filter_values(params):
     has_pending_value = (params.get("has_pending") or "").strip()
     return {
+        "search": (params.get("search") or "").strip(),
         "supplier_name": (params.get("supplier_name") or "").strip(),
         "invoice_number": (params.get("invoice_number") or "").strip(),
         "saved_by": (params.get("saved_by") or "").strip(),
@@ -1071,6 +1071,7 @@ def get_purchase_filter_values(params):
 def get_purchase_redirect_params(params):
     redirect_params = {}
     for key in (
+        "search",
         "supplier_name",
         "invoice_number",
         "saved_by",
@@ -1093,6 +1094,7 @@ def build_purchase_redirect_url(params):
 
 
 def apply_purchase_filters(queryset, filter_values):
+    search = filter_values["search"]
     supplier_name = filter_values["supplier_name"]
     invoice_number = filter_values["invoice_number"]
     saved_by = filter_values["saved_by"]
@@ -1101,6 +1103,12 @@ def apply_purchase_filters(queryset, filter_values):
     date_from = parse_date(filter_values["date_from"])
     date_to = parse_date(filter_values["date_to"])
 
+    if search:
+        queryset = queryset.filter(
+            Q(supplier_name__icontains=search)
+            | Q(invoice_number__icontains=search)
+            | Q(user__username__icontains=search)
+        )
     if supplier_name:
         queryset = queryset.filter(supplier_name__icontains=supplier_name)
     if invoice_number:
@@ -1376,7 +1384,7 @@ def build_sales_settlement_summary(settlement_date):
         "sales_count": sales_count,
         "manual_split_count": manual_split_count,
     }
-
+    
 
 def get_settlement_filter_values(params):
     selected_date = parse_date(
@@ -2657,15 +2665,15 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 cash_denomination_total,
             )
             if closing_balance < 0:
-                if settlement.cash_settled > cash_in_hand:
-                    error_message = (
-                        "Cash settled cannot be greater than cash in hand "
-                        f"of Rs. {format_money(cash_in_hand)}."
-                    )
-                else:
+                if cash_denominations:
                     error_message = (
                         "Cash settled cannot be greater than cash denomination total "
                         f"of Rs. {format_money(cash_denomination_total)}."
+                    )
+                else:
+                    error_message = (
+                        "Cash settled cannot be greater than cash in hand "
+                        f"of Rs. {format_money(cash_in_hand)}."
                     )
                 form.add_error(
                     "cash_settled",
@@ -2716,6 +2724,7 @@ class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView)
     model = PurchaseRecord
     template_name = "tracker/purchase_list.html"
     context_object_name = "records"
+    paginate_by = 10
 
     def get_queryset(self):
         queryset = get_purchase_base_queryset(self.request.user)
@@ -2755,6 +2764,7 @@ class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView)
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         records = self.get_queryset()
+        page_obj = context.get("page_obj")
         synced_purchase_queryset = filter_queryset_by_role(
             PurchaseRecord.objects.filter(
                 source_reference__startswith=SQLSERVER_PURCHASE_SOURCE_PREFIX
@@ -2778,6 +2788,38 @@ class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView)
         context["is_default_today_view"] = not context["has_active_filters"]
         context["default_view_date"] = date.today()
         context["synced_purchase_count"] = synced_purchase_queryset.count()
+        context["recent_records"] = list(records[:8])
+        context["previous_page_url"] = ""
+        context["pagination_links"] = []
+
+        if page_obj:
+            if page_obj.has_previous():
+                context["previous_page_url"] = build_page_url(
+                    self.request,
+                    page_obj.previous_page_number(),
+                )
+            if page_obj.has_next():
+                context["next_page_url"] = build_page_url(
+                    self.request,
+                    page_obj.next_page_number(),
+                )
+            else:
+                context["next_page_url"] = ""
+
+            context["pagination_links"] = [
+                {
+                    "number": page_number,
+                    "url": build_page_url(self.request, page_number),
+                    "is_current": page_number == page_obj.number,
+                }
+                for page_number in page_obj.paginator.page_range
+            ]
+            context["showing_from"] = page_obj.start_index()
+            context["showing_to"] = page_obj.end_index()
+        else:
+            context["showing_from"] = 1 if context["page_count"] else 0
+            context["showing_to"] = context["page_count"]
+
         return context
 
 
