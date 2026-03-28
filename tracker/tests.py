@@ -3199,7 +3199,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["received_total"], Decimal("525.00"))
         self.assertEqual(response.context["balance_total"], Decimal("900.00"))
 
-    def test_sales_list_received_total_uses_synced_received_amount(self):
+    def test_sales_list_received_total_uses_effective_received_amount(self):
         self.client.force_login(self.user)
         SalesLedgerRecord.objects.create(
             source_sale_no=103,
@@ -3215,8 +3215,33 @@ class TrackerViewsTests(TestCase):
         response = self.client.get(reverse("sales-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["received_total"], Decimal("0.00"))
+        self.assertEqual(response.context["received_total"], Decimal("600.00"))
         self.assertContains(response, "CARD-103")
+
+    def test_sales_list_shows_effective_received_amount_for_fully_split_credit_bill(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=104,
+            bill_no="CREDIT-104",
+            sale_date=date.today(),
+            customer_name="Credit Customer",
+            net_amount=Decimal("450.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("450.00"),
+            split_cash_amount=Decimal("450.00"),
+            split_card_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+
+        response = self.client.get(reverse("sales-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["received_total"], Decimal("450.00"))
+        self.assertContains(
+            response,
+            '<td data-label="Received Amount">Rs. 450.00</td>',
+            html=True,
+        )
 
     def test_sales_list_shows_credit_bill_list_from_sales_records(self):
         self.client.force_login(self.user)
