@@ -160,6 +160,36 @@ class ExpenseCategory(models.Model):
         super().save(*args, **kwargs)
 
 
+class ExpensePurpose(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="expense_purposes",
+    )
+    category = models.CharField(max_length=80, db_index=True)
+    name = models.CharField(max_length=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["category", "name", "created_at"]
+        unique_together = ("user", "category", "name")
+        indexes = [
+            models.Index(
+                fields=["user", "category"],
+                name="tracker_exp_user_id_2ad299_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.category} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        self.category = _normalize_short_text(self.category, 80)
+        self.name = _normalize_short_text(self.name, 120)
+        super().save(*args, **kwargs)
+
+
 class UserAccountProfile(models.Model):
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -450,6 +480,18 @@ class ExpenseRecord(BaseRecord):
                 ExpenseCategory.objects.get_or_create(
                     user=self.user,
                     name=self.category,
+                )
+        if self.user_id and self.category and self.title:
+            existing_purpose = (
+                ExpensePurpose.objects.filter(user=self.user)
+                .filter(category__iexact=self.category, name__iexact=self.title)
+                .first()
+            )
+            if existing_purpose is None:
+                ExpensePurpose.objects.get_or_create(
+                    user=self.user,
+                    category=self.category,
+                    name=self.title,
                 )
 
 

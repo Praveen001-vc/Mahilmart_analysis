@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from .models import (
     DailyCashSettlement,
     ExpenseCategory,
+    ExpensePurpose,
     ExpenseRecord,
     IncomeRecord,
     PurchaseRecord,
@@ -18,6 +19,7 @@ from .models import (
 )
 from .expense_categories import COUNTER_EXPENSE_CATEGORY
 from .expense_categories import get_expense_category_options as get_saved_expense_category_options
+from .expense_categories import normalize_expense_category_name, normalize_expense_purpose_name
 from .user_roles import (
     USER_ROLE_CHOICES,
     USER_ROLE_STAFF,
@@ -170,6 +172,34 @@ class ExpenseCategoryForm(StyledModelForm):
         }
         help_texts = {
             "name": "Create a reusable expense category for your account.",
+        }
+
+
+class ExpensePurposeForm(StyledModelForm):
+    def clean_category(self):
+        value = normalize_expense_category_name(self.cleaned_data.get("category"))
+        if not value:
+            raise ValidationError("Category is required.")
+        return value
+
+    def clean_name(self):
+        value = normalize_expense_purpose_name(self.cleaned_data.get("name"))
+        if not value:
+            raise ValidationError("Purpose name is required.")
+        return value
+
+    class Meta:
+        model = ExpensePurpose
+        fields = ["category", "name"]
+        widgets = {
+            "category": forms.HiddenInput(),
+            "name": StyledModelForm.text_widget,
+        }
+        labels = {
+            "name": "Purpose Name",
+        }
+        help_texts = {
+            "name": "Create a reusable purpose for the selected expense category.",
         }
 
 

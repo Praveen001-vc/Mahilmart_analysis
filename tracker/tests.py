@@ -19,6 +19,7 @@ from .expense_categories import COUNTER_EXPENSE_CATEGORY
 from .models import (
     DailyCashSettlement,
     ExpenseCategory,
+    ExpensePurpose,
     ExpenseRecord,
     IncomeRecord,
     PaymentMethod,
@@ -978,6 +979,14 @@ class TrackerViewsTests(TestCase):
             ).exists()
         )
         self.assertContains(response, "Electricity Bill")
+        self.assertContains(response, "Add Purpose")
+        self.assertTrue(
+            ExpensePurpose.objects.filter(
+                user=self.user,
+                category=COUNTER_EXPENSE_CATEGORY,
+                name="Electricity Bill",
+            ).exists()
+        )
 
     def test_expense_add_page_has_no_default_category_for_another_user(self):
         other_user = get_user_model().objects.create_user(
@@ -1005,6 +1014,23 @@ class TrackerViewsTests(TestCase):
                 name=COUNTER_EXPENSE_CATEGORY,
             ).exists()
         )
+
+    def test_expense_add_page_does_not_include_other_users_custom_purposes(self):
+        peer_user = get_user_model().objects.create_user(
+            username="purpose_peer_user",
+            password="StrongPass789!",
+        )
+        ExpensePurpose.objects.create(
+            user=peer_user,
+            category=COUNTER_EXPENSE_CATEGORY,
+            name="Peer Only Purpose",
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("expense-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Peer Only Purpose")
 
     def test_reconciliation_page_links_to_income_and_expense_entry_pages(self):
         self.client.force_login(self.user)
@@ -1071,6 +1097,34 @@ class TrackerViewsTests(TestCase):
             ExpenseCategory.objects.filter(
                 user=self.user,
                 name="Milk Run",
+            ).exists()
+        )
+
+    def test_expense_purpose_page_creates_purpose_with_ajax(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("expense-purpose-create"),
+            {
+                "category": COUNTER_EXPENSE_CATEGORY,
+                "name": "Tea Powder",
+                "next": reverse("expense-add"),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["created"])
+        self.assertEqual(payload["category"], COUNTER_EXPENSE_CATEGORY)
+        self.assertEqual(payload["name"], "Tea Powder")
+        self.assertIn("Tea Powder", payload["purpose_options"])
+        self.assertTrue(
+            ExpensePurpose.objects.filter(
+                user=self.user,
+                category=COUNTER_EXPENSE_CATEGORY,
+                name="Tea Powder",
             ).exists()
         )
 
@@ -1216,6 +1270,13 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(record.vendor, "TNEB")
         self.assertIsNone(record.supplier)
         self.assertEqual(record.category, COUNTER_EXPENSE_CATEGORY)
+        self.assertTrue(
+            ExpensePurpose.objects.filter(
+                user=self.user,
+                category=COUNTER_EXPENSE_CATEGORY,
+                name="Electricity Bill",
+            ).exists()
+        )
 
     def test_income_add_page_renders_entry_master_layout(self):
         self.client.force_login(self.user)
