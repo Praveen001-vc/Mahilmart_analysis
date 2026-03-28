@@ -53,7 +53,12 @@
                     {% endif %}
                 </div>
                 <div class="field-block">
-                    <label for="expense-purpose-select">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
+                    <div class="field-label-row">
+                        <label for="expense-purpose-select">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
+                        <button type="button" class="field-label-action category-action-button" data-purpose-modal-open>
+                            <span aria-hidden="true">+</span> Add Purpose
+                        </button>
+                    </div>
                     <div class="purpose-hidden-input" hidden>
                         {{ form.title }}
                     </div>
@@ -64,7 +69,7 @@
                     >
                         <option value="">Select Purpose</option>
                     </select>
-                    <small class="help-text">Purpose suggestions change when you choose a category.</small>
+                    <small class="help-text">Purpose suggestions now load from your saved database list for the selected category.</small>
                     {% if form.title.errors %}
                         <div class="field-error">{{ form.title.errors|join:", " }}</div>
                     {% endif %}
@@ -83,6 +88,7 @@
                     </div>
                 {% endif %}
                 <div class="entry-inline-note category-inline-feedback" data-category-inline-feedback hidden></div>
+                <div class="entry-inline-note category-inline-feedback" data-purpose-inline-feedback hidden></div>
             </div>
         </article>
 
@@ -245,6 +251,68 @@
         </div>
     </div>
 </section>
+
+<section class="modal-overlay" data-purpose-modal hidden>
+    <div class="modal-card modal-card-narrow premium-panel category-modal-card" role="dialog" aria-modal="true" aria-labelledby="expense-purpose-modal-title">
+        <div class="category-modal-shell">
+            <div class="category-modal-header">
+                <div>
+                    <span class="category-modal-chip">Quick Purpose Studio</span>
+                    <h2 id="expense-purpose-modal-title">Add Purpose Without Leaving This Page</h2>
+                    <p class="category-modal-subtitle">
+                        Save a reusable purpose for the selected category and use it immediately in this expense entry.
+                    </p>
+                </div>
+                <button type="button" class="ghost-button category-modal-close" data-purpose-modal-close>Close</button>
+            </div>
+
+            <div class="category-modal-grid">
+                <form method="post" action="{% url 'expense-purpose-create' %}" class="financial-form category-modal-form" data-purpose-form novalidate>
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'expense-add' %}">
+                    {{ purpose_form.category }}
+
+                    <div class="category-modal-field">
+                        <label for="{{ purpose_form.name.id_for_label }}">{{ purpose_form.name.label }}</label>
+                        <p class="muted-text category-modal-help">
+                            This purpose will be saved under
+                            <strong data-purpose-modal-category-name>{{ counter_expense_category }}</strong>.
+                        </p>
+                        {{ purpose_form.name }}
+                        <div class="field-error" data-purpose-form-error hidden></div>
+                        <div class="category-modal-status" data-purpose-form-status hidden aria-live="polite"></div>
+                    </div>
+
+                    <div class="category-modal-actions">
+                        <button type="button" class="secondary-button" data-purpose-modal-close>Cancel</button>
+                        <button type="submit" class="primary-button category-modal-save" data-purpose-submit>
+                            <span data-purpose-submit-label>Save Purpose</span>
+                        </button>
+                    </div>
+                </form>
+
+                <aside class="category-modal-insight">
+                    <article class="category-modal-stat">
+                        <span>Saved Purposes</span>
+                        <strong data-purpose-modal-count>
+                            {% if counter_purpose_count == 1 %}
+                                1 ready to use
+                            {% else %}
+                                {{ counter_purpose_count }} ready to use
+                            {% endif %}
+                        </strong>
+                        <p>Every saved purpose shows up again in the Purpose dropdown for this category.</p>
+                    </article>
+                    <article class="category-modal-stat category-modal-stat-accent">
+                        <span>Best For</span>
+                        <strong>Fuel, tea powder, salary advance, EB bill, courier</strong>
+                        <p>Add a purpose once here and keep future expense entry faster and more consistent.</p>
+                    </article>
+                </aside>
+            </div>
+        </div>
+    </div>
+</section>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -256,12 +324,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const categoryModal = document.querySelector("[data-category-modal]");
     const openCategoryModalButton = document.querySelector("[data-category-modal-open]");
     const categoryForm = document.querySelector("[data-category-form]");
+    const purposeModal = document.querySelector("[data-purpose-modal]");
+    const openPurposeModalButton = document.querySelector("[data-purpose-modal-open]");
+    const purposeForm = document.querySelector("[data-purpose-form]");
     const categorySelect = document.querySelector('[data-purpose-category="expense-form"]');
     const purposeInput = document.querySelector('[data-purpose-input="expense-form"]');
     const purposeSelect = document.querySelector('[data-purpose-select="expense-form"]');
     const categoryCountNote = document.querySelector("[data-category-count-note]");
     const categoryInlineFeedback = document.querySelector("[data-category-inline-feedback]");
+    const purposeInlineFeedback = document.querySelector("[data-purpose-inline-feedback]");
     const modalCountSummary = document.querySelector("[data-category-modal-count]");
+    const purposeModalCountSummary = document.querySelector("[data-purpose-modal-count]");
+    const purposeModalCategoryName = document.querySelector("[data-purpose-modal-category-name]");
 
     const buildPurposeOption = (value, label = value) => {
         const option = document.createElement("option");
@@ -289,7 +363,88 @@ document.addEventListener("DOMContentLoaded", () => {
         return results;
     };
 
-    const counterExpenseSuggestions = buildUniqueSuggestions(Object.values(purposeMap).flat());
+    const isModalVisible = (element) => Boolean(element) && !element.hidden;
+
+    const updateBodyScroll = () => {
+        document.body.classList.toggle(
+            "modal-open",
+            isModalVisible(categoryModal) || isModalVisible(purposeModal),
+        );
+    };
+
+    const getCounterExpenseSuggestions = () => (
+        buildUniqueSuggestions(Object.values(purposeMap).flat())
+    );
+
+    const getActiveCategoryValue = () => {
+        const selectedValue = (categorySelect?.value || "").trim();
+        if (selectedValue) {
+            return selectedValue;
+        }
+
+        const availableOptions = categorySelect
+            ? Array.from(categorySelect.options).filter((option) => option.value)
+            : [];
+        if (availableOptions.length === 1) {
+            return availableOptions[0].value;
+        }
+
+        return counterExpenseCategory;
+    };
+
+    const ensureCategoryOption = (value) => {
+        const normalizedValue = (value || "").trim().toLowerCase();
+        if (!normalizedValue || !categorySelect) {
+            return null;
+        }
+
+        let option = Array.from(categorySelect.options).find(
+            (item) => item.value.trim().toLowerCase() === normalizedValue,
+        );
+        if (option) {
+            return option;
+        }
+
+        option = new Option(value, value);
+        const insertBeforeOption = Array.from(categorySelect.options)
+            .filter((item) => item.value)
+            .find(
+                (item) =>
+                    item.text.localeCompare(value, undefined, { sensitivity: "base" }) > 0,
+            );
+
+        if (insertBeforeOption) {
+            categorySelect.insertBefore(option, insertBeforeOption);
+        } else {
+            categorySelect.appendChild(option);
+        }
+
+        return option;
+    };
+
+    const ensurePurposeSuggestion = (categoryValue, purposeValue) => {
+        const cleanedCategory = (categoryValue || "").trim();
+        const cleanedPurpose = (purposeValue || "").trim();
+        if (!cleanedCategory || !cleanedPurpose) {
+            return;
+        }
+
+        const currentSuggestions = purposeMap[cleanedCategory] || [];
+        const normalizedPurpose = cleanedPurpose.toLowerCase();
+        const alreadyExists = currentSuggestions.some(
+            (item) => (item || "").trim().toLowerCase() === normalizedPurpose,
+        );
+        if (alreadyExists) {
+            return;
+        }
+
+        purposeMap[cleanedCategory] = buildUniqueSuggestions([
+            ...currentSuggestions,
+            cleanedPurpose,
+        ]).sort((left, right) => (
+            left.localeCompare(right, undefined, { sensitivity: "base" })
+        ));
+    };
 
     const syncPurposeSuggestions = ({ preserveCurrent = false } = {}) => {
         if (!categorySelect || !purposeInput || !purposeSelect) {
@@ -301,7 +456,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ? mappedSuggestions
             : (
                 categorySelect.value === counterExpenseCategory
-                    ? counterExpenseSuggestions
+                    ? getCounterExpenseSuggestions()
                     : (categorySelect.value ? [categorySelect.value] : [])
             );
         const currentValue = (purposeInput.value || "").trim();
@@ -348,47 +503,13 @@ document.addEventListener("DOMContentLoaded", () => {
         purposeInput.value = purposeSelect.value;
     });
 
-    if (!categoryModal || !openCategoryModalButton || !categoryForm || !categorySelect) {
-        return;
-    }
-
-    const nameInput = categoryForm.querySelector('input[name="name"]');
-    const errorBox = categoryForm.querySelector("[data-category-form-error]");
-    const statusBox = categoryForm.querySelector("[data-category-form-status]");
-    const submitButton = categoryForm.querySelector("[data-category-submit]");
-    const submitLabel = categoryForm.querySelector("[data-category-submit-label]");
-
-    const updateBodyScroll = () => {
-        document.body.classList.toggle("modal-open", !categoryModal.hidden);
-    };
-
-    const clearModalFeedback = () => {
-        errorBox.hidden = true;
-        errorBox.textContent = "";
-        statusBox.hidden = true;
-        statusBox.textContent = "";
-        statusBox.classList.remove("is-error", "is-success");
-    };
-
-    const setInlineFeedback = (message = "") => {
+    const setCategoryInlineFeedback = (message = "") => {
         if (!categoryInlineFeedback) {
             return;
         }
 
         categoryInlineFeedback.textContent = message;
         categoryInlineFeedback.hidden = message === "";
-    };
-
-    const showModalStatus = (message, tone) => {
-        statusBox.textContent = message;
-        statusBox.hidden = false;
-        statusBox.classList.toggle("is-error", tone === "error");
-        statusBox.classList.toggle("is-success", tone === "success");
-    };
-
-    const showModalError = (message) => {
-        errorBox.textContent = message;
-        errorBox.hidden = false;
     };
 
     const buildCountText = (count) => {
@@ -416,125 +537,300 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    const ensureCategoryOption = (value) => {
-        const normalizedValue = (value || "").trim().toLowerCase();
-        if (!normalizedValue) {
-            return null;
-        }
-
-        let option = Array.from(categorySelect.options).find(
-            (item) => item.value.trim().toLowerCase() === normalizedValue,
-        );
-        if (option) {
-            return option;
-        }
-
-        option = new Option(value, value);
-        const insertBeforeOption = Array.from(categorySelect.options)
-            .filter((item) => item.value)
-            .find(
-                (item) =>
-                    item.text.localeCompare(value, undefined, { sensitivity: "base" }) > 0,
-            );
-
-        if (insertBeforeOption) {
-            categorySelect.insertBefore(option, insertBeforeOption);
-        } else {
-            categorySelect.appendChild(option);
-        }
-
-        return option;
-    };
-
-    const openCategoryModal = () => {
-        clearModalFeedback();
-        categoryModal.hidden = false;
-        updateBodyScroll();
-        window.requestAnimationFrame(() => {
-            nameInput?.focus();
-        });
-    };
-
-    const closeCategoryModal = (focusTarget = openCategoryModalButton) => {
-        categoryModal.hidden = true;
-        updateBodyScroll();
-        focusTarget?.focus();
-    };
-
-    openCategoryModalButton.addEventListener("click", () => {
-        setInlineFeedback("");
-        openCategoryModal();
-    });
-
-    document.addEventListener("click", (event) => {
-        const closeButton = event.target.closest("[data-modal-close]");
-        if (closeButton && closeButton.closest("[data-category-modal]")) {
-            closeCategoryModal();
+    const initCategoryModal = () => {
+        if (!categoryModal || !openCategoryModalButton || !categoryForm || !categorySelect) {
             return;
         }
 
-        if (event.target === categoryModal) {
-            closeCategoryModal();
-        }
-    });
+        const nameInput = categoryForm.querySelector('input[name="name"]');
+        const errorBox = categoryForm.querySelector("[data-category-form-error]");
+        const statusBox = categoryForm.querySelector("[data-category-form-status]");
+        const submitButton = categoryForm.querySelector("[data-category-submit]");
+        const submitLabel = categoryForm.querySelector("[data-category-submit-label]");
 
-    document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && !categoryModal.hidden) {
-            closeCategoryModal();
-        }
-    });
+        const clearModalFeedback = () => {
+            errorBox.hidden = true;
+            errorBox.textContent = "";
+            statusBox.hidden = true;
+            statusBox.textContent = "";
+            statusBox.classList.remove("is-error", "is-success");
+        };
 
-    categoryForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        clearModalFeedback();
-        setInlineFeedback("");
-        submitButton.disabled = true;
-        submitLabel.textContent = "Saving...";
+        const showModalStatus = (message, tone) => {
+            statusBox.textContent = message;
+            statusBox.hidden = false;
+            statusBox.classList.toggle("is-error", tone === "error");
+            statusBox.classList.toggle("is-success", tone === "success");
+        };
 
-        try {
-            const response = await fetch(categoryForm.action, {
-                method: "POST",
-                body: new FormData(categoryForm),
-                credentials: "same-origin",
-                headers: {
-                    "X-Requested-With": "XMLHttpRequest",
-                },
+        const showModalError = (message) => {
+            errorBox.textContent = message;
+            errorBox.hidden = false;
+        };
+
+        const openCategoryModal = () => {
+            clearModalFeedback();
+            categoryModal.hidden = false;
+            updateBodyScroll();
+            window.requestAnimationFrame(() => {
+                nameInput?.focus();
             });
-            const data = await response.json();
+        };
 
-            if (!response.ok || !data.ok) {
-                const firstError = Object.values(data.errors || {}).flat()[0]
-                    || "Unable to save the category right now.";
-                showModalError(firstError);
-                showModalStatus("Please review the category name and try again.", "error");
+        const closeCategoryModal = (focusTarget = openCategoryModalButton) => {
+            categoryModal.hidden = true;
+            updateBodyScroll();
+            focusTarget?.focus();
+        };
+
+        openCategoryModalButton.addEventListener("click", () => {
+            setCategoryInlineFeedback("");
+            openCategoryModal();
+        });
+
+        document.addEventListener("click", (event) => {
+            const closeButton = event.target.closest("[data-modal-close]");
+            if (closeButton && closeButton.closest("[data-category-modal]")) {
+                closeCategoryModal();
                 return;
             }
 
-            const selectedOption = ensureCategoryOption(data.name);
-            if (selectedOption) {
-                categorySelect.value = selectedOption.value;
-                categorySelect.dispatchEvent(new Event("change", { bubbles: true }));
+            if (event.target === categoryModal) {
+                closeCategoryModal();
+            }
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !categoryModal.hidden) {
+                closeCategoryModal();
+            }
+        });
+
+        categoryForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            clearModalFeedback();
+            setCategoryInlineFeedback("");
+            submitButton.disabled = true;
+            submitLabel.textContent = "Saving...";
+
+            try {
+                const response = await fetch(categoryForm.action, {
+                    method: "POST",
+                    body: new FormData(categoryForm),
+                    credentials: "same-origin",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+                const data = await response.json();
+
+                if (!response.ok || !data.ok) {
+                    const firstError = Object.values(data.errors || {}).flat()[0]
+                        || "Unable to save the category right now.";
+                    showModalError(firstError);
+                    showModalStatus("Please review the category name and try again.", "error");
+                    return;
+                }
+
+                const selectedOption = ensureCategoryOption(data.name);
+                purposeMap[data.name] = purposeMap[data.name] || [];
+                if (selectedOption) {
+                    categorySelect.value = selectedOption.value;
+                    categorySelect.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+
+                const updatedCount = Number(
+                    data.category_count || Math.max(categorySelect.options.length - 1, 0),
+                );
+                syncCategoryCount(updatedCount);
+                categoryForm.reset();
+                closeCategoryModal(categorySelect);
+                setCategoryInlineFeedback(
+                    data.created
+                        ? `${data.name} is ready and selected in the Category field.`
+                        : `${data.name} was already available and is now selected.`,
+                );
+            } catch (error) {
+                showModalError("Connection issue. Please try again.");
+                showModalStatus("We could not save the category right now.", "error");
+            } finally {
+                submitButton.disabled = false;
+                submitLabel.textContent = "Save Category";
+            }
+        });
+    };
+
+    const initPurposeModal = () => {
+        if (!purposeModal || !openPurposeModalButton || !purposeForm) {
+            return;
+        }
+
+        const nameInput = purposeForm.querySelector('input[name="name"]');
+        const categoryInput = purposeForm.querySelector('input[name="category"]');
+        const errorBox = purposeForm.querySelector("[data-purpose-form-error]");
+        const statusBox = purposeForm.querySelector("[data-purpose-form-status]");
+        const submitButton = purposeForm.querySelector("[data-purpose-submit]");
+        const submitLabel = purposeForm.querySelector("[data-purpose-submit-label]");
+
+        const setPurposeInlineFeedback = (message = "") => {
+            if (!purposeInlineFeedback) {
+                return;
             }
 
-            const updatedCount = Number(
-                data.category_count || Math.max(categorySelect.options.length - 1, 0),
-            );
-            syncCategoryCount(updatedCount);
-            categoryForm.reset();
-            closeCategoryModal(categorySelect);
-            setInlineFeedback(
-                data.created
-                    ? `${data.name} is ready and selected in the Category field.`
-                    : `${data.name} was already available and is now selected.`,
-            );
-        } catch (error) {
-            showModalError("Connection issue. Please try again.");
-            showModalStatus("We could not save the category right now.", "error");
-        } finally {
-            submitButton.disabled = false;
-            submitLabel.textContent = "Save Category";
-        }
-    });
+            purposeInlineFeedback.textContent = message;
+            purposeInlineFeedback.hidden = message === "";
+        };
+
+        const clearModalFeedback = () => {
+            errorBox.hidden = true;
+            errorBox.textContent = "";
+            statusBox.hidden = true;
+            statusBox.textContent = "";
+            statusBox.classList.remove("is-error", "is-success");
+        };
+
+        const showModalStatus = (message, tone) => {
+            statusBox.textContent = message;
+            statusBox.hidden = false;
+            statusBox.classList.toggle("is-error", tone === "error");
+            statusBox.classList.toggle("is-success", tone === "success");
+        };
+
+        const showModalError = (message) => {
+            errorBox.textContent = message;
+            errorBox.hidden = false;
+        };
+
+        const syncPurposeModalMeta = (categoryValue) => {
+            const activeCategory = (categoryValue || "").trim();
+            if (categoryInput) {
+                categoryInput.value = activeCategory;
+            }
+            if (purposeModalCategoryName) {
+                purposeModalCategoryName.textContent = activeCategory || counterExpenseCategory;
+            }
+            if (purposeModalCountSummary) {
+                const count = (purposeMap[activeCategory] || []).length;
+                purposeModalCountSummary.textContent = buildModalCountText(count);
+            }
+        };
+
+        const openPurposeModal = () => {
+            const activeCategory = getActiveCategoryValue();
+            if (!activeCategory) {
+                setPurposeInlineFeedback("Select a category first, then add the purpose.");
+                categorySelect?.focus();
+                return;
+            }
+
+            setPurposeInlineFeedback("");
+            clearModalFeedback();
+            syncPurposeModalMeta(activeCategory);
+            purposeModal.hidden = false;
+            updateBodyScroll();
+            window.requestAnimationFrame(() => {
+                nameInput?.focus();
+            });
+        };
+
+        const closePurposeModal = (focusTarget = openPurposeModalButton) => {
+            purposeModal.hidden = true;
+            updateBodyScroll();
+            focusTarget?.focus();
+        };
+
+        openPurposeModalButton.addEventListener("click", openPurposeModal);
+
+        document.addEventListener("click", (event) => {
+            const closeButton = event.target.closest("[data-purpose-modal-close]");
+            if (closeButton && closeButton.closest("[data-purpose-modal]")) {
+                closePurposeModal();
+                return;
+            }
+
+            if (event.target === purposeModal) {
+                closePurposeModal();
+            }
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !purposeModal.hidden) {
+                closePurposeModal();
+            }
+        });
+
+        categorySelect?.addEventListener("change", () => {
+            if (!purposeModal.hidden) {
+                syncPurposeModalMeta(getActiveCategoryValue());
+            }
+        });
+
+        purposeForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            clearModalFeedback();
+            setPurposeInlineFeedback("");
+            syncPurposeModalMeta(getActiveCategoryValue());
+            submitButton.disabled = true;
+            submitLabel.textContent = "Saving...";
+
+            try {
+                const response = await fetch(purposeForm.action, {
+                    method: "POST",
+                    body: new FormData(purposeForm),
+                    credentials: "same-origin",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+                const data = await response.json();
+
+                if (!response.ok || !data.ok) {
+                    const firstError = Object.values(data.errors || {}).flat()[0]
+                        || "Unable to save the purpose right now.";
+                    showModalError(firstError);
+                    showModalStatus("Please review the purpose name and try again.", "error");
+                    return;
+                }
+
+                const selectedCategoryOption = ensureCategoryOption(data.category);
+                if (selectedCategoryOption) {
+                    categorySelect.value = selectedCategoryOption.value;
+                }
+                if (Array.isArray(data.purpose_options)) {
+                    purposeMap[data.category] = data.purpose_options;
+                } else {
+                    ensurePurposeSuggestion(data.category, data.name);
+                }
+
+                categorySelect?.dispatchEvent(new Event("change", { bubbles: true }));
+                if (purposeInput) {
+                    purposeInput.value = data.name;
+                }
+                syncPurposeSuggestions({ preserveCurrent: true });
+                if (purposeSelect) {
+                    purposeSelect.value = data.name;
+                }
+                syncPurposeModalMeta(data.category);
+                purposeForm.reset();
+                syncPurposeModalMeta(data.category);
+                closePurposeModal(purposeSelect || categorySelect || openPurposeModalButton);
+                setPurposeInlineFeedback(
+                    data.created
+                        ? `${data.name} is ready and selected in the Purpose field.`
+                        : `${data.name} was already available and is now selected.`,
+                );
+            } catch (error) {
+                showModalError("Connection issue. Please try again.");
+                showModalStatus("We could not save the purpose right now.", "error");
+            } finally {
+                submitButton.disabled = false;
+                submitLabel.textContent = "Save Purpose";
+            }
+        });
+    };
+
+    initCategoryModal();
+    initPurposeModal();
 });
 </script>
 {% endblock %}

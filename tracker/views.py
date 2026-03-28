@@ -38,12 +38,15 @@ from .expense_categories import (
     get_expense_category_purpose_map,
     get_expense_category_options as get_saved_expense_category_options,
     get_or_create_role_expense_category,
+    get_or_create_role_expense_purpose,
     normalize_expense_category_name,
+    normalize_expense_purpose_name,
 )
 from .forms import (
     DailyCashSettlementForm,
     ExpenseCategoryForm,
     ExpenseForm,
+    ExpensePurposeForm,
     IncomeForm,
     PurchaseForm,
     PurchasePaymentForm,
@@ -54,6 +57,7 @@ from .forms import (
 from .models import (
     DailyCashSettlement,
     ExpenseCategory,
+    ExpensePurpose,
     ExpenseRecord,
     IncomeRecord,
     PaymentMethod,
@@ -2209,7 +2213,7 @@ class ExpenseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
         context["today_total"] = _sum_amount(all_records.filter(transaction_date=today))
         context["filtered_total"] = context["page_total"]
         context["category_options"] = get_expense_category_options(user)
-        context["expense_category_purpose_map"] = get_expense_category_purpose_map()
+        context["expense_category_purpose_map"] = get_expense_category_purpose_map(user)
         context["payment_method_options"] = PaymentMethod.choices
         context["entry_rows"] = self.build_entry_rows()
         context["editing_record"] = self.get_edit_record()
@@ -2239,6 +2243,7 @@ class ExpenseCreateView(ModulePermissionRequiredMixin, CreateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         category_choices = context["form"].fields["category"].choices
+        purpose_map = get_expense_category_purpose_map(self.request.user)
         context["supplier_count"] = filter_queryset_by_role(
             Supplier.objects.all(),
             self.request.user,
@@ -2247,7 +2252,13 @@ class ExpenseCreateView(ModulePermissionRequiredMixin, CreateView):
         context["counter_expense_category"] = COUNTER_EXPENSE_CATEGORY
         context["expense_add_counter_only"] = True
         context["category_form"] = ExpenseCategoryForm()
-        context["expense_category_purpose_map"] = get_expense_category_purpose_map()
+        context["expense_category_purpose_map"] = purpose_map
+        context["purpose_form"] = ExpensePurposeForm(
+            initial={"category": COUNTER_EXPENSE_CATEGORY}
+        )
+        context["counter_purpose_count"] = len(
+            purpose_map.get(COUNTER_EXPENSE_CATEGORY, [])
+        )
         return context
 
 
@@ -2345,6 +2356,100 @@ class ExpenseCategoryListView(ModulePermissionRequiredMixin, TemplateView):
         context["category_count"] = len(context["category_records"])
         context["next_url"] = self.get_next_url()
         return context
+
+
+class ExpensePurposeCreateView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_expenses"
+    permission_denied_message = "You do not have access to Expenses."
+
+    def get_next_url(self):
+        next_url = (
+            self.request.GET.get("next") or self.request.POST.get("next") or ""
+        ).strip()
+        return next_url or reverse("expense-add")
+
+    def post(self, request, *args, **kwargs):
+        form = ExpensePurposeForm(request.POST)
+        is_ajax_request = request.headers.get("x-requested-with") == "XMLHttpRequest"
+        if form.is_valid():
+            category_name = normalize_expense_category_name(
+                form.cleaned_data["category"]
+            )
+            purpose_name = normalize_expense_purpose_name(form.cleaned_data["name"])
+            existing = (
+                ExpensePurpose.objects.filter(user=request.user)
+                .filter(category__iexact=category_name, name__iexact=purpose_name)
+                .first()
+            )
+            if existing is not None:
+                created = False
+                saved_purpose = existing
+            else:
+                saved_purpose = get_or_create_role_expense_purpose(
+                    request.user,
+                    category_name,
+                    purpose_name,
+                )
+                created = True
+
+            purpose_map = get_expense_category_purpose_map(request.user)
+            category_purposes = purpose_map.get(category_name, [])
+
+            if is_ajax_request:
+                return JsonResponse(
+                    {
+                        "ok": True,
+                        "created": created,
+                        "name": saved_purpose.name,
+                        "category": saved_purpose.category,
+                        "purpose_count": len(category_purposes),
+                        "purpose_options": category_purposes,
+                        "message": (
+                            "Expense purpose created successfully."
+                            if created
+                            else (
+                                f"{saved_purpose.name} already exists for "
+                                f"{saved_purpose.category}."
+                            )
+                        ),
+                    }
+                )
+
+            if created:
+                messages.success(request, "Expense purpose created successfully.")
+            else:
+                messages.info(
+                    request,
+                    (
+                        f"{saved_purpose.name} already exists for "
+                        f"{saved_purpose.category}."
+                    ),
+                )
+            return redirect(self.get_next_url())
+
+        if is_ajax_request:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "errors": {
+                        field_name: [
+                            error["message"]
+                            for error in field_errors
+                        ]
+                        for field_name, field_errors in form.errors.get_json_data().items()
+                    },
+                },
+                status=400,
+            )
+
+        first_error = next(
+            iter(
+                next(iter(form.errors.values()), ["Unable to save the purpose right now."])
+            ),
+            "Unable to save the purpose right now.",
+        )
+        messages.error(request, first_error)
+        return redirect(self.get_next_url())
 
 
 class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):

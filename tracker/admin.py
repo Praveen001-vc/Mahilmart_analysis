@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     DailyCashSettlement,
     ExpenseCategory,
+    ExpensePurpose,
     ExpenseRecord,
     IncomeRecord,
     PurchasePayment,
@@ -62,6 +63,13 @@ class ExpenseRecordAdmin(admin.ModelAdmin):
 class ExpenseCategoryAdmin(admin.ModelAdmin):
     list_display = ("name", "user", "created_at")
     search_fields = ("name", "user__username")
+
+
+@admin.register(ExpensePurpose)
+class ExpensePurposeAdmin(admin.ModelAdmin):
+    list_display = ("name", "category", "user", "created_at")
+    list_filter = ("category",)
+    search_fields = ("name", "category", "user__username")
 
 
 @admin.register(PurchaseRecord)
