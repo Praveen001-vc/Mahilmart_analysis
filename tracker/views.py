@@ -2926,7 +2926,7 @@ class SalesListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
             Decimal("0.00"),
         )
         context["received_total"] = sum(
-            (record.received_amount for record in filtered_records),
+            (record.effective_received_amount for record in filtered_records),
             Decimal("0.00"),
         )
         context["balance_total"] = sum(
