@@ -1529,7 +1529,7 @@ def build_purchase_invoice_response(purchase):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=0)
     page_width, page_height = A4
-    saved_on = purchase.created_at.strftime("%d-%m-%Y %I:%M %p") if purchase.created_at else "-"
+    saved_on = purchase.get_saved_on_display()
     payment_history = build_purchase_payment_history(purchase)
     pdf.setTitle(f"Purchase Invoice - {purchase.invoice_number}")
 
@@ -1823,7 +1823,7 @@ def build_purchase_detail_payload(purchase):
         "purchase_type": purchase.purchase_type,
         "invoice_number": purchase.invoice_number,
         "saved_by": purchase.user.username,
-        "saved_on": purchase.created_at.strftime("%d-%m-%Y %I:%M %p"),
+        "saved_on": purchase.get_saved_on_display(),
         "purchase_date": purchase.transaction_date.strftime("%d-%m-%Y") if purchase.transaction_date else "-",
         "total_amount": format_money(purchase.total_amount),
         "paid_amount": format_money(purchase.paid_amount),

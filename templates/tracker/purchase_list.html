@@ -146,7 +146,7 @@
                                         </button>
                                     </td>
                                     <td data-label="Saved By">{{ record.user.username }}</td>
-                                    <td data-label="Saved On">{{ record.created_at|date:"d-m-Y h:i A" }}</td>
+                                    <td data-label="Saved On">{{ record.get_saved_on_display }}</td>
                                     <td data-label="Total Amount">Rs. {{ record.total_amount }}</td>
                                     <td data-label="Paid Amount" class="positive">Rs. {{ record.paid_amount }}</td>
                                     <td data-label="Pending Amount" class="negative">Rs. {{ record.pending_amount }}</td>

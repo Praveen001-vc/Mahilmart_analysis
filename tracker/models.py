@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 
 from .user_roles import filter_queryset_by_role
@@ -265,6 +266,16 @@ class PurchaseRecord(models.Model):
 
     def __str__(self):
         return f"{self.invoice_number} - {self.total_amount}"
+
+    def is_sqlserver_synced(self):
+        return (self.source_reference or "").startswith("SQLPURMAS:")
+
+    def get_saved_on_display(self):
+        if self.is_sqlserver_synced() and self.transaction_date:
+            return self.transaction_date.strftime("%d-%m-%Y")
+        if not self.created_at:
+            return "-"
+        return timezone.localtime(self.created_at).strftime("%d-%m-%Y %I:%M %p")
 
     def save(self, *args, **kwargs):
         if self.supplier_id:

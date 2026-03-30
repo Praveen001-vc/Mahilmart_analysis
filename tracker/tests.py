@@ -3064,6 +3064,25 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(payload["payment_history"][1]["amount"], "250.00")
         self.assertEqual(payload["payment_history"][1]["running_paid"], "250.00")
 
+    def test_purchase_detail_endpoint_uses_source_date_for_synced_purchase_saved_on(self):
+        self.client.force_login(self.user)
+        purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Synced Supplier",
+            purchase_type="Cash",
+            invoice_number="SYNC-100",
+            total_amount=Decimal("950.00"),
+            paid_amount=Decimal("950.00"),
+            transaction_date=date(2026, 3, 25),
+            source_reference=f"{SQLSERVER_PURCHASE_SOURCE_PREFIX}100",
+        )
+
+        response = self.client.get(reverse("purchase-detail", args=[purchase.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["saved_on"], "25-03-2026")
+
     def test_purchase_payment_post_updates_purchase_totals(self):
         self.client.force_login(self.user)
         purchase = PurchaseRecord.objects.create(
@@ -4037,6 +4056,7 @@ class PurchaseSyncUnitTests(TestCase):
         self.assertEqual(purchase.paid_amount, Decimal("850.00"))
         self.assertEqual(purchase.pending_amount, Decimal("0.00"))
         self.assertEqual(purchase.transaction_date, date(2026, 3, 26))
+        self.assertEqual(purchase.get_saved_on_display(), "26-03-2026")
         self.assertIn("Synced from SQL Server PurMas_Table", purchase.notes)
         self.assertEqual(expense.amount, Decimal("850.00"))
         self.assertEqual(expense.vendor, "Fresh Supplier")
