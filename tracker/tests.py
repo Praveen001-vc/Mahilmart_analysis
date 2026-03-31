@@ -3919,9 +3919,58 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "CASH-204")
         self.assertContains(response, "CARD-205")
         self.assertEqual(response.context["page_count"], 2)
-        self.assertEqual(response.context["received_total"], Decimal("412.00"))
+        self.assertEqual(response.context["received_total"], Decimal("342.00"))
         self.assertEqual(response.context["split_cash_total"], Decimal("222.00"))
         self.assertEqual(response.context["split_card_total"], Decimal("70.00"))
+        self.assertContains(
+            response,
+            '<td data-label="Received Amount">Rs. 222.00</td>',
+            html=True,
+        )
+
+    def test_sales_list_card_filter_uses_split_card_for_received_total(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=206,
+            bill_no="CARD-206",
+            sale_date=date.today(),
+            customer_name="Card Customer",
+            net_amount=Decimal("150.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("150.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=207,
+            bill_no="SPLIT-207",
+            sale_date=date.today(),
+            customer_name="Split Card Customer",
+            net_amount=Decimal("292.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("292.00"),
+            split_cash_amount=Decimal("222.00"),
+            split_card_amount=Decimal("70.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+
+        response = self.client.get(
+            reverse("sales-list"),
+            {
+                "payment_mode": SalesPaymentMode.CARD,
+                "date_from": date.today().isoformat(),
+                "date_to": date.today().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CARD-206")
+        self.assertContains(response, "SPLIT-207")
+        self.assertEqual(response.context["received_total"], Decimal("220.00"))
+        self.assertContains(
+            response,
+            '<td data-label="Received Amount">Rs. 70.00</td>',
+            html=True,
+        )
 
     def test_sales_list_can_save_cash_and_card_split_for_bill(self):
         self.client.force_login(self.user)

@@ -1505,6 +1505,26 @@ def get_effective_sales_payment_amount(record):
     return record.effective_received_amount
 
 
+def get_sales_received_amount_for_filter(record, payment_mode_filter=""):
+    if payment_mode_filter == SalesPaymentMode.CASH:
+        if record.has_manual_split:
+            return min(record.net_amount, record.split_cash_amount)
+        if record.payment_mode == SalesPaymentMode.CARD:
+            return Decimal("0.00")
+        if record.received_amount > 0:
+            return min(record.net_amount, record.received_amount)
+        return Decimal("0.00")
+
+    if payment_mode_filter == SalesPaymentMode.CARD:
+        if record.has_manual_split:
+            return min(record.net_amount, record.split_card_amount)
+        if record.is_card_payment:
+            return record.net_amount
+        return Decimal("0.00")
+
+    return record.effective_received_amount
+
+
 def get_effective_sales_balance_amount(record):
     return record.effective_balance_amount
 
@@ -3426,10 +3446,17 @@ class SalesListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
         context = super().get_context_data(**kwargs)
         visible_records = list(context.get("records") or [])
         filtered_records = list(self.get_queryset())
+        sales_filters = get_sales_filter_values(self.request.GET)
+        selected_payment_mode = sales_filters["payment_mode"]
         aggregates = self.get_queryset().aggregate(
             total_split_cash=Sum("split_cash_amount"),
             total_split_card=Sum("split_card_amount"),
         )
+        for record in visible_records:
+            record.sales_list_received_amount = get_sales_received_amount_for_filter(
+                record,
+                selected_payment_mode,
+            )
         credit_records = [
             record for record in filtered_records if get_effective_sales_balance_amount(record) > 0
         ]
@@ -3440,7 +3467,10 @@ class SalesListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
             Decimal("0.00"),
         )
         context["received_total"] = sum(
-            (record.effective_received_amount for record in filtered_records),
+            (
+                get_sales_received_amount_for_filter(record, selected_payment_mode)
+                for record in filtered_records
+            ),
             Decimal("0.00"),
         )
         context["balance_total"] = sum(
@@ -3455,7 +3485,7 @@ class SalesListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
             (record.effective_balance_amount for record in credit_records),
             Decimal("0.00"),
         )
-        context["sales_filters"] = get_sales_filter_values(self.request.GET)
+        context["sales_filters"] = sales_filters
         context["has_active_filters"] = any(
             get_raw_sales_filter_values(self.request.GET).values()
         )
