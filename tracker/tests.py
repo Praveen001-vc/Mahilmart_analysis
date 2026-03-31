@@ -3881,6 +3881,48 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["page_count"], 1)
         self.assertEqual(response.context["page_total"], Decimal("750.00"))
 
+    def test_sales_list_cash_filter_includes_split_cash_from_card_bill(self):
+        self.client.force_login(self.user)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=204,
+            bill_no="CASH-204",
+            sale_date=date.today(),
+            customer_name="Cash Customer",
+            net_amount=Decimal("120.00"),
+            received_amount=Decimal("120.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=205,
+            bill_no="CARD-205",
+            sale_date=date.today(),
+            customer_name="Split Customer",
+            net_amount=Decimal("292.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("292.00"),
+            split_cash_amount=Decimal("222.00"),
+            split_card_amount=Decimal("70.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+
+        response = self.client.get(
+            reverse("sales-list"),
+            {
+                "payment_mode": SalesPaymentMode.CASH,
+                "date_from": date.today().isoformat(),
+                "date_to": date.today().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "CASH-204")
+        self.assertContains(response, "CARD-205")
+        self.assertEqual(response.context["page_count"], 2)
+        self.assertEqual(response.context["received_total"], Decimal("412.00"))
+        self.assertEqual(response.context["split_cash_total"], Decimal("222.00"))
+        self.assertEqual(response.context["split_card_total"], Decimal("70.00"))
+
     def test_sales_list_can_save_cash_and_card_split_for_bill(self):
         self.client.force_login(self.user)
         record = SalesLedgerRecord.objects.create(
