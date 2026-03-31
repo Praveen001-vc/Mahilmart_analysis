@@ -2,7 +2,13 @@ from .models import ExpenseCategory, ExpensePurpose, ExpenseRecord
 
 
 def normalize_expense_category_name(name):
-    return " ".join(str(name or "").strip().split())[:80]
+    normalized = " ".join(str(name or "").strip().split())[:80]
+    normalized_casefold = normalized.casefold()
+    if normalized_casefold == COUNTER_EXPENSE_CATEGORY.casefold():
+        return COUNTER_EXPENSE_CATEGORY
+    if normalized_casefold == OFFICE_EXPENSE_CATEGORY.casefold():
+        return OFFICE_EXPENSE_CATEGORY
+    return normalized
 
 
 def normalize_expense_purpose_name(name):
@@ -10,6 +16,11 @@ def normalize_expense_purpose_name(name):
 
 
 COUNTER_EXPENSE_CATEGORY = "Counter Expense"
+OFFICE_EXPENSE_CATEGORY = "Office Expense"
+EXPENSE_CATEGORY_CHOICES = (
+    (COUNTER_EXPENSE_CATEGORY, COUNTER_EXPENSE_CATEGORY),
+    (OFFICE_EXPENSE_CATEGORY, OFFICE_EXPENSE_CATEGORY),
+)
 DEFAULT_EXPENSE_CATEGORY_PURPOSES = {
     "Purchase / Inventory Expenses": [
         "Grocery Purchase (Rice, oil, spices, etc.)",
@@ -102,7 +113,11 @@ def ensure_expense_categories_for_role(user):
     if not getattr(user, "is_authenticated", False):
         return ExpenseCategory.objects.none()
 
-    for category_name in (COUNTER_EXPENSE_CATEGORY, *DEFAULT_EXPENSE_CATEGORIES):
+    for category_name in (
+        COUNTER_EXPENSE_CATEGORY,
+        OFFICE_EXPENSE_CATEGORY,
+        *DEFAULT_EXPENSE_CATEGORIES,
+    ):
         get_or_create_role_expense_category(user, category_name)
     return ExpenseCategory.objects.filter(user=user).order_by("name", "pk")
 
@@ -113,7 +128,11 @@ def get_expense_category_options(user):
         for category in ensure_expense_categories_for_role(user)
     }
     ordered_names = []
-    for category_name in (COUNTER_EXPENSE_CATEGORY, *DEFAULT_EXPENSE_CATEGORIES):
+    for category_name in (
+        COUNTER_EXPENSE_CATEGORY,
+        OFFICE_EXPENSE_CATEGORY,
+        *DEFAULT_EXPENSE_CATEGORIES,
+    ):
         matched_name = category_names.pop(category_name.casefold(), None)
         if matched_name is not None:
             ordered_names.append(matched_name)
@@ -127,6 +146,7 @@ def get_expense_category_options(user):
 def get_default_expense_category_purpose_map():
     return {
         COUNTER_EXPENSE_CATEGORY: list(DEFAULT_COUNTER_EXPENSE_PURPOSES),
+        OFFICE_EXPENSE_CATEGORY: list(DEFAULT_COUNTER_EXPENSE_PURPOSES),
         **{
             category_name: [
                 normalize_expense_purpose_name(purpose_name)

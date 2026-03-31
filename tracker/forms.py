@@ -19,7 +19,11 @@ from .models import (
     UserAccountProfile,
     UserModulePermission,
 )
-from .expense_categories import COUNTER_EXPENSE_CATEGORY
+from .expense_categories import (
+    COUNTER_EXPENSE_CATEGORY,
+    EXPENSE_CATEGORY_CHOICES,
+    OFFICE_EXPENSE_CATEGORY,
+)
 from .expense_categories import get_expense_category_options as get_saved_expense_category_options
 from .expense_categories import normalize_expense_category_name, normalize_expense_purpose_name
 from .income_categories import (
@@ -90,7 +94,7 @@ class IncomeForm(StyledModelForm):
     def clean_title(self):
         value = normalize_income_purpose_name(self.cleaned_data.get("title"))
         if not value:
-            raise ValidationError("Purpose is required.")
+            raise ValidationError("Income title is required.")
         return value
 
     class Meta:
@@ -113,10 +117,11 @@ class IncomeForm(StyledModelForm):
             "notes": StyledModelForm.note_widget,
         }
         labels = {
-            "title": "Purpose",
+            "title": "Income Title",
             "source": "Source / Reference",
         }
         help_texts = {
+            "title": "Use a short income title like Product Sales, Office Transfer, or Delivery Charge.",
             "source": "Use customer name, order channel, office note, or reference details.",
             "notes": "Optional. Add handover notes, offer details, or collection remarks.",
         }
@@ -152,45 +157,36 @@ class IncomePurposeForm(StyledModelForm):
 
 class ExpenseForm(StyledModelForm):
     category = forms.ChoiceField(
-        choices=(),
-        widget=forms.Select(attrs={"class": "input-control"}),
+        choices=EXPENSE_CATEGORY_CHOICES,
+        initial=COUNTER_EXPENSE_CATEGORY,
+        label="Expense category",
+        help_text="Counter Expense is used in Daily Settlement. Office Expense stays separate.",
+        widget=forms.RadioSelect,
     )
 
-    def __init__(self, *args, user=None, counter_only_category=False, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["category"].initial = COUNTER_EXPENSE_CATEGORY
         if not self.is_bound and not self.initial.get("payment_method") and not self.instance.pk:
             self.fields["payment_method"].initial = PaymentMethod.CASH
         queryset = Supplier.objects.none()
-        category_options = []
         if user is not None:
             queryset = filter_queryset_by_role(Supplier.objects.all(), user)
-            saved_category_options = get_saved_expense_category_options(user)
-            category_options = (
-                [COUNTER_EXPENSE_CATEGORY]
-                if counter_only_category
-                else saved_category_options
-            )
+            # Keep the role's default expense categories ready on first load.
+            get_saved_expense_category_options(user)
         self.fields["supplier"].queryset = queryset
         self.fields["supplier"].empty_label = "No saved supplier"
         self.fields["supplier"].required = False
-        self.fields["category"].widget.attrs["data-purpose-category"] = "expense-form"
         self.fields["title"].widget.attrs["data-purpose-input"] = "expense-form"
         self.fields["title"].widget.attrs["autocomplete"] = "off"
-        current_category = (
-            (self.data.get(self.add_prefix("category")) if self.is_bound else "")
-            or self.initial.get("category")
-            or getattr(self.instance, "category", "")
-        ).strip()
-        if (
-            current_category
-            and current_category not in category_options
-            and not counter_only_category
-        ):
-            category_options.append(current_category)
-        self.fields["category"].choices = [
-            ("", "Select Category"),
-            *[(option, option) for option in category_options],
-        ]
+
+    def clean_category(self):
+        value = normalize_expense_category_name(self.cleaned_data.get("category"))
+        if not value:
+            raise ValidationError("Expense category is required.")
+        if value not in {COUNTER_EXPENSE_CATEGORY, OFFICE_EXPENSE_CATEGORY}:
+            raise ValidationError("Select Counter Expense or Office Expense.")
+        return value
 
     class Meta:
         model = ExpenseRecord
@@ -219,6 +215,7 @@ class ExpenseForm(StyledModelForm):
             "vendor": "Paid To / Reference",
         }
         help_texts = {
+            "title": "Choose a saved purpose or add one for the selected expense category.",
             "supplier": "Optional. Choose this only for supplier-related purchases.",
             "vendor": "Optional. Use this for electricity, salary, rent, fuel, courier, or any general expense.",
         }

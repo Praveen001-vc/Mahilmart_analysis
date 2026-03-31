@@ -59,36 +59,31 @@
 
                 <div class="field-block">
                     <div class="field-label-row">
-                        <label for="income-purpose-select">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
-                        <button type="button" class="field-label-action category-action-button" data-income-purpose-modal-open>
-                            <span aria-hidden="true">+</span> Add Purpose
+                        <label for="income-title-select">{{ form.title.label }}{% if form.title.field.required %} *{% endif %}</label>
+                        <button type="button" class="field-label-action category-action-button" data-income-title-modal-open>
+                            <span aria-hidden="true">+</span> Add Income Title
                         </button>
                     </div>
                     <div class="purpose-hidden-input" hidden>
                         {{ form.title }}
                     </div>
                     <select
-                        id="income-purpose-select"
+                        id="income-title-select"
                         class="input-control"
                         data-purpose-select="income-form"
                     >
-                        <option value="">Select Purpose</option>
+                        <option value="">Select Income Title</option>
                     </select>
-                    <small class="help-text">Purpose suggestions now load from your saved database list for the selected income category.</small>
+                    {% if form.title.help_text %}
+                        <small class="help-text">{{ form.title.help_text }}</small>
+                    {% endif %}
                     {% if form.title.errors %}
                         <div class="field-error">{{ form.title.errors|join:", " }}</div>
                     {% endif %}
                 </div>
 
-                <!-- <div class="entry-inline-note" data-income-purpose-count-note>
-                    {% if default_income_purpose_count == 1 %}
-                        1 saved purpose is ready for {{ default_income_category }}.
-                    {% else %}
-                        {{ default_income_purpose_count }} saved purposes are ready for {{ default_income_category }}.
-                    {% endif %}
-                </div>
-                <div class="entry-inline-note category-inline-feedback" data-income-purpose-inline-feedback hidden></div>
-            </div> -->
+                <div class="entry-inline-note category-inline-feedback" data-income-title-inline-feedback hidden></div>
+            </div>
         </article>
 
         <article class="premium-panel entry-master-card">
@@ -162,7 +157,7 @@
 
     <section class="premium-panel entry-master-tools">
         <div class="entry-tool-pill">Counter / Office</div>
-        <div class="entry-tool-pill">Purpose</div>
+        <div class="entry-tool-pill">Income Title</div>
         <div class="entry-tool-pill">Source / Reference</div>
         <div class="entry-tool-pill">Payment Method</div>
         <div class="entry-tool-pill">Notes</div>
@@ -175,63 +170,58 @@
     </div>
 </form>
 
-{{ income_category_purpose_map|json_script:"income-purpose-map" }}
+{{ income_category_purpose_map|json_script:"income-title-map" }}
 
-<section class="modal-overlay" data-income-purpose-modal hidden>
-    <div class="modal-card modal-card-narrow premium-panel category-modal-card" role="dialog" aria-modal="true" aria-labelledby="income-purpose-modal-title">
+<section class="modal-overlay" data-income-title-modal hidden>
+    <div class="modal-card modal-card-narrow premium-panel category-modal-card" role="dialog" aria-modal="true" aria-labelledby="income-title-modal-title">
         <div class="category-modal-shell">
             <div class="category-modal-header">
                 <div>
-                    <span class="category-modal-chip">Quick Purpose Studio</span>
-                    <h2 id="income-purpose-modal-title">Add Income Purpose Without Leaving This Page</h2>
+                    <span class="category-modal-chip">Income Title Picker</span>
+                    <h2 id="income-title-modal-title">Add Income Title</h2>
                     <p class="category-modal-subtitle">
-                        Save a reusable purpose for the selected income category and use it immediately in this income entry.
+                        Save a reusable income title for the selected income category and use it immediately in this entry.
                     </p>
                 </div>
-                <button type="button" class="ghost-button category-modal-close" data-income-purpose-modal-close>Close</button>
+                <button type="button" class="ghost-button category-modal-close" data-income-title-modal-close>Close</button>
             </div>
 
             <div class="category-modal-grid">
-                <form method="post" action="{% url 'income-purpose-create' %}" class="financial-form category-modal-form" data-income-purpose-form novalidate>
+                <form method="post" action="{% url 'income-purpose-create' %}" class="financial-form category-modal-form" data-income-title-form novalidate>
                     {% csrf_token %}
                     <input type="hidden" name="next" value="{{ form_page_url }}">
                     {{ purpose_form.category }}
 
                     <div class="category-modal-field">
-                        <label for="{{ purpose_form.name.id_for_label }}">{{ purpose_form.name.label }}</label>
+                        <label for="{{ purpose_form.name.id_for_label }}">Income Title</label>
                         <p class="muted-text category-modal-help">
-                            This purpose will be saved under
-                            <strong data-income-purpose-modal-category-name>{{ default_income_category }}</strong>.
+                            This income title will be saved under
+                            <strong data-income-title-modal-category-name>{{ default_income_category }}</strong>.
                         </p>
                         {{ purpose_form.name }}
-                        <div class="field-error" data-income-purpose-form-error hidden></div>
-                        <div class="category-modal-status" data-income-purpose-form-status hidden aria-live="polite"></div>
+                        <div class="field-error" data-income-title-form-error hidden></div>
+                        <div class="category-modal-status" data-income-title-form-status hidden aria-live="polite"></div>
                     </div>
 
                     <div class="category-modal-actions">
-                        <button type="button" class="secondary-button" data-income-purpose-modal-close>Cancel</button>
-                        <button type="submit" class="primary-button category-modal-save" data-income-purpose-submit>
-                            <span data-income-purpose-submit-label>Save Purpose</span>
+                        <button type="button" class="secondary-button" data-income-title-modal-close>Cancel</button>
+                        <button type="submit" class="primary-button category-modal-save" data-income-title-submit>
+                            <span data-income-title-submit-label>Save Income Title</span>
                         </button>
                     </div>
                 </form>
 
                 <aside class="category-modal-insight">
                     <article class="category-modal-stat">
-                        <span>Saved Purposes</span>
-                        <strong data-income-purpose-modal-count>
+                        <span>Saved Titles</span>
+                        <strong data-income-title-modal-count>
                             {% if default_income_purpose_count == 1 %}
                                 1 ready to use
                             {% else %}
                                 {{ default_income_purpose_count }} ready to use
                             {% endif %}
                         </strong>
-                        <p>Every saved purpose shows up again in the Purpose dropdown for the selected income category.</p>
-                    </article>
-                    <article class="category-modal-stat category-modal-stat-accent">
-                        <span>Best For</span>
-                        <strong>Product Sales, Wholesale Sales, Online Orders, Office Income</strong>
-                        <p>Add a purpose once here and keep future income entry faster and more consistent.</p>
+                        <p>Only the income titles you save here will appear in the Income Title dropdown.</p>
                     </article>
                 </aside>
             </div>
@@ -243,328 +233,237 @@
 {% block extra_scripts %}
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    const purposeMapElement = document.getElementById("income-purpose-map");
-    const purposeMap = purposeMapElement ? JSON.parse(purposeMapElement.textContent) : {};
-    const defaultIncomeCategory = "{{ default_income_category|escapejs }}";
-    const purposeModal = document.querySelector("[data-income-purpose-modal]");
-    const openPurposeModalButton = document.querySelector("[data-income-purpose-modal-open]");
-    const purposeForm = document.querySelector("[data-income-purpose-form]");
+    const mapElement = document.getElementById("income-title-map");
+    const titleMap = mapElement ? JSON.parse(mapElement.textContent) : {};
+    const defaultCategory = "{{ default_income_category|escapejs }}";
+    const modal = document.querySelector("[data-income-title-modal]");
+    const openButton = document.querySelector("[data-income-title-modal-open]");
+    const form = document.querySelector("[data-income-title-form]");
     const categoryInputs = Array.from(
-        document.querySelectorAll('[data-income-category-input], .income-category-option input[name="category"]')
+        document.querySelectorAll(".income-category-option input[name='category']")
     );
-    const purposeInput = document.querySelector('[data-purpose-input="income-form"]');
-    const purposeSelect = document.querySelector('[data-purpose-select="income-form"]');
-    const purposeCountNote = document.querySelector("[data-income-purpose-count-note]");
-    const purposeInlineFeedback = document.querySelector("[data-income-purpose-inline-feedback]");
-    const purposeModalCountSummary = document.querySelector("[data-income-purpose-modal-count]");
-    const purposeModalCategoryName = document.querySelector("[data-income-purpose-modal-category-name]");
+    const titleInput = document.querySelector("[data-purpose-input='income-form']");
+    const titleSelect = document.querySelector("[data-purpose-select='income-form']");
+    const inlineFeedback = document.querySelector("[data-income-title-inline-feedback]");
+    const modalCategoryName = document.querySelector("[data-income-title-modal-category-name]");
+    const modalCount = document.querySelector("[data-income-title-modal-count]");
 
-    const buildPurposeOption = (value, label = value) => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        return option;
-    };
-
-    const buildUniqueSuggestions = (items) => {
+    const normalizeItems = (items) => {
         const seen = new Set();
         const results = [];
 
-        items.forEach((item) => {
-            const cleanedItem = (item || "").trim();
-            const normalizedItem = cleanedItem.toLowerCase();
-
-            if (!cleanedItem || seen.has(normalizedItem)) {
+        (items || []).forEach((item) => {
+            const cleaned = (item || "").trim();
+            const key = cleaned.toLowerCase();
+            if (!cleaned || seen.has(key)) {
                 return;
             }
-
-            seen.add(normalizedItem);
-            results.push(cleanedItem);
+            seen.add(key);
+            results.push(cleaned);
         });
 
         return results;
     };
 
-    const isModalVisible = (element) => Boolean(element) && !element.hidden;
-
-    const updateBodyScroll = () => {
-        document.body.classList.toggle("modal-open", isModalVisible(purposeModal));
-    };
-
-    const getActiveCategoryValue = () => (
-        categoryInputs.find((input) => input.checked)?.value || defaultIncomeCategory
+    const getActiveCategory = () => (
+        categoryInputs.find((input) => input.checked)?.value || defaultCategory
     );
 
-    const setActiveCategoryValue = (value) => {
-        const matchedInput = categoryInputs.find((input) => input.value === value);
-        if (!matchedInput) {
+    const setActiveCategory = (value) => {
+        const matchingInput = categoryInputs.find((input) => input.value === value);
+        if (!matchingInput) {
             return;
         }
-
-        matchedInput.checked = true;
-        matchedInput.dispatchEvent(new Event("change", { bubbles: true }));
+        matchingInput.checked = true;
+        matchingInput.dispatchEvent(new Event("change", { bubbles: true }));
     };
 
-    const ensurePurposeSuggestion = (categoryValue, purposeValue) => {
-        const cleanedCategory = (categoryValue || "").trim();
-        const cleanedPurpose = (purposeValue || "").trim();
-        if (!cleanedCategory || !cleanedPurpose) {
+    const updateInlineFeedback = (message = "") => {
+        if (!inlineFeedback) {
             return;
         }
-
-        const currentSuggestions = purposeMap[cleanedCategory] || [];
-        const normalizedPurpose = cleanedPurpose.toLowerCase();
-        const alreadyExists = currentSuggestions.some(
-            (item) => (item || "").trim().toLowerCase() === normalizedPurpose,
-        );
-        if (alreadyExists) {
-            return;
-        }
-
-        purposeMap[cleanedCategory] = buildUniqueSuggestions([
-            ...currentSuggestions,
-            cleanedPurpose,
-        ]).sort((left, right) => (
-            left.localeCompare(right, undefined, { sensitivity: "base" })
-        ));
+        inlineFeedback.textContent = message;
+        inlineFeedback.hidden = message === "";
     };
 
-    const buildPurposeCountText = (count, categoryLabel) => {
-        if (count === 1) {
-            return `1 saved purpose is ready for ${categoryLabel}.`;
-        }
-        return `${count} saved purposes are ready for ${categoryLabel}.`;
-    };
-
-    const buildModalCountText = (count) => {
+    const buildCountText = (count) => {
         if (count === 1) {
             return "1 ready to use";
         }
         return `${count} ready to use`;
     };
 
-    const syncPurposeCount = (categoryValue) => {
-        if (!purposeCountNote) {
-            return;
+    const syncModalMeta = () => {
+        const activeCategory = getActiveCategory();
+        const categoryField = form?.querySelector("input[name='category']");
+        if (categoryField) {
+            categoryField.value = activeCategory;
         }
-
-        const activeCategory = (categoryValue || "").trim() || defaultIncomeCategory;
-        const count = (purposeMap[activeCategory] || []).length;
-        purposeCountNote.textContent = buildPurposeCountText(count, activeCategory);
+        if (modalCategoryName) {
+            modalCategoryName.textContent = activeCategory;
+        }
+        if (modalCount) {
+            modalCount.textContent = buildCountText(
+                (titleMap[activeCategory] || []).length,
+            );
+        }
     };
 
-    const syncPurposeSuggestions = ({ preserveCurrent = false } = {}) => {
-        if (!purposeInput || !purposeSelect) {
+    const refreshTitleSelect = ({ preserveCurrent = true } = {}) => {
+        if (!titleInput || !titleSelect) {
             return;
         }
 
-        const activeCategory = getActiveCategoryValue();
-        const suggestions = purposeMap[activeCategory] || [];
-        const currentValue = (purposeInput.value || "").trim();
-        const currentValueLower = currentValue.toLowerCase();
-        const hasCurrentInSuggestions = suggestions.some(
-            (item) => item.trim().toLowerCase() === currentValueLower,
+        const activeCategory = getActiveCategory();
+        const savedTitles = normalizeItems(titleMap[activeCategory] || []);
+        const currentValue = (titleInput.value || "").trim();
+        const hasCurrent = savedTitles.some(
+            (item) => item.toLowerCase() === currentValue.toLowerCase(),
         );
 
-        purposeSelect.innerHTML = "";
-        purposeSelect.disabled = false;
-        purposeSelect.appendChild(buildPurposeOption("", "Select Purpose"));
+        titleSelect.innerHTML = "";
+        titleSelect.appendChild(new Option("Select Income Title", ""));
 
-        suggestions.forEach((optionLabel) => {
-            purposeSelect.appendChild(buildPurposeOption(optionLabel));
+        savedTitles.forEach((item) => {
+            titleSelect.appendChild(new Option(item, item));
         });
 
-        if (preserveCurrent && currentValue && !hasCurrentInSuggestions) {
-            purposeSelect.appendChild(buildPurposeOption(currentValue));
+        if (preserveCurrent && currentValue && !hasCurrent) {
+            titleSelect.appendChild(new Option(currentValue, currentValue));
         }
 
-        if (preserveCurrent && currentValue) {
-            purposeSelect.value = currentValue;
-        } else if (hasCurrentInSuggestions) {
-            purposeSelect.value = currentValue;
-        } else {
-            purposeSelect.value = "";
-            if (!preserveCurrent) {
-                purposeInput.value = "";
-            }
+        titleSelect.value = preserveCurrent ? currentValue : "";
+        if (!preserveCurrent) {
+            titleInput.value = "";
         }
 
-        syncPurposeCount(activeCategory);
+        syncModalMeta();
     };
 
-    const setPurposeInlineFeedback = (message = "") => {
-        if (!purposeInlineFeedback) {
-            return;
-        }
-
-        purposeInlineFeedback.textContent = message;
-        purposeInlineFeedback.hidden = message === "";
-    };
-
-    syncPurposeSuggestions({ preserveCurrent: true });
+    refreshTitleSelect({ preserveCurrent: true });
     categoryInputs.forEach((input) => {
-        input.setAttribute("data-income-category-input", "true");
         input.addEventListener("change", () => {
-            syncPurposeSuggestions();
+            updateInlineFeedback("");
+            refreshTitleSelect({ preserveCurrent: false });
         });
     });
-    purposeSelect?.addEventListener("change", () => {
-        purposeInput.value = purposeSelect.value;
+
+    titleSelect?.addEventListener("change", () => {
+        if (titleInput) {
+            titleInput.value = titleSelect.value;
+        }
+        updateInlineFeedback("");
     });
 
-    const initPurposeModal = () => {
-        if (!purposeModal || !openPurposeModalButton || !purposeForm) {
+    if (!modal || !openButton || !form) {
+        return;
+    }
+
+    const nameInput = form.querySelector("input[name='name']");
+    const errorBox = form.querySelector("[data-income-title-form-error]");
+    const statusBox = form.querySelector("[data-income-title-form-status]");
+    const submitButton = form.querySelector("[data-income-title-submit]");
+    const submitLabel = form.querySelector("[data-income-title-submit-label]");
+
+    const updateBodyScroll = () => {
+        document.body.classList.toggle("modal-open", !modal.hidden);
+    };
+
+    const clearFormFeedback = () => {
+        errorBox.hidden = true;
+        errorBox.textContent = "";
+        statusBox.hidden = true;
+        statusBox.textContent = "";
+        statusBox.classList.remove("is-error", "is-success");
+    };
+
+    const openModal = () => {
+        clearFormFeedback();
+        syncModalMeta();
+        modal.hidden = false;
+        updateBodyScroll();
+        window.requestAnimationFrame(() => nameInput?.focus());
+    };
+
+    const closeModal = (focusTarget = openButton) => {
+        modal.hidden = true;
+        updateBodyScroll();
+        focusTarget?.focus();
+    };
+
+    openButton.addEventListener("click", openModal);
+
+    document.addEventListener("click", (event) => {
+        const closeTrigger = event.target.closest("[data-income-title-modal-close]");
+        if (closeTrigger && closeTrigger.closest("[data-income-title-modal]")) {
+            closeModal();
             return;
         }
 
-        const nameInput = purposeForm.querySelector('input[name="name"]');
-        const categoryInput = purposeForm.querySelector('input[name="category"]');
-        const errorBox = purposeForm.querySelector("[data-income-purpose-form-error]");
-        const statusBox = purposeForm.querySelector("[data-income-purpose-form-status]");
-        const submitButton = purposeForm.querySelector("[data-income-purpose-submit]");
-        const submitLabel = purposeForm.querySelector("[data-income-purpose-submit-label]");
+        if (event.target === modal) {
+            closeModal();
+        }
+    });
 
-        const clearModalFeedback = () => {
-            errorBox.hidden = true;
-            errorBox.textContent = "";
-            statusBox.hidden = true;
-            statusBox.textContent = "";
-            statusBox.classList.remove("is-error", "is-success");
-        };
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !modal.hidden) {
+            closeModal();
+        }
+    });
 
-        const showModalStatus = (message, tone) => {
-            statusBox.textContent = message;
-            statusBox.hidden = false;
-            statusBox.classList.toggle("is-error", tone === "error");
-            statusBox.classList.toggle("is-success", tone === "success");
-        };
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        clearFormFeedback();
+        updateInlineFeedback("");
+        syncModalMeta();
+        submitButton.disabled = true;
+        submitLabel.textContent = "Saving...";
 
-        const showModalError = (message) => {
-            errorBox.textContent = message;
-            errorBox.hidden = false;
-        };
-
-        const syncPurposeModalMeta = (categoryValue) => {
-            const activeCategory = (categoryValue || "").trim() || defaultIncomeCategory;
-            if (categoryInput) {
-                categoryInput.value = activeCategory;
-            }
-            if (purposeModalCategoryName) {
-                purposeModalCategoryName.textContent = activeCategory;
-            }
-            if (purposeModalCountSummary) {
-                purposeModalCountSummary.textContent = buildModalCountText(
-                    (purposeMap[activeCategory] || []).length,
-                );
-            }
-        };
-
-        const openPurposeModal = () => {
-            const activeCategory = getActiveCategoryValue();
-            setPurposeInlineFeedback("");
-            clearModalFeedback();
-            syncPurposeModalMeta(activeCategory);
-            purposeModal.hidden = false;
-            updateBodyScroll();
-            window.requestAnimationFrame(() => {
-                nameInput?.focus();
+        try {
+            const response = await fetch(form.action, {
+                method: "POST",
+                body: new FormData(form),
+                credentials: "same-origin",
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest",
+                },
             });
-        };
+            const data = await response.json();
 
-        const closePurposeModal = (focusTarget = openPurposeModalButton) => {
-            purposeModal.hidden = true;
-            updateBodyScroll();
-            focusTarget?.focus();
-        };
-
-        openPurposeModalButton.addEventListener("click", openPurposeModal);
-
-        document.addEventListener("click", (event) => {
-            const closeButton = event.target.closest("[data-income-purpose-modal-close]");
-            if (closeButton && closeButton.closest("[data-income-purpose-modal]")) {
-                closePurposeModal();
+            if (!response.ok || !data.ok) {
+                const firstError = Object.values(data.errors || {}).flat()[0]
+                    || "Unable to save the income title right now.";
+                errorBox.textContent = firstError;
+                errorBox.hidden = false;
+                statusBox.textContent = "Please review the income title and try again.";
+                statusBox.hidden = false;
+                statusBox.classList.add("is-error");
                 return;
             }
 
-            if (event.target === purposeModal) {
-                closePurposeModal();
+            titleMap[data.category] = normalizeItems(data.purpose_options || []);
+            setActiveCategory(data.category);
+            if (titleInput) {
+                titleInput.value = data.name;
             }
-        });
-
-        document.addEventListener("keydown", (event) => {
-            if (event.key === "Escape" && !purposeModal.hidden) {
-                closePurposeModal();
+            refreshTitleSelect({ preserveCurrent: true });
+            if (titleSelect) {
+                titleSelect.value = data.name;
             }
-        });
-
-        categoryInputs.forEach((input) => {
-            input.addEventListener("change", () => {
-                if (!purposeModal.hidden) {
-                    syncPurposeModalMeta(getActiveCategoryValue());
-                }
-            });
-        });
-
-        purposeForm.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            clearModalFeedback();
-            setPurposeInlineFeedback("");
-            syncPurposeModalMeta(getActiveCategoryValue());
-            submitButton.disabled = true;
-            submitLabel.textContent = "Saving...";
-
-            try {
-                const response = await fetch(purposeForm.action, {
-                    method: "POST",
-                    body: new FormData(purposeForm),
-                    credentials: "same-origin",
-                    headers: {
-                        "X-Requested-With": "XMLHttpRequest",
-                    },
-                });
-                const data = await response.json();
-
-                if (!response.ok || !data.ok) {
-                    const firstError = Object.values(data.errors || {}).flat()[0]
-                        || "Unable to save the purpose right now.";
-                    showModalError(firstError);
-                    showModalStatus("Please review the purpose name and try again.", "error");
-                    return;
-                }
-
-                setActiveCategoryValue(data.category);
-                if (Array.isArray(data.purpose_options)) {
-                    purposeMap[data.category] = data.purpose_options;
-                } else {
-                    ensurePurposeSuggestion(data.category, data.name);
-                }
-
-                if (purposeInput) {
-                    purposeInput.value = data.name;
-                }
-                syncPurposeSuggestions({ preserveCurrent: true });
-                if (purposeSelect) {
-                    purposeSelect.value = data.name;
-                }
-                purposeForm.reset();
-                syncPurposeModalMeta(data.category);
-                closePurposeModal(purposeSelect || openPurposeModalButton);
-                setPurposeInlineFeedback(
-                    data.created
-                        ? `${data.name} is ready and selected in the Purpose field.`
-                        : `${data.name} was already available and is now selected.`,
-                );
-            } catch (error) {
-                showModalError("Connection issue. Please try again.");
-                showModalStatus("We could not save the purpose right now.", "error");
-            } finally {
-                submitButton.disabled = false;
-                submitLabel.textContent = "Save Purpose";
-            }
-        });
-    };
-
-    initPurposeModal();
+            form.reset();
+            closeModal(titleSelect || openButton);
+            updateInlineFeedback(`${data.name} is ready and selected in Income Title.`);
+        } catch (error) {
+            errorBox.textContent = "Connection issue. Please try again.";
+            errorBox.hidden = false;
+            statusBox.textContent = "We could not save the income title right now.";
+            statusBox.hidden = false;
+            statusBox.classList.add("is-error");
+        } finally {
+            submitButton.disabled = false;
+            submitLabel.textContent = "Save Income Title";
+        }
+    });
 });
 </script>
 {% endblock %}

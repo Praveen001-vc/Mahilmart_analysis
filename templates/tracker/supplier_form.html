@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 
-{% block title %}Add Supplier | Mahilmart{% endblock %}
+{% block title %}{% if is_editing %}Edit Supplier{% else %}Add Supplier{% endif %} | Mahilmart{% endblock %}
 {% block body_class %}app-shell supplier-master-shell{% endblock %}
 
 {% block content %}
 <section class="supplier-master-hero supplier-master-hero-light premium-panel">
     <div>
         <span class="eyebrow">Supplier Master</span>
-        <h1>Add New Supplier</h1>
-        <p>Create supplier records with contact details, compliance IDs, bank details, credit terms, and notes.</p>
+        <h1>{% if is_editing %}Edit Supplier{% else %}Add New Supplier{% endif %}</h1>
+        <p>
+            {% if is_editing %}
+                Update supplier contact details, compliance IDs, bank details, credit terms, and notes.
+            {% else %}
+                Create supplier records with contact details, compliance IDs, bank details, credit terms, and notes.
+            {% endif %}
+        </p>
     </div>
     <div class="hero-actions">
         <a class="secondary-button" href="{{ next_url }}">Back</a>
@@ -182,7 +188,7 @@
     </section>
 
     <div class="supplier-form-actions">
-        <button type="submit" class="primary-button">Save Supplier</button>
+        <button type="submit" class="primary-button">{% if is_editing %}Update Supplier{% else %}Save Supplier{% endif %}</button>
         <a class="secondary-button" href="{{ next_url }}">Cancel</a>
         <button type="reset" class="secondary-button">Reset</button>
     </div>
