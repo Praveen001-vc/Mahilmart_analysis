@@ -233,7 +233,7 @@
                                 {% endif %}
                             </td>
                             <td data-label="Net Amount">Rs. {{ record.net_amount }}</td>
-                            <td data-label="Received Amount">Rs. {{ record.effective_received_amount }}</td>
+                            <td data-label="Received Amount">Rs. {{ record.sales_list_received_amount|default:record.effective_received_amount }}</td>
                             <td data-label="Balance Amount">Rs. {{ record.effective_balance_amount }}</td>
                             <td data-label="Payment Mode">
                                 <div class="sales-split-form">
