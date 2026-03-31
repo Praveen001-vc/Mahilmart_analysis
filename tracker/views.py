@@ -1321,7 +1321,16 @@ def apply_sales_filters(queryset, filter_values):
     if customer_name:
         queryset = queryset.filter(customer_name__icontains=customer_name)
     if payment_mode and payment_mode != "All":
-        queryset = queryset.filter(payment_mode=payment_mode)
+        if payment_mode == SalesPaymentMode.CASH:
+            queryset = queryset.filter(
+                Q(payment_mode=SalesPaymentMode.CASH) | Q(split_cash_amount__gt=0)
+            )
+        elif payment_mode == SalesPaymentMode.CARD:
+            queryset = queryset.filter(
+                Q(payment_mode=SalesPaymentMode.CARD) | Q(split_card_amount__gt=0)
+            )
+        else:
+            queryset = queryset.filter(payment_mode=payment_mode)
     if date_from and date_to and date_from > date_to:
         date_from, date_to = date_to, date_from
     if date_from:
