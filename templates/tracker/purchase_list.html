@@ -1,271 +1,281 @@
 {% extends "base.html" %}
 
 {% block title %}Purchases | Mahilmart{% endblock %}
-{% block body_class %}app-shell purchase-list-shell purchase-daily-shell{% endblock %}
+{% block body_class %}app-shell expense-ledger-shell purchase-list-shell purchase-daily-shell purchase-ledger-shell{% endblock %}
 
 {% block content %}
-<div class="purchase-ui-header">
-    <div>
-        <h1>Purchase Records</h1>
-        
+<section class="expense-hero">
+    <div class="expense-hero-brand">
+        <span class="expense-hero-icon" aria-hidden="true">&#128722;</span>
+        <div>
+            <h1>Purchase Tracker</h1>
+        </div>
     </div>
-    <div class="purchase-ui-header-actions">
-        
-        <a class="purchase-ui-primary" href="{% url 'purchase-add' %}">Add Purchase</a>
+    <div class="hero-actions">
+        <form method="post" action="{% url 'purchase-list' %}" class="purchase-sync-form purchase-ledger-sync-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="sync_purchases">
+            <input type="hidden" name="search" value="{{ purchase_filters.search }}">
+            <input type="hidden" name="supplier_name" value="{{ purchase_filters.supplier_name }}">
+            <input type="hidden" name="invoice_number" value="{{ purchase_filters.invoice_number }}">
+            <input type="hidden" name="saved_by" value="{{ purchase_filters.saved_by }}">
+            <input type="hidden" name="pending_amount" value="{{ purchase_filters.pending_amount }}">
+            <input type="hidden" name="has_pending" value="{{ purchase_filters.has_pending }}">
+            <input type="hidden" name="date_from" value="{{ purchase_filters.date_from }}">
+            <input type="hidden" name="date_to" value="{{ purchase_filters.date_to }}">
+            <button type="submit" class="secondary-button">Sync Purchases From SQL Server</button>
+        </form>
+        <a class="primary-button" href="{% url 'purchase-add' %}">Add Purchase Record</a>
     </div>
-</div>
+</section>
 
-<form method="get" action="{% url 'purchase-list' %}" class="purchase-top-filter">
-    <div class="purchase-top-filter-grid">
-        <div class="purchase-top-filter-field purchase-top-filter-field-wide">
-            <label for="purchase-search">Search</label>
-            <input
-                id="purchase-search"
-                type="text"
-                name="search"
-                class="purchase-row-input"
-                value="{{ purchase_filters.search }}"
-                placeholder="Supplier, invoice, or saved by"
-            >
+<section class="expense-summary-grid">
+    <article class="premium-panel expense-summary-card purchase-summary-card">
+        <h2>This Month</h2>
+        <div class="expense-summary-row">
+            <span>Bills</span>
+            <strong class="purchase-summary-count">{{ month_summary.count }}</strong>
         </div>
-        <div class="purchase-top-filter-field">
-            <label for="filter-date-from">From</label>
-            <input
-                id="filter-date-from"
-                type="date"
-                name="date_from"
-                class="purchase-row-input"
-                value="{{ purchase_filters.date_from }}"
-            >
+        <div class="expense-summary-row">
+            <span>Total Amount</span>
+            <strong>Rs {{ month_summary.total_amount }}</strong>
         </div>
-        <div class="purchase-top-filter-field">
-            <label for="filter-date-to">To</label>
-            <input
-                id="filter-date-to"
-                type="date"
-                name="date_to"
-                class="purchase-row-input"
-                value="{{ purchase_filters.date_to }}"
-            >
+        <div class="expense-summary-row">
+            <span>Paid Amount</span>
+            <strong class="purchase-summary-paid">Rs {{ month_summary.paid_amount }}</strong>
         </div>
-        <label class="purchase-top-filter-toggle" for="purchase-has-pending">
-            <span>Pending only</span>
-            <input
-                id="purchase-has-pending"
-                type="checkbox"
-                name="has_pending"
-                value="1"
-                {% if purchase_filters.has_pending %}checked{% endif %}
-            >
-        </label>
-        <div class="purchase-top-filter-actions">
-            <a class="purchase-ui-clear purchase-filter-action" href="{% url 'purchase-list' %}">Clear</a>
-            <button type="submit" class="purchase-ui-primary purchase-filter-action">Search</button>
+        <div class="expense-summary-row">
+            <span>Pending Amount</span>
+            <strong class="purchase-summary-pending">Rs {{ month_summary.pending_amount }}</strong>
         </div>
-        
-    </div>
-</form>
+    </article>
+    <article class="premium-panel expense-summary-card purchase-summary-card">
+        <h2>Today</h2>
+        <div class="expense-summary-row">
+            <span>Bills</span>
+            <strong class="purchase-summary-count">{{ today_summary.count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Total Amount</span>
+            <strong>Rs {{ today_summary.total_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Paid Amount</span>
+            <strong class="purchase-summary-paid">Rs {{ today_summary.paid_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Pending Amount</span>
+            <strong class="purchase-summary-pending">Rs {{ today_summary.pending_amount }}</strong>
+        </div>
+    </article>
+    <article class="premium-panel expense-summary-card purchase-summary-card">
+        <h2>Filtered</h2>
+        <div class="expense-summary-row">
+            <span>Bills</span>
+            <strong class="purchase-summary-count">{{ filtered_summary.count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Total Amount</span>
+            <strong>Rs {{ filtered_summary.total_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Paid Amount</span>
+            <strong class="purchase-summary-paid">Rs {{ filtered_summary.paid_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Pending Amount</span>
+            <strong class="purchase-summary-pending">Rs {{ filtered_summary.pending_amount }}</strong>
+        </div>
+    </article>
+</section>
 
-<div class="purchase-ui-strip">
-    <div class="purchase-ui-strip-copy">
-        {% if is_default_today_view %}
-            <span class="purchase-strip-label">Today view: {{ default_view_date|date:"d-m-Y" }}</span>
-            <small>Only today&apos;s purchase records are shown until you apply your own filter.</small>
-        {% elif has_active_filters %}
-            <span class="purchase-strip-label">Filtered purchase view</span>
-            <small>Supplier, invoice, saved by, pending, and date filters are applied to this list.</small>
-        {% else %}
-            <span class="purchase-strip-label">Purchase view</span>
-            <small>Review all stored purchase entries and their current payment status.</small>
-        {% endif %}
+<section class="premium-panel expense-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128269;</span> Filter{% if is_default_today_view %} (By Default Today){% endif %}</h2>
     </div>
-    <form method="post" action="{% url 'purchase-list' %}" class="purchase-sync-form">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="sync_purchases">
-        <input type="hidden" name="search" value="{{ purchase_filters.search }}">
-        <input type="hidden" name="supplier_name" value="{{ purchase_filters.supplier_name }}">
-        <input type="hidden" name="invoice_number" value="{{ purchase_filters.invoice_number }}">
-        <input type="hidden" name="saved_by" value="{{ purchase_filters.saved_by }}">
-        <input type="hidden" name="pending_amount" value="{{ purchase_filters.pending_amount }}">
-        <input type="hidden" name="has_pending" value="{{ purchase_filters.has_pending }}">
-        <input type="hidden" name="date_from" value="{{ purchase_filters.date_from }}">
-        <input type="hidden" name="date_to" value="{{ purchase_filters.date_to }}">
-        <button type="submit" class="purchase-ui-secondary">Sync Purchases From SQL Server</button>
+
+    <form method="get" action="{% url 'purchase-list' %}" class="financial-form">
+        <div class="expense-filter-grid purchase-filter-grid">
+            <div class="field-block purchase-filter-search">
+                <label for="purchase-search">Search</label>
+                <input
+                    id="purchase-search"
+                    type="text"
+                    name="search"
+                    class="input-control"
+                    value="{{ purchase_filters.search }}"
+                    placeholder="Supplier, invoice, or saved by"
+                >
+            </div>
+            <div class="field-block">
+                <label for="filter-date-from">Start Date</label>
+                <input
+                    id="filter-date-from"
+                    type="date"
+                    name="date_from"
+                    class="input-control"
+                    value="{{ purchase_filters.date_from }}"
+                >
+            </div>
+            <div class="field-block">
+                <label for="filter-date-to">End Date</label>
+                <input
+                    id="filter-date-to"
+                    type="date"
+                    name="date_to"
+                    class="input-control"
+                    value="{{ purchase_filters.date_to }}"
+                >
+            </div>
+            <div class="field-block purchase-filter-checkbox-block">
+                <label for="purchase-has-pending">Pending only</label>
+                <label class="purchase-filter-checkbox" for="purchase-has-pending">
+                    <input
+                        id="purchase-has-pending"
+                        type="checkbox"
+                        name="has_pending"
+                        value="1"
+                        {% if purchase_filters.has_pending %}checked{% endif %}
+                    >
+                    <span>Show only unpaid purchases</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="expense-filter-actions">
+            <button type="submit" class="primary-button">Apply</button>
+            <a class="secondary-button" href="{% url 'purchase-list' %}">Reset</a>
+        </div>
     </form>
-</div>
+</section>
 
-<div class="purchase-main-layout">
-    <div class="purchase-form-column">
-        <section class="purchase-section purchase-records-section">
-            <div class="purchase-section-head purchase-records-head">
-                <span class="purchase-section-num">III</span>
-                <div>
-                    <h3>Purchase Records</h3>
-                    <p>Open invoice details, download files, or add a payment from the same list.</p>
-                </div>
-            </div>
+<section class="expense-filter-banner">
+    <strong>Applied Filters:</strong>
+    <span>From {{ purchase_filters.date_from }} To {{ purchase_filters.date_to }}</span>
+    {% if purchase_filters.search %}
+        <span>| Search: {{ purchase_filters.search }}</span>
+    {% endif %}
+    {% if purchase_filters.supplier_name %}
+        <span>| Supplier: {{ purchase_filters.supplier_name }}</span>
+    {% endif %}
+    {% if purchase_filters.invoice_number %}
+        <span>| Invoice: {{ purchase_filters.invoice_number }}</span>
+    {% endif %}
+    {% if purchase_filters.saved_by %}
+        <span>| Saved By: {{ purchase_filters.saved_by }}</span>
+    {% endif %}
+    {% if purchase_filters.pending_amount %}
+        <span>| Pending Amount: {{ purchase_filters.pending_amount }}</span>
+    {% endif %}
+    {% if purchase_filters.has_pending %}
+        <span>| Pending only</span>
+    {% endif %}
+</section>
 
-            <div class="purchase-records-summary">
-                <span>Total bills: {{ page_count }}</span>
-                <span>Total amount: Rs. {{ page_total }}</span>
-                <span>Paid: Rs. {{ paid_total }}</span>
-                <span>Pending: Rs. {{ pending_total }}</span>
-            </div>
+<section class="premium-panel expense-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128203;</span> Purchase History</h2>
+        <div class="purchase-history-head-copy">
+            SQL Synced Bills: <strong>{{ synced_purchase_count }}</strong>
+        </div>
+    </div>
 
-            {% if records %}
-                <div class="table-shell purchase-record-table-shell">
-                    <table class="data-table purchase-data-table">
-                        <thead>
-                            <tr>
-                                <th>Supplier Name</th>
-                                <th>Type</th>
-                                <th>Invoice Number</th>
-                                <th>Saved By</th>
-                                <th>Saved On</th>
-                                <th>Total Amount</th>
-                                <th>Paid Amount</th>
-                                <th>Pending Amount</th>
-                                <th>File</th>
-                                <th>Invoice</th>
-                                <th>Pay</th>
-                            </tr>
-                        </thead>
-                        <tbody data-table-body>
-                            {% for record in records %}
-                                <tr>
-                                    <td data-label="Supplier Name">{{ record.supplier_name }}</td>
-                                    <td data-label="Type">{{ record.purchase_type }}</td>
-                                    <td data-label="Invoice Number">
-                                        <button
-                                            type="button"
-                                            class="table-link table-button invoice-number-link"
-                                            data-purchase-trigger
-                                            data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
-                                        >
-                                            {{ record.invoice_number }}
-                                        </button>
-                                    </td>
-                                    <td data-label="Saved By">{{ record.user.username }}</td>
-                                    <td data-label="Saved On">{{ record.get_saved_on_display }}</td>
-                                    <td data-label="Total Amount">Rs. {{ record.total_amount }}</td>
-                                    <td data-label="Paid Amount" class="positive">Rs. {{ record.paid_amount }}</td>
-                                    <td data-label="Pending Amount" class="negative">Rs. {{ record.pending_amount }}</td>
-                                    <td data-label="File">
-                                        {% if record.attachment %}
-                                            <a class="table-link" href="{{ record.attachment.url }}" download>Download File</a>
-                                        {% else %}
-                                            <span class="muted-text">No file</span>
-                                        {% endif %}
-                                    </td>
-                                    <td data-label="Invoice">
-                                        <a class="table-link" href="{% url 'purchase-invoice' record.pk %}">Download Invoice</a>
-                                    </td>
-                                    <td data-label="Pay">
-                                        {% if record.pending_amount > 0 %}
-                                            <button
-                                                type="button"
-                                                class="purchase-table-pay"
-                                                data-purchase-pay-trigger
-                                                data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
-                                            >
-                                                Pay
-                                            </button>
-                                        {% else %}
-                                            <span class="muted-text">Paid</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <div class="purchase-pagination">
-                    <div class="purchase-pagination-status">
-                        Showing {{ showing_from }} to {{ showing_to }} of {{ page_count }} records.
-                        {% if page_obj %}
-                            <span class="purchase-pagination-page">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-                        {% endif %}
-                    </div>
-                    {% if page_obj and page_obj.paginator.num_pages > 1 %}
-                        <nav class="purchase-pagination-nav" aria-label="Purchase pagination">
-                            {% if previous_page_url %}
-                                <a class="purchase-pagination-link" href="{{ previous_page_url }}">Previous</a>
-                            {% endif %}
-                            {% for page_link in pagination_links %}
-                                {% if page_link.is_current %}
-                                    <span class="purchase-pagination-link is-current" aria-current="page">{{ page_link.number }}</span>
+    {% if records %}
+        <div class="table-shell purchase-record-table-shell">
+            <table class="data-table purchase-data-table expense-history-table purchase-history-table">
+                <thead>
+                    <tr>
+                        <th>Supplier Name</th>
+                        <th>Type</th>
+                        <th>Invoice Number</th>
+                        <th>Saved By</th>
+                        <th>Saved On</th>
+                        <th>Total Amount</th>
+                        <th>Paid Amount</th>
+                        <th>Pending Amount</th>
+                        <th>File</th>
+                        <th>Invoice</th>
+                        <th>Pay</th>
+                    </tr>
+                </thead>
+                <tbody data-table-body>
+                    {% for record in records %}
+                        <tr>
+                            <td data-label="Supplier Name">{{ record.supplier_name }}</td>
+                            <td data-label="Type">{{ record.purchase_type }}</td>
+                            <td data-label="Invoice Number">
+                                <button
+                                    type="button"
+                                    class="table-link table-button invoice-number-link"
+                                    data-purchase-trigger
+                                    data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
+                                >
+                                    {{ record.invoice_number }}
+                                </button>
+                            </td>
+                            <td data-label="Saved By">{{ record.user.username }}</td>
+                            <td data-label="Saved On">{{ record.get_saved_on_display }}</td>
+                            <td data-label="Total Amount">Rs. {{ record.total_amount }}</td>
+                            <td data-label="Paid Amount" class="positive">Rs. {{ record.paid_amount }}</td>
+                            <td data-label="Pending Amount" class="negative">Rs. {{ record.pending_amount }}</td>
+                            <td data-label="File">
+                                {% if record.attachment %}
+                                    <a class="table-link" href="{{ record.attachment.url }}" download>Download File</a>
                                 {% else %}
-                                    <a class="purchase-pagination-link" href="{{ page_link.url }}">{{ page_link.number }}</a>
+                                    <span class="muted-text">No file</span>
                                 {% endif %}
-                            {% endfor %}
-                            {% if next_page_url %}
-                                <a class="purchase-pagination-link is-next" href="{{ next_page_url }}">Next</a>
-                            {% endif %}
-                        </nav>
-                    {% endif %}
-                </div>
-            {% else %}
-                <div class="empty-state">No purchase records available yet. Add your first purchase entry.</div>
-            {% endif %}
-        </section>
-    </div>
-
-    <div class="purchase-side-column">
-        <div class="purchase-side-card">
-            <h3>Purchase Snapshot</h3>
-            <div class="purchase-side-stat-list">
-                <div class="purchase-side-stat-row">
-                    <span>SQL Synced Bills</span>
-                    <strong>{{ synced_purchase_count }}</strong>
-                </div>
-                <div class="purchase-side-stat-row">
-                    <span>Visible Bills</span>
-                    <strong>{{ page_count }}</strong>
-                </div>
-                <div class="purchase-side-stat-row">
-                    <span>Total Amount</span>
-                    <strong>Rs. {{ page_total }}</strong>
-                </div>
-                <div class="purchase-side-stat-row">
-                    <span>Paid Amount</span>
-                    <strong class="positive">Rs. {{ paid_total }}</strong>
-                </div>
-                <div class="purchase-side-stat-row">
-                    <span>Pending Amount</span>
-                    <strong class="negative">Rs. {{ pending_total }}</strong>
-                </div>
-            </div>
-            <div class="purchase-side-actions">
-                <a class="purchase-ui-primary purchase-side-action" href="{% url 'purchase-add' %}">Add Purchase</a>
-                <a class="purchase-ui-clear purchase-side-action" href="{% url 'purchase-list' %}">Reset View</a>
-            </div>
-        </div>
-
-        <div class="purchase-side-card">
-            <h3>Recent Purchases</h3>
-            {% if recent_records %}
-                <div class="purchase-recent-list">
-                    {% for record in recent_records %}
-                        <button
-                            type="button"
-                            class="purchase-recent-record"
-                            data-purchase-trigger
-                            data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
-                        >
-                            <span class="purchase-recent-copy">
-                                <strong>{{ record.invoice_number }}</strong>
-                                <small>{{ record.supplier_name|default:"-" }}</small>
-                            </span>
-                            <span class="purchase-recent-amount">Rs. {{ record.pending_amount }}</span>
-                        </button>
+                            </td>
+                            <td data-label="Invoice">
+                                <a class="table-link" href="{% url 'purchase-invoice' record.pk %}">Download Invoice</a>
+                            </td>
+                            <td data-label="Pay">
+                                {% if record.pending_amount > 0 %}
+                                    <button
+                                        type="button"
+                                        class="purchase-table-pay"
+                                        data-purchase-pay-trigger
+                                        data-purchase-detail-url="{% url 'purchase-detail' record.pk %}"
+                                    >
+                                        Pay
+                                    </button>
+                                {% else %}
+                                    <span class="muted-text">Paid</span>
+                                {% endif %}
+                            </td>
+                        </tr>
                     {% endfor %}
-                </div>
-            {% else %}
-                <p class="purchase-empty-note">No recent purchase entries found for this view.</p>
+                </tbody>
+            </table>
+        </div>
+        <div class="purchase-pagination">
+            <div class="purchase-pagination-status">
+                Showing {{ showing_from }} to {{ showing_to }} of {{ page_count }} records.
+                {% if page_obj %}
+                    <span class="purchase-pagination-page">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                {% endif %}
+            </div>
+            {% if page_obj and page_obj.paginator.num_pages > 1 %}
+                <nav class="purchase-pagination-nav" aria-label="Purchase pagination">
+                    {% if previous_page_url %}
+                        <a class="purchase-pagination-link" href="{{ previous_page_url }}">Previous</a>
+                    {% endif %}
+                    {% for page_link in pagination_links %}
+                        {% if page_link.is_current %}
+                            <span class="purchase-pagination-link is-current" aria-current="page">{{ page_link.number }}</span>
+                        {% else %}
+                            <a class="purchase-pagination-link" href="{{ page_link.url }}">{{ page_link.number }}</a>
+                        {% endif %}
+                    {% endfor %}
+                    {% if next_page_url %}
+                        <a class="purchase-pagination-link is-next" href="{{ next_page_url }}">Next</a>
+                    {% endif %}
+                </nav>
             {% endif %}
         </div>
-    </div>
-</div>
+    {% else %}
+        <div class="empty-state">No purchase records available yet. Add your first purchase entry.</div>
+    {% endif %}
+</section>
 
 <section class="modal-overlay" data-modal-overlay data-purchase-detail-modal hidden>
     <div class="modal-card premium-panel" role="dialog" aria-modal="true" aria-labelledby="purchase-detail-title">

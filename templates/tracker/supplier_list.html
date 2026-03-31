@@ -1,42 +1,110 @@
 {% extends "base.html" %}
 
 {% block title %}Suppliers | Mahilmart{% endblock %}
-{% block body_class %}app-shell supplier-list-shell{% endblock %}
+{% block body_class %}app-shell expense-ledger-shell supplier-list-shell supplier-ledger-shell{% endblock %}
 
 {% block content %}
-<section class="page-heading premium-panel">
-    <div>
-        <span class="eyebrow">Supplier Master</span>
-        <h1>Supplier Details</h1>
-        <p>Store supplier code, contact details, tax information, and account details in one place.</p>
+<section class="expense-hero">
+    <div class="expense-hero-brand">
+        <span class="expense-hero-icon" aria-hidden="true">&#128100;</span>
+        <div>
+            <h1>Supplier Tracker</h1>
+            <p>Store supplier code, contact details, tax information, and account balance in one tracker.</p>
+        </div>
     </div>
     <div class="hero-actions">
-        <form method="post" class="inline-action-form">
+        <form method="get" action="{% url 'supplier-list' %}" class="supplier-toolbar-search">
+            <label class="sr-only" for="supplier-search">Search Suppliers</label>
+            <input
+                id="supplier-search"
+                type="text"
+                name="search"
+                class="input-control"
+                value="{{ search_query }}"
+                placeholder="Search Suppliers"
+            >
+            <button type="submit" class="secondary-button">Search</button>
+            {% if search_query %}
+                <a class="secondary-button" href="{% url 'supplier-list' %}">Reset</a>
+            {% endif %}
+        </form>
+        <form method="post" class="inline-action-form supplier-ledger-sync-form">
             {% csrf_token %}
+            <input type="hidden" name="next" value="{{ current_url }}">
             <button type="submit" class="secondary-button" name="action" value="sync_suppliers">Sync Suppliers</button>
         </form>
-        <a class="primary-button" href="{% url 'supplier-add' %}">Add Supplier</a>
+        <a class="primary-button" href="{% url 'supplier-add' %}?next={{ current_url|urlencode }}">Add Supplier</a>
     </div>
 </section>
 
-<section class="stats-grid compact-grid">
-    <article class="stat-card premium-panel">
-        <span>Total Suppliers</span>
-        <strong>{{ page_count }}</strong>
+<section class="expense-summary-grid">
+    <article class="premium-panel expense-summary-card supplier-summary-card">
+        <h2>Directory</h2>
+        <div class="expense-summary-row">
+            <span>Total Suppliers</span>
+            <strong>{{ page_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Active Suppliers</span>
+            <strong class="supplier-summary-active">{{ active_supplier_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Inactive Suppliers</span>
+            <strong class="supplier-summary-inactive">{{ inactive_supplier_count }}</strong>
+        </div>
+    </article>
+    <article class="premium-panel expense-summary-card supplier-summary-card">
+        <h2>Coverage</h2>
+        <div class="expense-summary-row">
+            <span>Phone Numbers</span>
+            <strong>{{ phone_number_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Email Saved</span>
+            <strong>{{ email_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>GSTIN Saved</span>
+            <strong>{{ gstin_count }}</strong>
+        </div>
+    </article>
+    <article class="premium-panel expense-summary-card supplier-summary-card">
+        <h2>Accounts</h2>
+        <div class="expense-summary-row">
+            <span>SQL Synced Suppliers</span>
+            <strong>{{ synced_supplier_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Opening Balance Total</span>
+            <strong class="supplier-summary-balance">Rs. {{ opening_balance_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Contact Person Saved</span>
+            <strong>{{ contact_person_count }}</strong>
+        </div>
     </article>
 </section>
 
-<section class="premium-panel">
-    <div class="panel-heading">
-        <div>
-            <span class="eyebrow">Database Records</span>
-            <h2>Supplier table</h2>
+<section class="expense-filter-banner">
+    <strong>Applied Filters:</strong>
+    {% if search_query %}
+        <span>Search: {{ search_query }}</span>
+    {% else %}
+        <span>All suppliers</span>
+    {% endif %}
+</section>
+
+<section class="premium-panel expense-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128203;</span> Supplier Directory</h2>
+        <div class="purchase-history-head-copy">
+            SQL Synced Suppliers: <strong>{{ synced_supplier_count }}</strong>
         </div>
     </div>
 
     {% if suppliers %}
         <div class="table-shell">
-            <table class="data-table supplier-data-table">
+            <table class="data-table supplier-data-table expense-history-table supplier-history-table">
                 <thead>
                     <tr>
                         <th>Supplier ID</th>
@@ -45,6 +113,7 @@
                         <th>Phone Number</th>
                         <th>Status</th>
                         <th>Opening Balance</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -53,23 +122,72 @@
                             <td data-label="Supplier ID">{{ supplier.supplier_code|default:"Pending" }}</td>
                             <td data-label="Supplier Name">{{ supplier.name }}</td>
                             <td data-label="Contact Person">{{ supplier.contact_person }}</td>
-                            <td data-label="Phone Number">{{ supplier.phone_number }}</td>
-                            <td data-label="Status">{{ supplier.status }}</td>
+                            <td data-label="Phone Number">{{ supplier.phone_number|default:"Not Provided" }}</td>
+                            <td data-label="Status">
+                                <span class="supplier-status-badge supplier-status-badge-{{ supplier.status|lower }}">
+                                    {{ supplier.status }}
+                                </span>
+                            </td>
                             <td data-label="Opening Balance">Rs. {{ supplier.opening_balance }}</td>
+                            <td data-label="Action">
+                                <div class="expense-history-actions">
+                                    <a
+                                        class="expense-action-button expense-action-edit"
+                                        href="{% url 'supplier-edit' supplier.pk %}?next={{ current_url|urlencode }}"
+                                    >
+                                        Edit
+                                    </a>
+                                    {% if supplier.status != "Inactive" %}
+                                        <form method="post" action="{% url 'supplier-inactive' supplier.pk %}" class="expense-inline-form" onsubmit="return confirm('Are you sure you want to mark this supplier inactive?');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="next" value="{{ current_url }}">
+                                            <button type="submit" class="expense-action-button expense-action-inactive">Inactive</button>
+                                        </form>
+                                    {% else %}
+                                        <span class="muted-text">Inactive</span>
+                                    {% endif %}
+                                </div>
+                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+        <div class="purchase-pagination">
+            <div class="purchase-pagination-status">
+                Showing {{ showing_from }} to {{ showing_to }} of {{ page_count }} records.
+                {% if page_obj %}
+                    <span class="purchase-pagination-page">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                {% endif %}
+            </div>
+            {% if page_obj and page_obj.paginator.num_pages > 1 %}
+                <nav class="purchase-pagination-nav" aria-label="Supplier pagination">
+                    {% if previous_page_url %}
+                        <a class="purchase-pagination-link" href="{{ previous_page_url }}">Previous</a>
+                    {% endif %}
+                    {% for page_link in pagination_links %}
+                        {% if page_link.is_current %}
+                            <span class="purchase-pagination-link is-current" aria-current="page">{{ page_link.number }}</span>
+                        {% else %}
+                            <a class="purchase-pagination-link" href="{{ page_link.url }}">{{ page_link.number }}</a>
+                        {% endif %}
+                    {% endfor %}
+                    {% if next_page_url %}
+                        <a class="purchase-pagination-link is-next" href="{{ next_page_url }}">Next</a>
+                    {% endif %}
+                </nav>
+            {% endif %}
+        </div>
     {% else %}
         <div class="empty-state">
-            <div>No supplier details saved yet. Add your first supplier record.</div>
+            <div>{% if search_query %}No suppliers match the current search.{% else %}No supplier details saved yet. Add your first supplier record.{% endif %}</div>
             <div class="empty-state-actions">
                 <form method="post" class="inline-action-form">
                     {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ current_url }}">
                     <button type="submit" class="secondary-button" name="action" value="sync_suppliers">Sync Suppliers</button>
                 </form>
-                <a class="primary-button" href="{% url 'supplier-add' %}">Add First Supplier</a>
+                <a class="primary-button" href="{% url 'supplier-add' %}?next={{ current_url|urlencode }}">Add First Supplier</a>
             </div>
         </div>
     {% endif %}

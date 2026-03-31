@@ -133,7 +133,7 @@
 <section
     class="premium-panel expense-card"
     data-auto-load-table
-    data-batch-size="50"
+    data-batch-size="{{ paginator.per_page|default:10 }}"
     data-total-count="{{ page_count }}"
     data-next-url="{{ next_page_url }}"
 >
@@ -205,7 +205,7 @@
             </div>
             {% if next_page_url %}
                 <a class="secondary-button auto-load-link" data-next-link href="{{ next_page_url }}">
-                    Load next 50
+                    Load next {{ paginator.per_page|default:10 }}
                 </a>
             {% endif %}
             <div class="auto-load-sentinel" data-load-sentinel aria-hidden="true"></div>

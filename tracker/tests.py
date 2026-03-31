@@ -15,7 +15,11 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .expense_categories import COUNTER_EXPENSE_CATEGORY
+from .expense_categories import (
+    COUNTER_EXPENSE_CATEGORY,
+    EXPENSE_CATEGORY_CHOICES,
+    OFFICE_EXPENSE_CATEGORY,
+)
 from .income_categories import INCOME_CATEGORY_COUNTER, INCOME_CATEGORY_OFFICE
 from .models import (
     DailyCashSettlement,
@@ -33,6 +37,7 @@ from .models import (
     SalesLedgerRecord,
     SalesPaymentMode,
     Supplier,
+    SupplierStatus,
     UserAccountProfile,
     UserModulePermission,
 )
@@ -940,13 +945,12 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Peer Only Category")
         self.assertContains(response, "Purpose")
-        self.assertContains(response, "Manage Categories")
+        self.assertContains(response, COUNTER_EXPENSE_CATEGORY)
+        self.assertContains(response, OFFICE_EXPENSE_CATEGORY)
+        self.assertNotContains(response, "Manage Categories")
         self.assertEqual(
             list(response.context["form"].fields["category"].choices),
-            [
-                ("", "Select Category"),
-                (COUNTER_EXPENSE_CATEGORY, COUNTER_EXPENSE_CATEGORY),
-            ],
+            list(EXPENSE_CATEGORY_CHOICES),
         )
 
     def test_expense_add_page_auto_creates_categories_without_default_selection(self):
@@ -961,19 +965,25 @@ class TrackerViewsTests(TestCase):
                 name=COUNTER_EXPENSE_CATEGORY,
             ).exists()
         )
-        self.assertFalse(response.context["form"].fields["category"].initial)
-        self.assertContains(response, "Select Category")
-        self.assertContains(response, 'data-purpose-category="expense-form"', html=False)
+        self.assertTrue(
+            ExpenseCategory.objects.filter(
+                user=self.user,
+                name=OFFICE_EXPENSE_CATEGORY,
+            ).exists()
+        )
+        self.assertEqual(
+            response.context["form"].fields["category"].initial,
+            COUNTER_EXPENSE_CATEGORY,
+        )
         self.assertContains(response, 'data-purpose-select="expense-form"', html=False)
+        self.assertContains(response, 'data-purpose-input="expense-form"', html=False)
         self.assertContains(response, 'id="expense-purpose-select"', html=False)
         self.assertEqual(
             list(response.context["form"].fields["category"].choices),
-            [
-                ("", "Select Category"),
-                (COUNTER_EXPENSE_CATEGORY, COUNTER_EXPENSE_CATEGORY),
-            ],
+            list(EXPENSE_CATEGORY_CHOICES),
         )
         self.assertContains(response, COUNTER_EXPENSE_CATEGORY)
+        self.assertContains(response, OFFICE_EXPENSE_CATEGORY)
         self.assertTrue(
             ExpenseCategory.objects.filter(
                 user=self.user,
@@ -1000,20 +1010,26 @@ class TrackerViewsTests(TestCase):
         response = self.client.get(reverse("expense-add"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.context["form"].fields["category"].initial)
-        self.assertContains(response, "Select Category")
+        self.assertEqual(
+            response.context["form"].fields["category"].initial,
+            COUNTER_EXPENSE_CATEGORY,
+        )
         self.assertContains(response, COUNTER_EXPENSE_CATEGORY)
+        self.assertContains(response, OFFICE_EXPENSE_CATEGORY)
         self.assertEqual(
             list(response.context["form"].fields["category"].choices),
-            [
-                ("", "Select Category"),
-                (COUNTER_EXPENSE_CATEGORY, COUNTER_EXPENSE_CATEGORY),
-            ],
+            list(EXPENSE_CATEGORY_CHOICES),
         )
         self.assertTrue(
             ExpenseCategory.objects.filter(
                 user=other_user,
                 name=COUNTER_EXPENSE_CATEGORY,
+            ).exists()
+        )
+        self.assertTrue(
+            ExpenseCategory.objects.filter(
+                user=other_user,
+                name=OFFICE_EXPENSE_CATEGORY,
             ).exists()
         )
 
@@ -1280,6 +1296,35 @@ class TrackerViewsTests(TestCase):
             ).exists()
         )
 
+    def test_office_expense_from_add_page_stays_out_of_daily_settlement(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("expense-add"),
+            {
+                "title": "Office Tea",
+                "supplier": "",
+                "vendor": "Main Office",
+                "category": OFFICE_EXPENSE_CATEGORY,
+                "amount": "450.00",
+                "transaction_date": date.today().isoformat(),
+                "payment_method": PaymentMethod.CASH,
+                "notes": "Office pantry expense",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        record = ExpenseRecord.objects.get(title="Office Tea")
+        self.assertEqual(record.category, OFFICE_EXPENSE_CATEGORY)
+
+        settlement_response = self.client.get(reverse("daily-settlement"))
+
+        self.assertEqual(settlement_response.status_code, 200)
+        self.assertEqual(
+            settlement_response.context["autofill_summary"]["expense_amount"],
+            Decimal("0.00"),
+        )
+
     def test_income_add_page_renders_entry_master_layout(self):
         self.client.force_login(self.user)
 
@@ -1294,31 +1339,16 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Notes")
         self.assertContains(response, INCOME_CATEGORY_COUNTER)
         self.assertContains(response, INCOME_CATEGORY_OFFICE)
-        self.assertContains(response, "Purpose")
-        self.assertContains(response, "Add Purpose")
-        self.assertContains(response, "Product Sales")
-        self.assertContains(response, "Office Income")
+        self.assertContains(response, "Income Title")
+        self.assertContains(response, "Add Income Title")
+        self.assertContains(response, "Select Income Title")
         self.assertContains(
             response,
             "Counter Income is used in Daily Settlement. Office Income stays separate.",
         )
         self.assertContains(response, 'data-purpose-input="income-form"', html=False)
         self.assertContains(response, 'data-purpose-select="income-form"', html=False)
-        self.assertContains(response, 'id="income-purpose-select"', html=False)
-        self.assertTrue(
-            IncomePurpose.objects.filter(
-                user=self.user,
-                category=INCOME_CATEGORY_COUNTER,
-                name="Product Sales",
-            ).exists()
-        )
-        self.assertTrue(
-            IncomePurpose.objects.filter(
-                user=self.user,
-                category=INCOME_CATEGORY_OFFICE,
-                name="Office Income",
-            ).exists()
-        )
+        self.assertFalse(IncomePurpose.objects.filter(user=self.user).exists())
 
     def test_income_add_post_saves_selected_income_category(self):
         self.client.force_login(self.user)
@@ -1339,7 +1369,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 302)
         record = IncomeRecord.objects.get(title="Office Account Transfer")
         self.assertEqual(record.category, INCOME_CATEGORY_OFFICE)
-        self.assertTrue(
+        self.assertFalse(
             IncomePurpose.objects.filter(
                 user=self.user,
                 category=INCOME_CATEGORY_OFFICE,
@@ -1347,7 +1377,7 @@ class TrackerViewsTests(TestCase):
             ).exists()
         )
 
-    def test_income_add_page_does_not_include_other_users_custom_income_purposes(self):
+    def test_income_add_page_does_not_show_saved_income_purposes(self):
         peer_user = get_user_model().objects.create_user(
             username="income_purpose_peer_user",
             password="StrongPass790!",
@@ -1363,6 +1393,21 @@ class TrackerViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Peer Only Income Purpose")
+        self.assertContains(response, "Add Income Title")
+        self.assertFalse(IncomePurpose.objects.filter(user=self.user).exists())
+
+    def test_income_add_page_shows_current_user_saved_income_titles(self):
+        self.client.force_login(self.user)
+        IncomePurpose.objects.create(
+            user=self.user,
+            category=INCOME_CATEGORY_COUNTER,
+            name="Saved Counter Title",
+        )
+
+        response = self.client.get(reverse("income-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Saved Counter Title")
 
     def test_income_purpose_page_creates_purpose_with_ajax(self):
         self.client.force_login(self.user)
@@ -1403,6 +1448,12 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Expense Basics")
         self.assertContains(response, "Supplier & Reference")
         self.assertContains(response, "Amount & Payment")
+        self.assertContains(
+            response,
+            "Counter Expense is used in Daily Settlement. Office Expense stays separate.",
+        )
+        self.assertContains(response, COUNTER_EXPENSE_CATEGORY)
+        self.assertContains(response, OFFICE_EXPENSE_CATEGORY)
 
     def test_expense_list_shows_add_expense_page_button(self):
         self.client.force_login(self.user)
@@ -1459,9 +1510,9 @@ class TrackerViewsTests(TestCase):
         )
         ExpenseRecord.objects.create(
             user=self.user,
-            title="General Expense",
+            title="Office Expense",
             vendor="Vendor A",
-            category="General",
+            category=OFFICE_EXPENSE_CATEGORY,
             amount=Decimal("20000.00"),
             transaction_date=date.today(),
             payment_method=PaymentMethod.CASH,
@@ -1471,7 +1522,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(expense_list_response.status_code, 200)
         self.assertContains(expense_list_response, COUNTER_EXPENSE_CATEGORY)
         self.assertContains(expense_list_response, "Counter Cash")
-        self.assertContains(expense_list_response, "General Expense")
+        self.assertContains(expense_list_response, "Office Expense")
 
         settlement_response = self.client.get(reverse("daily-settlement"))
         self.assertEqual(settlement_response.status_code, 200)
@@ -1813,6 +1864,20 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sync Suppliers")
 
+    def test_supplier_list_renders_purchase_style_layout(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("supplier-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Supplier Tracker")
+        self.assertContains(response, "Directory")
+        self.assertContains(response, "Coverage")
+        self.assertContains(response, "Accounts")
+        self.assertContains(response, "Applied Filters:")
+        self.assertContains(response, "Supplier Directory")
+        self.assertContains(response, "SQL Synced Suppliers:")
+
     def test_supplier_list_includes_mobile_friendly_table_labels(self):
         self.client.force_login(self.user)
         Supplier.objects.create(
@@ -1849,6 +1914,147 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse("supplier-list"))
         sync_mock.assert_called_once_with(self.user)
+
+    def test_supplier_list_search_filters_supplier_fields(self):
+        self.client.force_login(self.user)
+        Supplier.objects.create(
+            user=self.user,
+            name="Alpha Traders",
+            contact_person="Meena",
+            phone_number="9990001111",
+        )
+        Supplier.objects.create(
+            user=self.user,
+            name="Beta Stores",
+            contact_person="Selvam",
+            phone_number="8887776665",
+        )
+
+        response = self.client.get(reverse("supplier-list"), {"search": "Selvam"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Beta Stores")
+        self.assertNotContains(response, "Alpha Traders")
+        self.assertEqual(response.context["search_query"], "Selvam")
+
+    def test_supplier_list_paginates_in_batches_of_30(self):
+        self.client.force_login(self.user)
+
+        for index in range(35):
+            Supplier.objects.create(
+                user=self.user,
+                name=f"Supplier {index:02d}",
+                contact_person=f"Contact {index:02d}",
+                phone_number=f"9000000{index:03d}",
+            )
+
+        first_page = self.client.get(reverse("supplier-list"))
+        second_page = self.client.get(reverse("supplier-list"), {"page": 2})
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(first_page.context["page_obj"].paginator.per_page, 30)
+        self.assertEqual(len(first_page.context["suppliers"]), 30)
+        self.assertContains(first_page, "Showing 1 to 30 of 35 records.")
+        self.assertContains(first_page, "Page 1 of 2")
+        self.assertEqual(len(second_page.context["suppliers"]), 5)
+        self.assertContains(second_page, "Showing 31 to 35 of 35 records.")
+        self.assertContains(second_page, "Page 2 of 2")
+
+    def test_supplier_list_shows_edit_and_inactive_actions(self):
+        self.client.force_login(self.user)
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Action Supplier",
+            contact_person="Raja",
+            phone_number="9998887776",
+        )
+
+        response = self.client.get(reverse("supplier-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("supplier-edit", args=[supplier.pk]))
+        self.assertContains(response, reverse("supplier-inactive", args=[supplier.pk]))
+        self.assertContains(
+            response,
+            "Are you sure you want to mark this supplier inactive?",
+        )
+
+    def test_supplier_edit_page_prefills_saved_details(self):
+        self.client.force_login(self.user)
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Prefill Supplier",
+            contact_person="Kannan",
+            phone_number="9876543210",
+            email="prefill@example.com",
+        )
+
+        response = self.client.get(reverse("supplier-edit", args=[supplier.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Edit Supplier")
+        self.assertEqual(response.context["form"].instance.pk, supplier.pk)
+        self.assertContains(response, 'value="Prefill Supplier"', html=False)
+        self.assertContains(response, 'value="9876543210"', html=False)
+
+    def test_supplier_edit_post_updates_record_and_returns_to_list(self):
+        self.client.force_login(self.user)
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Update Supplier",
+            contact_person="Old Contact",
+            phone_number="9000011111",
+        )
+
+        response = self.client.post(
+            reverse("supplier-edit", args=[supplier.pk]),
+            {
+                "name": "Updated Supplier",
+                "contact_person": "New Contact",
+                "phone_number": "9555511111",
+                "email": "updated@example.com",
+                "address": "Salem",
+                "gstin_number": "",
+                "fssai_number": "",
+                "pan_number": "",
+                "credit_terms": "15 days",
+                "opening_balance": "120.00",
+                "bank_name": "",
+                "account_number": "",
+                "ifsc_code": "",
+                "status": SupplierStatus.ACTIVE,
+                "notes": "Updated notes",
+                "next": reverse("supplier-list"),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("supplier-list"))
+        supplier.refresh_from_db()
+        self.assertEqual(supplier.name, "Updated Supplier")
+        self.assertEqual(supplier.contact_person, "New Contact")
+        self.assertEqual(supplier.phone_number, "9555511111")
+        self.assertEqual(supplier.email, "updated@example.com")
+
+    def test_supplier_inactive_post_marks_supplier_inactive(self):
+        self.client.force_login(self.user)
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Inactive Supplier",
+            contact_person="Prabhu",
+            phone_number="9777711111",
+            status=SupplierStatus.ACTIVE,
+        )
+
+        response = self.client.post(
+            reverse("supplier-inactive", args=[supplier.pk]),
+            {"next": reverse("supplier-list")},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("supplier-list"))
+        supplier.refresh_from_db()
+        self.assertEqual(supplier.status, SupplierStatus.INACTIVE)
 
     def test_supplier_create_redirects_back_to_next_url(self):
         self.client.force_login(self.user)
@@ -1904,10 +2110,10 @@ class TrackerViewsTests(TestCase):
         )
         self.assertContains(response, "No supplier details are saved in PostgreSQL yet.")
 
-    def test_income_list_paginates_in_batches_of_50(self):
+    def test_income_list_paginates_in_batches_of_10(self):
         self.client.force_login(self.user)
 
-        for index in range(55):
+        for index in range(25):
             IncomeRecord.objects.create(
                 user=self.user,
                 title=f"Income {index}",
@@ -1920,11 +2126,11 @@ class TrackerViewsTests(TestCase):
         second_page = self.client.get(reverse("income-list"), {"page": 2})
 
         self.assertEqual(first_page.status_code, 200)
-        self.assertEqual(first_page.context["page_obj"].paginator.per_page, 50)
+        self.assertEqual(first_page.context["page_obj"].paginator.per_page, 10)
         self.assertTrue(first_page.context["is_paginated"])
-        self.assertEqual(len(first_page.context["records"]), 50)
+        self.assertEqual(len(first_page.context["records"]), 10)
         self.assertEqual(first_page.context["next_page_url"], f"{reverse('income-list')}?page=2")
-        self.assertEqual(len(second_page.context["records"]), 5)
+        self.assertEqual(len(second_page.context["records"]), 10)
 
     def test_income_list_defaults_to_today_filters(self):
         self.client.force_login(self.user)
@@ -3190,6 +3396,30 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "300.00")
         self.assertContains(response, self.user.username)
 
+    def test_purchase_list_renders_tracker_style_layout(self):
+        self.client.force_login(self.user)
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Tracker Supplier",
+            purchase_type="Wholesale",
+            invoice_number="TRACK-100",
+            total_amount=Decimal("900.00"),
+            paid_amount=Decimal("300.00"),
+            transaction_date=date.today(),
+        )
+
+        response = self.client.get(reverse("purchase-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Purchase Tracker")
+        self.assertContains(response, "This Month")
+        self.assertContains(response, "Today")
+        self.assertContains(response, "Filtered")
+        self.assertContains(response, "Add Purchase Record")
+        self.assertContains(response, "Applied Filters:")
+        self.assertContains(response, "Purchase History")
+        self.assertContains(response, "SQL Synced Bills:")
+
     def test_purchase_list_search_filters_supplier_invoice_and_saved_by(self):
         self.client.force_login(self.user)
         PurchaseRecord.objects.create(
@@ -3219,10 +3449,10 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "INV-SEARCH-1")
         self.assertNotContains(response, "INV-OTHER-2")
 
-    def test_purchase_list_uses_ten_row_pagination_with_page_links(self):
+    def test_purchase_list_uses_twenty_row_pagination_with_page_links(self):
         self.client.force_login(self.user)
 
-        for index in range(1, 13):
+        for index in range(1, 23):
             PurchaseRecord.objects.create(
                 user=self.user,
                 supplier_name=f"Pagination Supplier {index}",
@@ -3236,7 +3466,7 @@ class TrackerViewsTests(TestCase):
         first_page = self.client.get(reverse("purchase-list"))
 
         self.assertEqual(first_page.status_code, 200)
-        self.assertEqual(first_page.context["page_obj"].paginator.per_page, 10)
+        self.assertEqual(first_page.context["page_obj"].paginator.per_page, 20)
         self.assertEqual(first_page.context["page_obj"].number, 1)
         self.assertEqual(first_page.context["page_obj"].paginator.num_pages, 2)
         self.assertEqual(first_page.context["next_page_url"], f"{reverse('purchase-list')}?page=2")
@@ -3245,9 +3475,10 @@ class TrackerViewsTests(TestCase):
             [1, 2],
         )
         self.assertContains(first_page, "Page 1 of 2")
-        self.assertEqual(len(first_page.context["records"]), 10)
+        self.assertEqual(len(first_page.context["records"]), 20)
+        self.assertContains(first_page, "Showing 1 to 20 of 22 records.")
         self.assertIn(
-            "PAGE-12",
+            "PAGE-22",
             [record.invoice_number for record in first_page.context["records"]],
         )
         self.assertNotIn(
@@ -3261,6 +3492,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(second_page.context["page_obj"].number, 2)
         self.assertEqual(second_page.context["previous_page_url"], f"{reverse('purchase-list')}?page=1")
         self.assertEqual(len(second_page.context["records"]), 2)
+        self.assertContains(second_page, "Showing 21 to 22 of 22 records.")
         self.assertIn(
             "PAGE-01",
             [record.invoice_number for record in second_page.context["records"]],

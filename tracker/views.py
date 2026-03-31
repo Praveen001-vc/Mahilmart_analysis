@@ -34,6 +34,7 @@ from .access_control import (
 )
 from .expense_categories import (
     COUNTER_EXPENSE_CATEGORY,
+    OFFICE_EXPENSE_CATEGORY,
     ensure_expense_categories_for_role,
     get_expense_category_purpose_map,
     get_expense_category_options as get_saved_expense_category_options,
@@ -81,6 +82,7 @@ from .models import (
     SalesLedgerRecord,
     SalesPaymentMode,
     Supplier,
+    SupplierStatus,
 )
 from .purchase_helpers import sync_purchase_to_expense
 from .purchase_sync import (
@@ -1325,6 +1327,20 @@ def apply_purchase_filters(queryset, filter_values):
     return queryset
 
 
+def summarize_purchase_queryset(queryset):
+    aggregates = queryset.aggregate(
+        total_amount=Sum("total_amount"),
+        paid_amount=Sum("paid_amount"),
+        pending_amount=Sum("pending_amount"),
+    )
+    return {
+        "count": queryset.count(),
+        "total_amount": aggregates["total_amount"] or Decimal("0.00"),
+        "paid_amount": aggregates["paid_amount"] or Decimal("0.00"),
+        "pending_amount": aggregates["pending_amount"] or Decimal("0.00"),
+    }
+
+
 def get_raw_sales_filter_values(params):
     return {
         "bill_no": (params.get("bill_no") or "").strip(),
@@ -2196,6 +2212,7 @@ class IncomeListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
     model = IncomeRecord
     template_name = "tracker/income_list.html"
     context_object_name = "records"
+    paginate_by = 10
 
     def get_base_entries(self):
         return build_income_ledger_entries(self.request.user)
@@ -2665,7 +2682,6 @@ class ExpenseCreateView(ModulePermissionRequiredMixin, CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["user"] = self.request.user
-        kwargs["counter_only_category"] = True
         return kwargs
 
     def form_valid(self, form):
@@ -2675,22 +2691,28 @@ class ExpenseCreateView(ModulePermissionRequiredMixin, CreateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        category_choices = context["form"].fields["category"].choices
         purpose_map = get_expense_category_purpose_map(self.request.user)
+        form_category = (
+            normalize_expense_category_name(
+                context["form"].data.get(context["form"].add_prefix("category"))
+                if context["form"].is_bound
+                else getattr(context["form"].instance, "category", "")
+            )
+            or COUNTER_EXPENSE_CATEGORY
+        )
         context["supplier_count"] = filter_queryset_by_role(
             Supplier.objects.all(),
             self.request.user,
         ).count()
-        context["category_count"] = sum(1 for value, _ in category_choices if value)
         context["counter_expense_category"] = COUNTER_EXPENSE_CATEGORY
-        context["expense_add_counter_only"] = True
-        context["category_form"] = ExpenseCategoryForm()
+        context["office_expense_category"] = OFFICE_EXPENSE_CATEGORY
         context["expense_category_purpose_map"] = purpose_map
         context["purpose_form"] = ExpensePurposeForm(
-            initial={"category": COUNTER_EXPENSE_CATEGORY}
+            initial={"category": form_category}
         )
-        context["counter_purpose_count"] = len(
-            purpose_map.get(COUNTER_EXPENSE_CATEGORY, [])
+        context["default_expense_category"] = form_category
+        context["default_expense_purpose_count"] = len(
+            purpose_map.get(form_category, [])
         )
         return context
 
@@ -3268,7 +3290,7 @@ class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView)
     model = PurchaseRecord
     template_name = "tracker/purchase_list.html"
     context_object_name = "records"
-    paginate_by = 10
+    paginate_by = 20
 
     def get_queryset(self):
         queryset = get_purchase_base_queryset(self.request.user)
@@ -3307,30 +3329,35 @@ class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        records = self.get_queryset()
         page_obj = context.get("page_obj")
+        base_queryset = get_purchase_base_queryset(self.request.user)
+        records = self.get_queryset()
         synced_purchase_queryset = filter_queryset_by_role(
             PurchaseRecord.objects.filter(
                 source_reference__startswith=SQLSERVER_PURCHASE_SOURCE_PREFIX
             ),
             self.request.user,
         )
-        context["page_count"] = records.count()
-        context["page_total"] = (
-            records.aggregate(total=Sum("total_amount"))["total"] or Decimal("0.00")
-        )
-        context["paid_total"] = (
-            records.aggregate(total=Sum("paid_amount"))["total"] or Decimal("0.00")
-        )
-        context["pending_total"] = (
-            records.aggregate(total=Sum("pending_amount"))["total"] or Decimal("0.00")
-        )
         raw_filter_values = get_raw_purchase_filter_values(self.request.GET)
         filter_values = get_purchase_filter_values(self.request.GET)
+        today = date.today()
+        month_queryset = base_queryset.filter(
+            transaction_date__year=today.year,
+            transaction_date__month=today.month,
+        )
+        today_queryset = base_queryset.filter(transaction_date=today)
+        filtered_summary = summarize_purchase_queryset(records)
         context["purchase_filters"] = filter_values
         context["has_active_filters"] = any(raw_filter_values.values())
         context["is_default_today_view"] = not context["has_active_filters"]
-        context["default_view_date"] = date.today()
+        context["default_view_date"] = today
+        context["month_summary"] = summarize_purchase_queryset(month_queryset)
+        context["today_summary"] = summarize_purchase_queryset(today_queryset)
+        context["filtered_summary"] = filtered_summary
+        context["page_count"] = filtered_summary["count"]
+        context["page_total"] = filtered_summary["total_amount"]
+        context["paid_total"] = filtered_summary["paid_amount"]
+        context["pending_total"] = filtered_summary["pending_amount"]
         context["synced_purchase_count"] = synced_purchase_queryset.count()
         context["recent_records"] = list(records[:8])
         context["previous_page_url"] = ""
@@ -3608,6 +3635,13 @@ class SupplierListView(ModulePermissionRequiredMixin, ListView):
     model = Supplier
     template_name = "tracker/supplier_list.html"
     context_object_name = "suppliers"
+    paginate_by = 30
+
+    def get_base_queryset(self):
+        return filter_queryset_by_role(Supplier.objects.all(), self.request.user)
+
+    def get_search_query(self):
+        return (self.request.GET.get("search") or "").strip()
 
     def post(self, request, *args, **kwargs):
         action = (request.POST.get("action") or "").strip()
@@ -3627,15 +3661,70 @@ class SupplierListView(ModulePermissionRequiredMixin, ListView):
                 f"{stats.updated_count} updated, "
                 f"{stats.skipped_count} skipped.",
             )
-        return redirect("supplier-list")
+        return redirect(get_safe_next_url(request, reverse("supplier-list")))
 
     def get_queryset(self):
-        return filter_queryset_by_role(Supplier.objects.all(), self.request.user)
+        queryset = self.get_base_queryset()
+        search_query = self.get_search_query()
+        if search_query:
+            queryset = queryset.filter(
+                Q(supplier_code__icontains=search_query)
+                | Q(name__icontains=search_query)
+                | Q(contact_person__icontains=search_query)
+                | Q(phone_number__icontains=search_query)
+                | Q(email__icontains=search_query)
+            )
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         suppliers = self.get_queryset()
+        page_obj = context.get("page_obj")
         context["page_count"] = suppliers.count()
+        context["active_supplier_count"] = suppliers.filter(
+            status=SupplierStatus.ACTIVE
+        ).count()
+        context["inactive_supplier_count"] = suppliers.filter(
+            status=SupplierStatus.INACTIVE
+        ).count()
+        context["synced_supplier_count"] = suppliers.exclude(
+            source_supplier_no__isnull=True
+        ).count()
+        context["contact_person_count"] = suppliers.exclude(contact_person="").count()
+        context["phone_number_count"] = suppliers.exclude(phone_number="").count()
+        context["email_count"] = suppliers.exclude(email="").count()
+        context["gstin_count"] = suppliers.exclude(gstin_number="").count()
+        context["opening_balance_total"] = (
+            suppliers.aggregate(total=Sum("opening_balance"))["total"]
+            or Decimal("0.00")
+        )
+        context["search_query"] = self.get_search_query()
+        context["current_url"] = self.request.get_full_path()
+        context["previous_page_url"] = ""
+        context["next_page_url"] = ""
+        context["pagination_links"] = []
+        if page_obj:
+            if page_obj.has_previous():
+                context["previous_page_url"] = build_page_url(
+                    self.request, page_obj.previous_page_number()
+                )
+            if page_obj.has_next():
+                context["next_page_url"] = build_page_url(
+                    self.request, page_obj.next_page_number()
+                )
+            context["pagination_links"] = [
+                {
+                    "number": page_number,
+                    "url": build_page_url(self.request, page_number),
+                    "is_current": page_number == page_obj.number,
+                }
+                for page_number in page_obj.paginator.page_range
+            ]
+            context["showing_from"] = page_obj.start_index()
+            context["showing_to"] = page_obj.end_index()
+        else:
+            context["showing_from"] = 1 if context["page_count"] else 0
+            context["showing_to"] = context["page_count"]
         return context
 
 
@@ -3662,7 +3751,54 @@ class SupplierCreateView(ModulePermissionRequiredMixin, CreateView):
         context = super().get_context_data(**kwargs)
         context["next_supplier_code"] = get_next_supplier_code()
         context["next_url"] = self.get_return_url()
+        context["is_editing"] = False
         return context
+
+
+class SupplierUpdateView(ModulePermissionRequiredMixin, UpdateView):
+    permission_field = "allow_suppliers"
+    permission_denied_message = "You do not have access to Suppliers."
+    model = Supplier
+    form_class = SupplierForm
+    template_name = "tracker/supplier_form.html"
+
+    def get_queryset(self):
+        return filter_queryset_by_role(Supplier.objects.all(), self.request.user)
+
+    def get_return_url(self):
+        return get_safe_next_url(self.request, reverse("supplier-list"))
+
+    def get_success_url(self):
+        return self.get_return_url()
+
+    def form_valid(self, form):
+        messages.success(self.request, "Supplier details updated successfully.")
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["next_supplier_code"] = self.object.supplier_code or get_next_supplier_code()
+        context["next_url"] = self.get_return_url()
+        context["is_editing"] = True
+        return context
+
+
+class SupplierInactiveView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_suppliers"
+    permission_denied_message = "You do not have access to Suppliers."
+
+    def get_queryset(self):
+        return filter_queryset_by_role(Supplier.objects.all(), self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        supplier = get_object_or_404(self.get_queryset(), pk=kwargs["pk"])
+        if supplier.status == SupplierStatus.INACTIVE:
+            messages.info(request, "Supplier is already inactive.")
+        else:
+            supplier.status = SupplierStatus.INACTIVE
+            supplier.save(update_fields=["status", "updated_at"])
+            messages.success(request, "Supplier marked as inactive successfully.")
+        return redirect(get_safe_next_url(request, reverse("supplier-list")))
 
 
 class UserListView(AdminRequiredMixin, ListView):

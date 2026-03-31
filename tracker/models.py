@@ -103,19 +103,6 @@ class IncomeRecord(BaseRecord):
         self.source = _normalize_short_text(self.source, 120)
         self.category = normalize_income_category_name(self.category)
         super().save(*args, **kwargs)
-        if self.user_id and self.title:
-            purpose_category = (
-                self.category
-                if self.category in INCOME_CATEGORY_VALUES
-                else DEFAULT_INCOME_CATEGORY
-            )
-            from .income_purposes import get_or_create_role_income_purpose
-
-            get_or_create_role_income_purpose(
-                self.user,
-                purpose_category,
-                self.title,
-            )
 
 
 class Supplier(models.Model):
@@ -181,7 +168,9 @@ class ExpenseCategory(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
-        self.name = _normalize_short_text(self.name, 80)
+        from .expense_categories import normalize_expense_category_name
+
+        self.name = normalize_expense_category_name(self.name)
         super().save(*args, **kwargs)
 
 
@@ -210,7 +199,9 @@ class ExpensePurpose(models.Model):
         return f"{self.category} - {self.name}"
 
     def save(self, *args, **kwargs):
-        self.category = _normalize_short_text(self.category, 80)
+        from .expense_categories import normalize_expense_category_name
+
+        self.category = normalize_expense_category_name(self.category)
         self.name = _normalize_short_text(self.name, 120)
         super().save(*args, **kwargs)
 
@@ -531,8 +522,10 @@ class ExpenseRecord(BaseRecord):
         return "General Expense"
 
     def save(self, *args, **kwargs):
+        from .expense_categories import normalize_expense_category_name
+
         self.title = _normalize_short_text(self.title, 120)
-        self.category = _normalize_short_text(self.category, 80)
+        self.category = normalize_expense_category_name(self.category)
         self.vendor = _normalize_short_text(self.vendor, 120)
         if self.supplier_id:
             self.vendor = self.supplier.name

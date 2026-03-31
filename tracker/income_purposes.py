@@ -11,21 +11,7 @@ def normalize_income_purpose_name(name):
     return " ".join(str(name or "").strip().split())[:120]
 
 
-DEFAULT_INCOME_PURPOSES = (
-    "Product Sales",
-    "Wholesale Sales",
-    "Online Orders Income",
-    "Home Delivery Charges",
-    "Supplier Discounts Received",
-    "Purchase Returns Income",
-    "Commission Income",
-    "Rental Income (if any space rented)",
-    "Scrap Sales (damaged/old items)",
-    "Cashback / Offers Received",
-    "Service Charges",
-    "Office Income",
-    "Other Income",
-)
+DEFAULT_INCOME_PURPOSES = ()
 
 DEFAULT_INCOME_CATEGORY_PURPOSES = {
     INCOME_CATEGORY_COUNTER: list(DEFAULT_INCOME_PURPOSES),
@@ -116,15 +102,19 @@ def ensure_income_purposes_for_role(user):
 
 
 def get_income_category_purpose_map(user=None):
-    if not getattr(user, "is_authenticated", False):
-        return get_default_income_category_purpose_map()
-
     purpose_map = {
         INCOME_CATEGORY_COUNTER: [],
         INCOME_CATEGORY_OFFICE: [],
     }
 
-    for category_name, purpose_name in ensure_income_purposes_for_role(user).values_list(
+    if not getattr(user, "is_authenticated", False):
+        return purpose_map
+
+    for category_name, purpose_name in IncomePurpose.objects.filter(user=user).order_by(
+        "category",
+        "name",
+        "pk",
+    ).values_list(
         "category",
         "name",
     ):
