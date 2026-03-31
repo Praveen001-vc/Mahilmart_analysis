@@ -42,12 +42,24 @@ from .expense_categories import (
     normalize_expense_category_name,
     normalize_expense_purpose_name,
 )
+from .income_categories import (
+    DEFAULT_INCOME_CATEGORY,
+    INCOME_CATEGORY_COUNTER,
+    INCOME_CATEGORY_OFFICE,
+    normalize_income_category_name,
+)
+from .income_purposes import (
+    get_income_category_purpose_map,
+    get_or_create_role_income_purpose,
+    normalize_income_purpose_name,
+)
 from .forms import (
     DailyCashSettlementForm,
     ExpenseCategoryForm,
     ExpenseForm,
     ExpensePurposeForm,
     IncomeForm,
+    IncomePurposeForm,
     PurchaseForm,
     PurchasePaymentForm,
     ReconciliationOpeningBalanceForm,
@@ -60,6 +72,7 @@ from .models import (
     ExpensePurpose,
     ExpenseRecord,
     IncomeRecord,
+    IncomePurpose,
     PaymentMethod,
     PurchasePayment,
     PurchaseRecord,
@@ -101,8 +114,13 @@ def get_sales_cash_from_settlement(settlement):
     return settlement.actual_sales - settlement.gpay_settled
 
 
-def get_cash_in_hand_amount(opening_balance, sales_ledger_cash, expense_amount):
-    return opening_balance + sales_ledger_cash - expense_amount
+def get_cash_in_hand_amount(
+    opening_balance,
+    sales_ledger_cash,
+    expense_amount,
+    counter_income_amount=Decimal("0.00"),
+):
+    return opening_balance + sales_ledger_cash + counter_income_amount - expense_amount
 
 
 def get_settlement_closing_balance(
@@ -111,11 +129,13 @@ def get_settlement_closing_balance(
     expense_amount,
     cash_settled,
     cash_denomination_total=Decimal("0.00"),
+    counter_income_amount=Decimal("0.00"),
 ):
     cash_in_hand = get_cash_in_hand_amount(
         opening_balance,
         sales_ledger_cash,
         expense_amount,
+        counter_income_amount=counter_income_amount,
     )
     cash_difference = get_cash_difference_amount(
         cash_denomination_total,
@@ -142,6 +162,7 @@ def build_income_ledger_entries_for_period(user, start_date=None, end_date=None)
     for record in income_queryset.order_by("-transaction_date", "-created_at", "-pk"):
         entries.append(
             {
+                "pk": record.pk,
                 "transaction_date": record.transaction_date,
                 "title": record.title,
                 "source": record.source,
@@ -158,14 +179,15 @@ def build_income_ledger_entries_for_period(user, start_date=None, end_date=None)
         settlement_sales_cash = get_sales_cash_from_settlement(settlement)
         entries.append(
             {
+                "pk": "",
                 "transaction_date": settlement.settlement_date,
                 "title": "Daily Settlement Income",
                 "source": (
                     f"Cash Rs. {settlement_sales_cash} | "
                     f"GPay Rs. {settlement.gpay_settled}"
                 ),
-                "category": "Daily Settlement",
-                "payment_method": "Cash + UPI",
+                "category": INCOME_LEDGER_SETTLEMENT_CATEGORY,
+                "payment_method": INCOME_LEDGER_SETTLEMENT_PAYMENT_METHOD,
                 "amount": settlement.actual_sales,
                 "entry_type": "settlement",
                 "sort_date": settlement.settlement_date,
@@ -182,6 +204,134 @@ def build_income_ledger_entries_for_period(user, start_date=None, end_date=None)
 
 def build_income_ledger_entries(user):
     return build_income_ledger_entries_for_period(user)
+
+
+INCOME_LEDGER_SETTLEMENT_CATEGORY = "Daily Settlement"
+INCOME_LEDGER_SETTLEMENT_PAYMENT_METHOD = "Cash + UPI"
+
+
+def get_raw_income_filter_values(request):
+    return {
+        "start_date": (request.GET.get("start_date") or "").strip(),
+        "end_date": (request.GET.get("end_date") or "").strip(),
+        "category": (request.GET.get("category") or "").strip(),
+        "payment_method": (request.GET.get("payment_method") or "").strip(),
+    }
+
+
+def get_income_filter_values(request):
+    filter_values = get_raw_income_filter_values(request)
+    if not any(filter_values.values()):
+        today_value = date.today().isoformat()
+        filter_values["start_date"] = today_value
+        filter_values["end_date"] = today_value
+        return filter_values
+
+    if filter_values["start_date"] and not filter_values["end_date"]:
+        filter_values["end_date"] = filter_values["start_date"]
+    if filter_values["end_date"] and not filter_values["start_date"]:
+        filter_values["start_date"] = filter_values["end_date"]
+    return filter_values
+
+
+def apply_income_filters(entries, filter_values):
+    start_date = parse_date(filter_values["start_date"])
+    end_date = parse_date(filter_values["end_date"])
+    category = filter_values["category"]
+    payment_method = filter_values["payment_method"]
+
+    if start_date and end_date and start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    filtered_entries = []
+    for entry in entries:
+        entry_date = entry.get("transaction_date")
+        entry_category = (entry.get("category") or "").strip()
+        entry_payment_method = (entry.get("payment_method") or "").strip()
+
+        if start_date and entry_date and entry_date < start_date:
+            continue
+        if end_date and entry_date and entry_date > end_date:
+            continue
+        if category and category != "All" and entry_category.casefold() != category.casefold():
+            continue
+        if (
+            payment_method
+            and payment_method != "All"
+            and entry_payment_method != payment_method
+        ):
+            continue
+        filtered_entries.append(entry)
+    return filtered_entries
+
+
+def get_income_category_options(entries, selected_category=""):
+    default_options = [
+        INCOME_CATEGORY_COUNTER,
+        INCOME_CATEGORY_OFFICE,
+        INCOME_LEDGER_SETTLEMENT_CATEGORY,
+    ]
+    discovered_options = {
+        (entry.get("category") or "").strip()
+        for entry in entries
+        if (entry.get("category") or "").strip()
+    }
+    ordered_options = [
+        option for option in default_options if option in discovered_options or option != INCOME_LEDGER_SETTLEMENT_CATEGORY
+    ]
+    ordered_options.extend(
+        sorted(
+            discovered_options - set(ordered_options),
+            key=lambda value: value.lower(),
+        )
+    )
+    if selected_category and selected_category not in ordered_options:
+        ordered_options.append(selected_category)
+    return ordered_options
+
+
+def get_income_payment_method_options(entries, selected_payment_method=""):
+    default_options = [value for value, _label in PaymentMethod.choices]
+    default_options.append(INCOME_LEDGER_SETTLEMENT_PAYMENT_METHOD)
+    discovered_options = {
+        (entry.get("payment_method") or "").strip()
+        for entry in entries
+        if (entry.get("payment_method") or "").strip()
+    }
+    ordered_options = [option for option in default_options if option in discovered_options or option in default_options]
+    ordered_options.extend(
+        sorted(
+            discovered_options - set(ordered_options),
+            key=lambda value: value.lower(),
+        )
+    )
+    if selected_payment_method and selected_payment_method not in ordered_options:
+        ordered_options.append(selected_payment_method)
+    return [(option, option) for option in ordered_options]
+
+
+def summarize_income_entries(entries):
+    manual_total = sum(
+        (
+            entry.get("amount", Decimal("0.00"))
+            for entry in entries
+            if entry.get("entry_type") == "manual"
+        ),
+        Decimal("0.00"),
+    )
+    settlement_total = sum(
+        (
+            entry.get("amount", Decimal("0.00"))
+            for entry in entries
+            if entry.get("entry_type") == "settlement"
+        ),
+        Decimal("0.00"),
+    )
+    return {
+        "manual_total": manual_total,
+        "settlement_total": settlement_total,
+        "total": manual_total + settlement_total,
+    }
 
 
 def _shift_month(month_start, months_back):
@@ -1418,7 +1568,9 @@ def get_default_settlement_opening_balance(user, settlement_date):
         return previous_settlement.closing_balance
 
     income_total = _sum_amount(
-        filter_queryset_by_role(IncomeRecord.objects.all(), user).filter(
+        filter_queryset_by_role(IncomeRecord.objects.all(), user).exclude(
+            category__iexact=INCOME_CATEGORY_OFFICE,
+        ).filter(
             transaction_date__lt=settlement_date,
         )
     )
@@ -1428,6 +1580,15 @@ def get_default_settlement_opening_balance(user, settlement_date):
         )
     )
     return income_total - expense_total
+
+
+def get_counter_income_total_for_date(user, settlement_date):
+    return _sum_amount(
+        filter_queryset_by_role(IncomeRecord.objects.all(), user).filter(
+            transaction_date=settlement_date,
+            category__iexact=INCOME_CATEGORY_COUNTER,
+        )
+    )
 
 
 def build_settlement_autofill_summary(user, settlement_date):
@@ -1449,6 +1610,7 @@ def build_settlement_autofill_summary(user, settlement_date):
         opening_balance = get_default_settlement_opening_balance(user, settlement_date)
 
     sales_ledger_cash = sales_summary["cash_settled"]
+    counter_income_amount = get_counter_income_total_for_date(user, settlement_date)
     if sales_summary["sales_count"] > 0:
         gpay_settled = sales_summary["gpay_settled"]
         settlement_source = "sales"
@@ -1461,11 +1623,13 @@ def build_settlement_autofill_summary(user, settlement_date):
         opening_balance,
         sales_ledger_cash,
         expense_amount,
+        counter_income_amount=counter_income_amount,
     )
 
     return {
         "opening_balance": opening_balance,
         "sales_ledger_cash": sales_ledger_cash,
+        "counter_income_amount": counter_income_amount,
         "gpay_settled": gpay_settled,
         "cash_settled": Decimal("0.00"),
         "cash_in_hand": cash_in_hand,
@@ -1488,6 +1652,7 @@ def build_settlement_autofill_summary(user, settlement_date):
 def build_settlement_preview(values, cash_denomination_total=Decimal("0.00")):
     opening_balance = parse_money_value(values.get("opening_balance"))
     sales_ledger_cash = parse_money_value(values.get("sales_ledger_cash"))
+    counter_income_amount = parse_money_value(values.get("counter_income_amount"))
     gpay_settled = parse_money_value(values.get("gpay_settled"))
     cash_settled = parse_money_value(values.get("cash_settled"))
     expense_amount = parse_money_value(values.get("expense_amount"))
@@ -1497,17 +1662,20 @@ def build_settlement_preview(values, cash_denomination_total=Decimal("0.00")):
         expense_amount,
         cash_settled,
         cash_denomination_total,
+        counter_income_amount=counter_income_amount,
     )
     cash_in_hand = get_cash_in_hand_amount(
         opening_balance,
         sales_ledger_cash,
         expense_amount,
+        counter_income_amount=counter_income_amount,
     )
     total_amount = opening_balance + sales_ledger_cash + gpay_settled
     actual_sales = total_amount - opening_balance
     return {
         "opening_balance": opening_balance,
         "sales_ledger_cash": sales_ledger_cash,
+        "counter_income_amount": counter_income_amount,
         "gpay_settled": gpay_settled,
         "cash_settled": cash_settled,
         "cash_in_hand": cash_in_hand,
@@ -1990,17 +2158,49 @@ class IncomeListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
     template_name = "tracker/income_list.html"
     context_object_name = "records"
 
-    def get_queryset(self):
+    def get_base_entries(self):
         return build_income_ledger_entries(self.request.user)
+
+    def get_queryset(self):
+        return apply_income_filters(
+            self.get_base_entries(),
+            get_income_filter_values(self.request),
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        records = self.get_queryset()
-        context["page_total"] = sum(
-            (record["amount"] for record in records),
-            Decimal("0.00"),
+        all_records = self.get_base_entries()
+        filtered_records = self.get_queryset()
+        today = date.today()
+        raw_filter_values = get_raw_income_filter_values(self.request)
+        filter_values = get_income_filter_values(self.request)
+        month_records = [
+            record
+            for record in all_records
+            if record.get("transaction_date")
+            and record["transaction_date"].year == today.year
+            and record["transaction_date"].month == today.month
+        ]
+        today_records = [
+            record for record in all_records if record.get("transaction_date") == today
+        ]
+        context["income_filters"] = filter_values
+        context["has_active_filters"] = any(raw_filter_values.values())
+        context["is_default_today_view"] = not context["has_active_filters"]
+        context["month_summary"] = summarize_income_entries(month_records)
+        context["today_summary"] = summarize_income_entries(today_records)
+        context["filtered_summary"] = summarize_income_entries(filtered_records)
+        context["page_total"] = context["filtered_summary"]["total"]
+        context["page_count"] = len(filtered_records)
+        context["category_options"] = get_income_category_options(
+            all_records,
+            selected_category=filter_values["category"],
         )
-        context["page_count"] = len(records)
+        context["payment_method_options"] = get_income_payment_method_options(
+            all_records,
+            selected_payment_method=filter_values["payment_method"],
+        )
+        context["current_url"] = self.request.get_full_path()
         return context
 
 
@@ -2012,10 +2212,204 @@ class IncomeCreateView(ModulePermissionRequiredMixin, CreateView):
     template_name = "tracker/income_form.html"
     success_url = reverse_lazy("income-list")
 
+    def get_return_url(self):
+        return get_safe_next_url(self.request, reverse("income-list"))
+
+    def get_success_url(self):
+        return self.get_return_url()
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
     def form_valid(self, form):
         form.instance.user = self.request.user
         messages.success(self.request, "Income record created successfully.")
         return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        purpose_map = get_income_category_purpose_map(self.request.user)
+        form_category = (
+            normalize_income_category_name(
+                context["form"].data.get(context["form"].add_prefix("category"))
+                if context["form"].is_bound
+                else getattr(context["form"].instance, "category", "")
+            )
+            or DEFAULT_INCOME_CATEGORY
+        )
+        context["income_category_purpose_map"] = purpose_map
+        context["purpose_form"] = IncomePurposeForm(
+            initial={"category": form_category}
+        )
+        context["default_income_purpose_count"] = len(
+            purpose_map.get(form_category, [])
+        )
+        context["default_income_category"] = form_category
+        context["next_url"] = self.get_return_url()
+        context["form_page_url"] = self.request.get_full_path()
+        context["is_editing"] = False
+        return context
+
+
+class IncomePurposeCreateView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_income"
+    permission_denied_message = "You do not have access to Income."
+
+    def get_next_url(self):
+        next_url = (
+            self.request.GET.get("next") or self.request.POST.get("next") or ""
+        ).strip()
+        return next_url or reverse("income-add")
+
+    def post(self, request, *args, **kwargs):
+        form = IncomePurposeForm(request.POST)
+        is_ajax_request = request.headers.get("x-requested-with") == "XMLHttpRequest"
+        if form.is_valid():
+            category_name = normalize_income_category_name(
+                form.cleaned_data["category"]
+            )
+            purpose_name = normalize_income_purpose_name(form.cleaned_data["name"])
+            existing = (
+                IncomePurpose.objects.filter(user=request.user)
+                .filter(category__iexact=category_name, name__iexact=purpose_name)
+                .first()
+            )
+            if existing is not None:
+                created = False
+                saved_purpose = existing
+            else:
+                saved_purpose = get_or_create_role_income_purpose(
+                    request.user,
+                    category_name,
+                    purpose_name,
+                )
+                created = True
+
+            purpose_map = get_income_category_purpose_map(request.user)
+            category_purposes = purpose_map.get(category_name, [])
+
+            if is_ajax_request:
+                return JsonResponse(
+                    {
+                        "ok": True,
+                        "created": created,
+                        "name": saved_purpose.name,
+                        "category": saved_purpose.category,
+                        "purpose_count": len(category_purposes),
+                        "purpose_options": category_purposes,
+                        "message": (
+                            "Income purpose created successfully."
+                            if created
+                            else (
+                                f"{saved_purpose.name} already exists for "
+                                f"{saved_purpose.category}."
+                            )
+                        ),
+                    }
+                )
+
+            if created:
+                messages.success(request, "Income purpose created successfully.")
+            else:
+                messages.info(
+                    request,
+                    (
+                        f"{saved_purpose.name} already exists for "
+                        f"{saved_purpose.category}."
+                    ),
+                )
+            return redirect(self.get_next_url())
+
+        if is_ajax_request:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "errors": {
+                        field_name: [
+                            error["message"]
+                            for error in field_errors
+                        ]
+                        for field_name, field_errors in form.errors.get_json_data().items()
+                    },
+                },
+                status=400,
+            )
+
+        first_error = next(
+            iter(
+                next(iter(form.errors.values()), ["Unable to save the purpose right now."])
+            ),
+            "Unable to save the purpose right now.",
+        )
+        messages.error(request, first_error)
+        return redirect(self.get_next_url())
+
+
+class IncomeUpdateView(ModulePermissionRequiredMixin, UpdateView):
+    permission_field = "allow_income"
+    permission_denied_message = "You do not have access to Income."
+    model = IncomeRecord
+    form_class = IncomeForm
+    template_name = "tracker/income_form.html"
+    success_url = reverse_lazy("income-list")
+
+    def get_queryset(self):
+        return filter_queryset_by_role(IncomeRecord.objects.all(), self.request.user)
+
+    def get_return_url(self):
+        return get_safe_next_url(self.request, reverse("income-list"))
+
+    def get_success_url(self):
+        return self.get_return_url()
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def form_valid(self, form):
+        messages.success(self.request, "Income record updated successfully.")
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        purpose_map = get_income_category_purpose_map(self.request.user)
+        form_category = (
+            normalize_income_category_name(
+                context["form"].data.get(context["form"].add_prefix("category"))
+                if context["form"].is_bound
+                else getattr(context["form"].instance, "category", "")
+            )
+            or DEFAULT_INCOME_CATEGORY
+        )
+        context["income_category_purpose_map"] = purpose_map
+        context["purpose_form"] = IncomePurposeForm(
+            initial={"category": form_category}
+        )
+        context["default_income_purpose_count"] = len(
+            purpose_map.get(form_category, [])
+        )
+        context["default_income_category"] = form_category
+        context["next_url"] = self.get_return_url()
+        context["form_page_url"] = self.request.get_full_path()
+        context["is_editing"] = True
+        return context
+
+
+class IncomeDeleteView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_income"
+    permission_denied_message = "You do not have access to Income."
+
+    def get_queryset(self):
+        return filter_queryset_by_role(IncomeRecord.objects.all(), self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        income_record = get_object_or_404(self.get_queryset(), pk=kwargs["pk"])
+        income_record.delete()
+        messages.success(request, "Income record deleted successfully.")
+        return redirect(get_safe_next_url(request, reverse("income-list")))
 
 
 class ExpenseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
@@ -2515,6 +2909,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 {
                     "opening_balance": autofill_summary["opening_balance"],
                     "sales_ledger_cash": autofill_summary["sales_ledger_cash"],
+                    "counter_income_amount": autofill_summary["counter_income_amount"],
                     "gpay_settled": autofill_summary["gpay_settled"],
                     "cash_settled": Decimal("0.00"),
                     "expense_amount": autofill_summary["expense_amount"],
@@ -2545,6 +2940,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
         return {
             "opening_balance": loaded_settlement.opening_balance,
             "sales_ledger_cash": sales_ledger_cash,
+            "counter_income_amount": autofill_summary["counter_income_amount"],
             "gpay_settled": gpay_settled,
             "cash_settled": loaded_settlement.cash_settled,
             "expense_amount": autofill_summary["expense_amount"],
@@ -2599,6 +2995,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                     )
                 ),
                 "sales_ledger_cash": autofill_summary["sales_ledger_cash"],
+                "counter_income_amount": autofill_summary["counter_income_amount"],
                 "gpay_settled": form["gpay_settled"].value(),
                 "cash_settled": form["cash_settled"].value(),
                 "expense_amount": autofill_summary["expense_amount"],
@@ -2611,6 +3008,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
         return {
             "opening_balance": autofill_summary["opening_balance"],
             "sales_ledger_cash": autofill_summary["sales_ledger_cash"],
+            "counter_income_amount": autofill_summary["counter_income_amount"],
             "gpay_settled": autofill_summary["gpay_settled"],
             "cash_settled": Decimal("0.00"),
             "expense_amount": autofill_summary["expense_amount"],
@@ -2761,6 +3159,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 settlement.opening_balance,
                 autofill_summary["sales_ledger_cash"],
                 settlement.expense_amount,
+                counter_income_amount=autofill_summary["counter_income_amount"],
             )
             closing_balance = get_settlement_closing_balance(
                 settlement.opening_balance,
@@ -2768,6 +3167,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 settlement.expense_amount,
                 settlement.cash_settled,
                 cash_denomination_total,
+                counter_income_amount=autofill_summary["counter_income_amount"],
             )
             if closing_balance < 0:
                 if cash_denominations:

@@ -6,6 +6,11 @@ from django.db import models
 from django.utils import timezone
 from decimal import Decimal, InvalidOperation
 
+from .income_categories import (
+    DEFAULT_INCOME_CATEGORY,
+    INCOME_CATEGORY_VALUES,
+    normalize_income_category_name,
+)
 from .user_roles import filter_queryset_by_role
 
 
@@ -92,6 +97,25 @@ class IncomeRecord(BaseRecord):
     class Meta(BaseRecord.Meta):
         verbose_name = "Income Record"
         verbose_name_plural = "Income Records"
+
+    def save(self, *args, **kwargs):
+        self.title = _normalize_short_text(self.title, 120)
+        self.source = _normalize_short_text(self.source, 120)
+        self.category = normalize_income_category_name(self.category)
+        super().save(*args, **kwargs)
+        if self.user_id and self.title:
+            purpose_category = (
+                self.category
+                if self.category in INCOME_CATEGORY_VALUES
+                else DEFAULT_INCOME_CATEGORY
+            )
+            from .income_purposes import get_or_create_role_income_purpose
+
+            get_or_create_role_income_purpose(
+                self.user,
+                purpose_category,
+                self.title,
+            )
 
 
 class Supplier(models.Model):
@@ -188,6 +212,38 @@ class ExpensePurpose(models.Model):
     def save(self, *args, **kwargs):
         self.category = _normalize_short_text(self.category, 80)
         self.name = _normalize_short_text(self.name, 120)
+        super().save(*args, **kwargs)
+
+
+class IncomePurpose(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="income_purposes",
+    )
+    category = models.CharField(max_length=80, db_index=True)
+    name = models.CharField(max_length=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["category", "name", "created_at"]
+        unique_together = ("user", "category", "name")
+        indexes = [
+            models.Index(
+                fields=["user", "category"],
+                name="tracker_inc_user_cat_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.category} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        self.category = normalize_income_category_name(self.category)
+        self.name = _normalize_short_text(self.name, 120)
+        if self.category not in INCOME_CATEGORY_VALUES:
+            self.category = DEFAULT_INCOME_CATEGORY
         super().save(*args, **kwargs)
 
 

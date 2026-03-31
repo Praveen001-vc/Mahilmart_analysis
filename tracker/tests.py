@@ -16,12 +16,14 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .expense_categories import COUNTER_EXPENSE_CATEGORY
+from .income_categories import INCOME_CATEGORY_COUNTER, INCOME_CATEGORY_OFFICE
 from .models import (
     DailyCashSettlement,
     ExpenseCategory,
     ExpensePurpose,
     ExpenseRecord,
     IncomeRecord,
+    IncomePurpose,
     PaymentMethod,
     PurchasePayment,
     PurchaseRecord,
@@ -1282,18 +1284,122 @@ class TrackerViewsTests(TestCase):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("income-add"))
+        form = response.context["form"]
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Revenue Details")
-        self.assertContains(response, "Classification & Amount")
-        self.assertContains(response, "Transaction & Notes")
+        self.assertEqual(form["payment_method"].value(), PaymentMethod.CASH)
+        self.assertContains(response, "Income Basics")
+        self.assertContains(response, "Source & Reference")
+        self.assertContains(response, "Amount & Payment")
+        self.assertContains(response, "Notes")
+        self.assertContains(response, INCOME_CATEGORY_COUNTER)
+        self.assertContains(response, INCOME_CATEGORY_OFFICE)
+        self.assertContains(response, "Purpose")
+        self.assertContains(response, "Add Purpose")
+        self.assertContains(response, "Product Sales")
+        self.assertContains(response, "Office Income")
+        self.assertContains(
+            response,
+            "Counter Income is used in Daily Settlement. Office Income stays separate.",
+        )
+        self.assertContains(response, 'data-purpose-input="income-form"', html=False)
+        self.assertContains(response, 'data-purpose-select="income-form"', html=False)
+        self.assertContains(response, 'id="income-purpose-select"', html=False)
+        self.assertTrue(
+            IncomePurpose.objects.filter(
+                user=self.user,
+                category=INCOME_CATEGORY_COUNTER,
+                name="Product Sales",
+            ).exists()
+        )
+        self.assertTrue(
+            IncomePurpose.objects.filter(
+                user=self.user,
+                category=INCOME_CATEGORY_OFFICE,
+                name="Office Income",
+            ).exists()
+        )
+
+    def test_income_add_post_saves_selected_income_category(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("income-add"),
+            {
+                "title": "Office Account Transfer",
+                "source": "Head Office",
+                "category": INCOME_CATEGORY_OFFICE,
+                "amount": "1500.00",
+                "transaction_date": date.today().isoformat(),
+                "payment_method": PaymentMethod.BANK_TRANSFER,
+                "notes": "Office-only income",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        record = IncomeRecord.objects.get(title="Office Account Transfer")
+        self.assertEqual(record.category, INCOME_CATEGORY_OFFICE)
+        self.assertTrue(
+            IncomePurpose.objects.filter(
+                user=self.user,
+                category=INCOME_CATEGORY_OFFICE,
+                name="Office Account Transfer",
+            ).exists()
+        )
+
+    def test_income_add_page_does_not_include_other_users_custom_income_purposes(self):
+        peer_user = get_user_model().objects.create_user(
+            username="income_purpose_peer_user",
+            password="StrongPass790!",
+        )
+        IncomePurpose.objects.create(
+            user=peer_user,
+            category=INCOME_CATEGORY_COUNTER,
+            name="Peer Only Income Purpose",
+        )
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("income-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Peer Only Income Purpose")
+
+    def test_income_purpose_page_creates_purpose_with_ajax(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("income-purpose-create"),
+            {
+                "category": INCOME_CATEGORY_OFFICE,
+                "name": "Branch Support Income",
+                "next": reverse("income-add"),
+            },
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["created"])
+        self.assertEqual(payload["category"], INCOME_CATEGORY_OFFICE)
+        self.assertEqual(payload["name"], "Branch Support Income")
+        self.assertIn("Branch Support Income", payload["purpose_options"])
+        self.assertTrue(
+            IncomePurpose.objects.filter(
+                user=self.user,
+                category=INCOME_CATEGORY_OFFICE,
+                name="Branch Support Income",
+            ).exists()
+        )
 
     def test_expense_add_page_renders_entry_master_layout(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("expense-add"))
+        form = response.context["form"]
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(form["payment_method"].value(), PaymentMethod.CASH)
         self.assertContains(response, "Expense Basics")
         self.assertContains(response, "Supplier & Reference")
         self.assertContains(response, "Amount & Payment")
@@ -1372,6 +1478,41 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(
             settlement_response.context["autofill_summary"]["expense_amount"],
             Decimal("200.00"),
+        )
+
+    def test_daily_settlement_opening_balance_excludes_office_income(self):
+        self.client.force_login(self.user)
+        yesterday = date.today() - timedelta(days=1)
+
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Counter Collection",
+            source="Front Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("250.00"),
+            transaction_date=yesterday,
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Office Transfer",
+            source="Head Office",
+            category=INCOME_CATEGORY_OFFICE,
+            amount=Decimal("1000.00"),
+            transaction_date=yesterday,
+        )
+
+        response = self.client.get(
+            reverse("daily-settlement"),
+            {
+                "selected_date": date.today().isoformat(),
+                "entry_date": date.today().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["autofill_summary"]["opening_balance"],
+            Decimal("250.00"),
         )
 
     def test_expense_list_inline_delete_removes_record(self):
@@ -1785,6 +1926,48 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(first_page.context["next_page_url"], f"{reverse('income-list')}?page=2")
         self.assertEqual(len(second_page.context["records"]), 5)
 
+    def test_income_list_defaults_to_today_filters(self):
+        self.client.force_login(self.user)
+        yesterday = date.today() - timedelta(days=1)
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Yesterday Income",
+            source="Old Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("200.00"),
+            transaction_date=yesterday,
+            payment_method=PaymentMethod.CASH,
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Today Income",
+            source="Main Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("350.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+
+        response = self.client.get(reverse("income-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Income Tracker")
+        self.assertContains(response, "Filter (By Default Today)")
+        self.assertContains(response, "Applied Filters:")
+        self.assertContains(response, "Income History")
+        self.assertContains(response, "Today Income")
+        self.assertNotContains(response, "Yesterday Income")
+        self.assertEqual(
+            response.context["income_filters"]["start_date"],
+            date.today().isoformat(),
+        )
+        self.assertEqual(
+            response.context["income_filters"]["end_date"],
+            date.today().isoformat(),
+        )
+        self.assertEqual(response.context["page_count"], 1)
+        self.assertEqual(response.context["filtered_summary"]["total"], Decimal("350.00"))
+
     def test_income_list_includes_daily_settlement_income_records(self):
         self.client.force_login(self.user)
         IncomeRecord.objects.create(
@@ -1807,11 +1990,139 @@ class TrackerViewsTests(TestCase):
         response = self.client.get(reverse("income-list"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Manual Income")
+        self.assertContains(response, "Settlement Income")
         self.assertContains(response, "Daily Settlement Income")
         self.assertContains(response, "Cash Rs. 450.00 | GPay Rs. 700.00")
         self.assertContains(response, "Auto added from Daily Settlement")
+        self.assertContains(response, "Manual")
+        self.assertContains(response, "Settlement")
         self.assertEqual(response.context["page_count"], 2)
         self.assertEqual(response.context["page_total"], Decimal("1400.00"))
+        self.assertEqual(
+            response.context["filtered_summary"]["manual_total"],
+            Decimal("250.00"),
+        )
+        self.assertEqual(
+            response.context["filtered_summary"]["settlement_total"],
+            Decimal("1150.00"),
+        )
+
+    def test_income_list_shows_edit_and_delete_actions_for_manual_entries(self):
+        self.client.force_login(self.user)
+        manual_record = IncomeRecord.objects.create(
+            user=self.user,
+            title="Counter Collection",
+            source="Front Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("800.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=date.today(),
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("100.00"),
+            cash_settled=Decimal("100.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("0.00"),
+        )
+
+        response = self.client.get(reverse("income-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("income-edit", args=[manual_record.pk]))
+        self.assertContains(response, reverse("income-delete", args=[manual_record.pk]))
+        self.assertContains(response, "Are you sure you want to delete this income record?")
+        self.assertContains(response, "Auto Entry")
+
+    def test_income_edit_page_prefills_saved_details(self):
+        self.client.force_login(self.user)
+        income_record = IncomeRecord.objects.create(
+            user=self.user,
+            title="Office Support",
+            source="Head Office",
+            category=INCOME_CATEGORY_OFFICE,
+            amount=Decimal("1500.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.BANK_TRANSFER,
+            notes="Correction required",
+        )
+
+        response = self.client.get(
+            reverse("income-edit", args=[income_record.pk]),
+            {"next": reverse("income-list")},
+        )
+
+        form = response.context["form"]
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["is_editing"])
+        self.assertContains(response, "Edit Income Record")
+        self.assertEqual(form.instance.pk, income_record.pk)
+        self.assertEqual(form["title"].value(), "Office Support")
+        self.assertEqual(form["source"].value(), "Head Office")
+        self.assertEqual(form["category"].value(), INCOME_CATEGORY_OFFICE)
+        self.assertEqual(form["payment_method"].value(), PaymentMethod.BANK_TRANSFER)
+        self.assertEqual(form["notes"].value(), "Correction required")
+
+    def test_income_edit_post_updates_record_and_returns_to_list(self):
+        self.client.force_login(self.user)
+        income_record = IncomeRecord.objects.create(
+            user=self.user,
+            title="Old Income",
+            source="Old Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("400.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+            notes="Old note",
+        )
+
+        response = self.client.post(
+            reverse("income-edit", args=[income_record.pk]),
+            {
+                "title": "Updated Income",
+                "source": "Updated Counter",
+                "category": INCOME_CATEGORY_OFFICE,
+                "amount": "950.00",
+                "transaction_date": date.today().isoformat(),
+                "payment_method": PaymentMethod.UPI,
+                "notes": "Updated note",
+                "next": reverse("income-list"),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("income-list"))
+        income_record.refresh_from_db()
+        self.assertEqual(income_record.title, "Updated Income")
+        self.assertEqual(income_record.source, "Updated Counter")
+        self.assertEqual(income_record.category, INCOME_CATEGORY_OFFICE)
+        self.assertEqual(income_record.amount, Decimal("950.00"))
+        self.assertEqual(income_record.payment_method, PaymentMethod.UPI)
+        self.assertEqual(income_record.notes, "Updated note")
+
+    def test_income_delete_post_removes_manual_record(self):
+        self.client.force_login(self.user)
+        income_record = IncomeRecord.objects.create(
+            user=self.user,
+            title="Delete Me",
+            source="Front Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("300.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+
+        response = self.client.post(
+            reverse("income-delete", args=[income_record.pk]),
+            {"next": reverse("income-list")},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("income-list"))
+        self.assertFalse(IncomeRecord.objects.filter(pk=income_record.pk).exists())
 
     def test_expense_list_paginates_in_batches_of_50(self):
         self.client.force_login(self.user)
@@ -1905,6 +2216,115 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Daily Cash Settlement")
         self.assertNotContains(response, 'name="opening_balance"', html=False)
         self.assertNotContains(response, 'name="expense_amount"', html=False)
+
+    def test_daily_settlement_shows_counter_income_and_adds_it_to_cash_in_hand(self):
+        self.client.force_login(self.user)
+        yesterday = date.today() - timedelta(days=1)
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=yesterday,
+            opening_balance=Decimal("500.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("741.00"),
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Counter Collection",
+            source="Front Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("200.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Office Transfer",
+            source="Head Office",
+            category=INCOME_CATEGORY_OFFICE,
+            amount=Decimal("500.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Today Expense",
+            vendor="Vendor A",
+            category=COUNTER_EXPENSE_CATEGORY,
+            amount=Decimal("125.00"),
+            transaction_date=date.today(),
+        )
+
+        response = self.client.get(reverse("daily-settlement"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["autofill_summary"]["counter_income_amount"],
+            Decimal("200.00"),
+        )
+        self.assertEqual(
+            response.context["settlement_preview"]["cash_in_hand"],
+            Decimal("816.00"),
+        )
+        self.assertContains(response, "Expense =")
+        self.assertContains(response, "Income =")
+
+    def test_daily_settlement_post_adds_counter_income_to_saved_cash_in_hand(self):
+        self.client.force_login(self.user)
+        yesterday = date.today() - timedelta(days=1)
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=yesterday,
+            opening_balance=Decimal("500.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("741.00"),
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Counter Collection",
+            source="Front Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("100.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Today Expense",
+            vendor="Vendor A",
+            category=COUNTER_EXPENSE_CATEGORY,
+            amount=Decimal("200.00"),
+            transaction_date=date.today(),
+        )
+        today_value = date.today().isoformat()
+
+        response = self.client.post(
+            reverse("daily-settlement"),
+            {
+                "settlement_date": today_value,
+                "gpay_settled": "1000.00",
+                "cash_settled": "500.00",
+                "cash_denominations": json.dumps({"500": 1, "100": 1, "20": 2, "1": 1}),
+                "cash_settled_to": "Admin Counter",
+                "closing_balance": "0.00",
+                "notes": "Counter income added",
+                "selected_date": today_value,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        settlement = DailyCashSettlement.objects.get(
+            user=self.user,
+            settlement_date=date.today(),
+        )
+        self.assertEqual(settlement.cash_in_hand, Decimal("641.00"))
+        self.assertEqual(settlement.cash_difference, Decimal("0.00"))
+        self.assertEqual(settlement.closing_balance, Decimal("141.00"))
+        self.assertEqual(settlement.total_amount, Decimal("1741.00"))
+        self.assertEqual(settlement.actual_sales, Decimal("1000.00"))
 
     def test_daily_settlement_allows_opening_balance_edit_for_admin_only(self):
         self.client.force_login(self.admin_user)

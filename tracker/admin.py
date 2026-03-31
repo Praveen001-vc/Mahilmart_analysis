@@ -6,6 +6,7 @@ from .models import (
     ExpensePurpose,
     ExpenseRecord,
     IncomeRecord,
+    IncomePurpose,
     PurchasePayment,
     PurchaseRecord,
     ReconciliationExpenseEntry,
@@ -67,6 +68,13 @@ class ExpenseCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(ExpensePurpose)
 class ExpensePurposeAdmin(admin.ModelAdmin):
+    list_display = ("name", "category", "user", "created_at")
+    list_filter = ("category",)
+    search_fields = ("name", "category", "user__username")
+
+
+@admin.register(IncomePurpose)
+class IncomePurposeAdmin(admin.ModelAdmin):
     list_display = ("name", "category", "user", "created_at")
     list_filter = ("category",)
     search_fields = ("name", "category", "user__username")
