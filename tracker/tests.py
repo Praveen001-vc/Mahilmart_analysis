@@ -2008,6 +2008,72 @@ class TrackerViewsTests(TestCase):
             Decimal("1150.00"),
         )
 
+    def test_income_list_cash_filter_shows_settlement_cash_amount(self):
+        self.client.force_login(self.user)
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=date.today(),
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("700.00"),
+            cash_settled=Decimal("300.00"),
+            expense_amount=Decimal("50.00"),
+            closing_balance=Decimal("100.00"),
+        )
+
+        response = self.client.get(
+            reverse("income-list"),
+            {
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+                "payment_method": PaymentMethod.CASH,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Daily Settlement Income")
+        self.assertContains(response, "Cash Rs. 450.00")
+        self.assertContains(response, "<td>Cash</td>", html=True)
+        self.assertContains(response, "<td class=\"positive\">Rs 450.00</td>", html=True)
+        self.assertEqual(response.context["page_count"], 1)
+        self.assertEqual(response.context["page_total"], Decimal("450.00"))
+        self.assertEqual(
+            response.context["filtered_summary"]["settlement_total"],
+            Decimal("450.00"),
+        )
+
+    def test_income_list_upi_filter_shows_settlement_upi_amount(self):
+        self.client.force_login(self.user)
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=date.today(),
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("700.00"),
+            cash_settled=Decimal("300.00"),
+            expense_amount=Decimal("50.00"),
+            closing_balance=Decimal("100.00"),
+        )
+
+        response = self.client.get(
+            reverse("income-list"),
+            {
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+                "payment_method": PaymentMethod.UPI,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Daily Settlement Income")
+        self.assertContains(response, "GPay Rs. 700.00")
+        self.assertContains(response, "<td>UPI</td>", html=True)
+        self.assertContains(response, "<td class=\"positive\">Rs 700.00</td>", html=True)
+        self.assertEqual(response.context["page_count"], 1)
+        self.assertEqual(response.context["page_total"], Decimal("700.00"))
+        self.assertEqual(
+            response.context["filtered_summary"]["settlement_total"],
+            Decimal("700.00"),
+        )
+
     def test_income_list_shows_edit_and_delete_actions_for_manual_entries(self):
         self.client.force_login(self.user)
         manual_record = IncomeRecord.objects.create(
