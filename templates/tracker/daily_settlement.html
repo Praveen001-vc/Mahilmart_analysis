@@ -131,10 +131,11 @@
                 </div>
                 
                 <div class="section-body">
-                    <div class="form-row">
-                        <span class="row-label">Expense:</span>
-                        <span class="row-value">₹{{ autofill_summary.expense_amount|floatformat:2 }}</span>
+                    <div class="form-row expense-income-row">
+                        <span class="expense-income-stat">Expense = <strong>Rs. {{ autofill_summary.expense_amount|floatformat:2 }}</strong></span>
+                        <span class="expense-income-stat income-inline-value">Income = <strong>Rs. {{ autofill_summary.counter_income_amount|floatformat:2 }}</strong></span>
                         <input type="hidden" id="expense-amount" value="{{ settlement_preview.expense_amount }}">
+                        <input type="hidden" id="counter-income-amount" value="{{ settlement_preview.counter_income_amount }}">
                     </div>
                     
                     <div class="form-row cash-row">
@@ -379,6 +380,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const openingBalanceInput = document.querySelector("#opening-balance");
     const salesCash = parseFloat(document.querySelector("#sales-cash")?.value || 0);
     const expense = parseFloat(document.querySelector("#expense-amount")?.value || 0);
+    const counterIncome = parseFloat(document.querySelector("#counter-income-amount")?.value || 0);
     const gpayInput = document.querySelector("#gpay-settled");
     const cashSettledInput = document.querySelector("#cash-settled");
     const closingBalanceInput = document.querySelector("#closing-balance");
@@ -422,7 +424,7 @@ document.addEventListener("DOMContentLoaded", function() {
     
     // Calculate cash in hand
     const calculateCashInHand = () => {
-        return salesCash + getOpeningBalance() - expense;
+        return salesCash + getOpeningBalance() + counterIncome - expense;
     };
     
     // Calculate denomination total
@@ -719,6 +721,26 @@ body {
 .summary-section .row-input {
     width: 100%;
     max-width: 220px;
+}
+
+.expense-income-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+    align-items: center;
+}
+
+.expense-income-stat {
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.expense-income-stat strong {
+    font-weight: 600;
+}
+
+.income-inline-value {
+    color: #059669;
 }
 
 .section-head {
@@ -1105,6 +1127,10 @@ body {
     .summary-section .form-row {
         grid-template-columns: 1fr;
         gap: 4px;
+    }
+
+    .expense-income-row {
+        gap: 10px;
     }
 
     .summary-section .row-input {

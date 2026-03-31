@@ -1,73 +1,199 @@
 {% extends "base.html" %}
 
 {% block title %}Income Records | Mahilmart{% endblock %}
+{% block body_class %}app-shell expense-ledger-shell income-ledger-shell{% endblock %}
 
 {% block content %}
-<section class="page-heading premium-panel">
-    <div>
-        <span class="eyebrow">Income Ledger</span>
-        <h1>Income Records</h1>
-        <p>Manual income entries and Daily Settlement income values are shown together in one ledger.</p>
+<section class="expense-hero">
+    <div class="expense-hero-brand">
+        <span class="expense-hero-icon" aria-hidden="true">&#128176;</span>
+        <div>
+            <h1>Income Tracker</h1>
+        </div>
     </div>
     <div class="hero-actions">
         <a class="secondary-button" href="{% url 'daily-settlement' %}">Daily Settlement</a>
-        <a class="primary-button" href="{% url 'income-add' %}">Add Income</a>
+        <a class="primary-button" href="{% url 'income-add' %}">Add Income Record</a>
     </div>
 </section>
 
-<section class="stats-grid compact-grid">
-    <article class="stat-card premium-panel">
-        <span>Total Records</span>
-        <strong>{{ page_count }}</strong>
+<section class="expense-summary-grid">
+    <article class="premium-panel expense-summary-card income-summary-card">
+        <h2>This Month</h2>
+        <div class="expense-summary-row">
+            <span>Manual Income</span>
+            <strong>Rs {{ month_summary.manual_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Settlement Income</span>
+            <strong class="income-summary-accent">Rs {{ month_summary.settlement_total }}</strong>
+        </div>
+        <div class="expense-summary-row expense-summary-total">
+            <span>Total</span>
+            <strong>Rs {{ month_summary.total }}</strong>
+        </div>
     </article>
-    <article class="stat-card premium-panel">
-        <span>Total Income Value</span>
-        <strong>Rs. {{ page_total }}</strong>
+    <article class="premium-panel expense-summary-card income-summary-card">
+        <h2>Today</h2>
+        <div class="expense-summary-row">
+            <span>Manual Income</span>
+            <strong>Rs {{ today_summary.manual_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Settlement Income</span>
+            <strong class="income-summary-accent">Rs {{ today_summary.settlement_total }}</strong>
+        </div>
+        <div class="expense-summary-row expense-summary-total">
+            <span>Total</span>
+            <strong>Rs {{ today_summary.total }}</strong>
+        </div>
+    </article>
+    <article class="premium-panel expense-summary-card income-summary-card">
+        <h2>Filtered</h2>
+        <div class="expense-summary-row">
+            <span>Manual Income</span>
+            <strong>Rs {{ filtered_summary.manual_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Settlement Income</span>
+            <strong class="income-summary-accent">Rs {{ filtered_summary.settlement_total }}</strong>
+        </div>
+        <div class="expense-summary-row expense-summary-total">
+            <span>Total</span>
+            <strong>Rs {{ filtered_summary.total }}</strong>
+        </div>
     </article>
 </section>
 
+<section class="premium-panel expense-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128269;</span> Filter{% if is_default_today_view %} (By Default Today){% endif %}</h2>
+    </div>
+
+    <form method="get" action="{% url 'income-list' %}" class="financial-form">
+        <div class="expense-filter-grid">
+            <div class="field-block">
+                <label for="income-start-date">Start Date</label>
+                <input
+                    id="income-start-date"
+                    type="date"
+                    name="start_date"
+                    class="input-control"
+                    value="{{ income_filters.start_date }}"
+                >
+            </div>
+            <div class="field-block">
+                <label for="income-end-date">End Date</label>
+                <input
+                    id="income-end-date"
+                    type="date"
+                    name="end_date"
+                    class="input-control"
+                    value="{{ income_filters.end_date }}"
+                >
+            </div>
+            <div class="field-block">
+                <label for="income-category-filter">Category</label>
+                <select id="income-category-filter" name="category" class="input-control">
+                    <option value="">All</option>
+                    {% for option in category_options %}
+                        <option value="{{ option }}"{% if option == income_filters.category %} selected{% endif %}>{{ option }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="field-block">
+                <label for="income-payment-filter">Payment Type</label>
+                <select id="income-payment-filter" name="payment_method" class="input-control">
+                    <option value="">All</option>
+                    {% for option_value, option_label in payment_method_options %}
+                        <option value="{{ option_value }}"{% if option_value == income_filters.payment_method %} selected{% endif %}>{{ option_label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="expense-filter-actions">
+            <button type="submit" class="primary-button">Apply</button>
+            <a class="secondary-button" href="{% url 'income-list' %}">Reset</a>
+        </div>
+    </form>
+</section>
+
+<section class="expense-filter-banner">
+    <strong>Applied Filters:</strong>
+    <span>From {{ income_filters.start_date }} To {{ income_filters.end_date }}</span>
+    {% if income_filters.category %}
+        <span>| Category: {{ income_filters.category }}</span>
+    {% endif %}
+    {% if income_filters.payment_method %}
+        <span>| Payment: {{ income_filters.payment_method }}</span>
+    {% endif %}
+</section>
+
 <section
-    class="premium-panel"
+    class="premium-panel expense-card"
     data-auto-load-table
     data-batch-size="50"
     data-total-count="{{ page_count }}"
     data-next-url="{{ next_page_url }}"
 >
-    <div class="panel-heading">
-        <div>
-            <span class="eyebrow">Detailed View</span>
-            <h2>Income table</h2>
-        </div>
-        <p class="muted-text">50 rows load at a time. Scroll down to load more automatically.</p>
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128203;</span> Income History</h2>
     </div>
 
     {% if records %}
         <div class="table-shell">
-            <table class="data-table">
+            <table class="data-table expense-history-table income-history-table">
                 <thead>
                     <tr>
                         <th>Date</th>
-                        <th>Title</th>
-                        <th>Source</th>
                         <th>Category</th>
+                        <th>Purpose</th>
+                        <th>Source</th>
                         <th>Payment</th>
                         <th>Amount</th>
+                        <th>Type</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody data-table-body>
                     {% for record in records %}
                         <tr>
-                            <td>{{ record.transaction_date }}</td>
+                            <td>{{ record.transaction_date|date:"Y-m-d" }}</td>
+                            <td>{{ record.category }}</td>
                             <td>
-                                {{ record.title }}
+                                <strong>{{ record.title }}</strong>
                                 {% if record.entry_type == "settlement" %}
-                                    <div class="muted-text">Auto added from Daily Settlement</div>
+                                    <div class="expense-table-note">Auto added from Daily Settlement</div>
                                 {% endif %}
                             </td>
                             <td>{{ record.source }}</td>
-                            <td>{{ record.category }}</td>
                             <td>{{ record.payment_method }}</td>
-                            <td class="positive">Rs. {{ record.amount }}</td>
+                            <td class="positive">Rs {{ record.amount }}</td>
+                            <td>
+                                <span class="income-entry-type income-entry-type-{{ record.entry_type }}">
+                                    {{ record.entry_type|title }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if record.entry_type == "manual" and record.pk %}
+                                    <div class="expense-history-actions">
+                                        <a
+                                            class="expense-action-button expense-action-edit"
+                                            href="{% url 'income-edit' record.pk %}?next={{ current_url|urlencode }}"
+                                        >
+                                            Edit
+                                        </a>
+                                        <form method="post" action="{% url 'income-delete' record.pk %}" class="expense-inline-form" onsubmit="return confirm('Are you sure you want to delete this income record?');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="next" value="{{ current_url }}">
+                                            <button type="submit" class="expense-action-button expense-action-delete">Delete</button>
+                                        </form>
+                                    </div>
+                                {% else %}
+                                    <span class="muted-text">Auto Entry</span>
+                                {% endif %}
+                            </td>
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -85,7 +211,7 @@
             <div class="auto-load-sentinel" data-load-sentinel aria-hidden="true"></div>
         </div>
     {% else %}
-        <div class="empty-state">No income records available. Use the Add Income button to create the first entry.</div>
+        <div class="empty-state">No income records available for the selected filters.</div>
     {% endif %}
 </section>
 {% endblock %}

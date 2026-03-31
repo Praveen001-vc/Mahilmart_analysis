@@ -9,6 +9,8 @@ from .models import (
     ExpensePurpose,
     ExpenseRecord,
     IncomeRecord,
+    IncomePurpose,
+    PaymentMethod,
     PurchaseRecord,
     ReconciliationExpenseEntry,
     ReconciliationIncomeEntry,
@@ -20,6 +22,12 @@ from .models import (
 from .expense_categories import COUNTER_EXPENSE_CATEGORY
 from .expense_categories import get_expense_category_options as get_saved_expense_category_options
 from .expense_categories import normalize_expense_category_name, normalize_expense_purpose_name
+from .income_categories import (
+    DEFAULT_INCOME_CATEGORY,
+    INCOME_CATEGORY_CHOICES,
+    normalize_income_category_name,
+)
+from .income_purposes import normalize_income_purpose_name
 from .user_roles import (
     USER_ROLE_CHOICES,
     USER_ROLE_STAFF,
@@ -60,6 +68,31 @@ class StyledModelForm(forms.ModelForm):
 
 
 class IncomeForm(StyledModelForm):
+    category = forms.ChoiceField(
+        choices=INCOME_CATEGORY_CHOICES,
+        initial=DEFAULT_INCOME_CATEGORY,
+        label="Income category",
+        help_text="Counter Income is used in Daily Settlement. Office Income stays separate.",
+        widget=forms.RadioSelect,
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["category"].initial = DEFAULT_INCOME_CATEGORY
+        if not self.is_bound and not self.initial.get("payment_method") and not self.instance.pk:
+            self.fields["payment_method"].initial = PaymentMethod.CASH
+        self.fields["title"].widget.attrs["data-purpose-input"] = "income-form"
+        self.fields["title"].widget.attrs["autocomplete"] = "off"
+
+    def clean_category(self):
+        return normalize_income_category_name(self.cleaned_data["category"])
+
+    def clean_title(self):
+        value = normalize_income_purpose_name(self.cleaned_data.get("title"))
+        if not value:
+            raise ValidationError("Purpose is required.")
+        return value
+
     class Meta:
         model = IncomeRecord
         fields = [
@@ -74,11 +107,46 @@ class IncomeForm(StyledModelForm):
         widgets = {
             "title": StyledModelForm.text_widget,
             "source": StyledModelForm.text_widget,
-            "category": StyledModelForm.text_widget,
             "amount": StyledModelForm.money_widget,
             "transaction_date": StyledModelForm.date_widget,
             "payment_method": StyledModelForm.select_widget,
             "notes": StyledModelForm.note_widget,
+        }
+        labels = {
+            "title": "Purpose",
+            "source": "Source / Reference",
+        }
+        help_texts = {
+            "source": "Use customer name, order channel, office note, or reference details.",
+            "notes": "Optional. Add handover notes, offer details, or collection remarks.",
+        }
+
+
+class IncomePurposeForm(StyledModelForm):
+    def clean_category(self):
+        value = normalize_income_category_name(self.cleaned_data.get("category"))
+        if not value:
+            raise ValidationError("Category is required.")
+        return value
+
+    def clean_name(self):
+        value = normalize_income_purpose_name(self.cleaned_data.get("name"))
+        if not value:
+            raise ValidationError("Purpose name is required.")
+        return value
+
+    class Meta:
+        model = IncomePurpose
+        fields = ["category", "name"]
+        widgets = {
+            "category": forms.HiddenInput(),
+            "name": StyledModelForm.text_widget,
+        }
+        labels = {
+            "name": "Purpose Name",
+        }
+        help_texts = {
+            "name": "Create a reusable purpose for the selected income category.",
         }
 
 
@@ -90,6 +158,8 @@ class ExpenseForm(StyledModelForm):
 
     def __init__(self, *args, user=None, counter_only_category=False, **kwargs):
         super().__init__(*args, **kwargs)
+        if not self.is_bound and not self.initial.get("payment_method") and not self.instance.pk:
+            self.fields["payment_method"].initial = PaymentMethod.CASH
         queryset = Supplier.objects.none()
         category_options = []
         if user is not None:
