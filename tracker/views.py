@@ -189,6 +189,8 @@ def build_income_ledger_entries_for_period(user, start_date=None, end_date=None)
                 "category": INCOME_LEDGER_SETTLEMENT_CATEGORY,
                 "payment_method": INCOME_LEDGER_SETTLEMENT_PAYMENT_METHOD,
                 "amount": settlement.actual_sales,
+                "settlement_cash_amount": settlement_sales_cash,
+                "settlement_upi_amount": settlement.gpay_settled,
                 "entry_type": "settlement",
                 "sort_date": settlement.settlement_date,
                 "sort_timestamp": settlement.updated_at,
@@ -208,6 +210,47 @@ def build_income_ledger_entries(user):
 
 INCOME_LEDGER_SETTLEMENT_CATEGORY = "Daily Settlement"
 INCOME_LEDGER_SETTLEMENT_PAYMENT_METHOD = "Cash + UPI"
+
+
+def _clone_income_settlement_entry(entry, payment_method, amount, source):
+    filtered_entry = dict(entry)
+    filtered_entry["payment_method"] = payment_method
+    filtered_entry["amount"] = amount
+    filtered_entry["source"] = source
+    return filtered_entry
+
+
+def get_income_entry_for_payment_filter(entry, payment_method=""):
+    entry_payment_method = (entry.get("payment_method") or "").strip()
+
+    if not payment_method or payment_method == "All":
+        return entry
+
+    if entry.get("entry_type") != "settlement":
+        if entry_payment_method == payment_method:
+            return entry
+        return None
+
+    settlement_cash_amount = entry.get("settlement_cash_amount", Decimal("0.00"))
+    settlement_upi_amount = entry.get("settlement_upi_amount", Decimal("0.00"))
+
+    if payment_method == INCOME_LEDGER_SETTLEMENT_PAYMENT_METHOD:
+        return entry
+    if payment_method == PaymentMethod.CASH and settlement_cash_amount > 0:
+        return _clone_income_settlement_entry(
+            entry,
+            PaymentMethod.CASH,
+            settlement_cash_amount,
+            f"Cash Rs. {settlement_cash_amount}",
+        )
+    if payment_method == PaymentMethod.UPI and settlement_upi_amount > 0:
+        return _clone_income_settlement_entry(
+            entry,
+            PaymentMethod.UPI,
+            settlement_upi_amount,
+            f"GPay Rs. {settlement_upi_amount}",
+        )
+    return None
 
 
 def get_raw_income_filter_values(request):
@@ -247,7 +290,6 @@ def apply_income_filters(entries, filter_values):
     for entry in entries:
         entry_date = entry.get("transaction_date")
         entry_category = (entry.get("category") or "").strip()
-        entry_payment_method = (entry.get("payment_method") or "").strip()
 
         if start_date and entry_date and entry_date < start_date:
             continue
@@ -255,13 +297,10 @@ def apply_income_filters(entries, filter_values):
             continue
         if category and category != "All" and entry_category.casefold() != category.casefold():
             continue
-        if (
-            payment_method
-            and payment_method != "All"
-            and entry_payment_method != payment_method
-        ):
+        filtered_entry = get_income_entry_for_payment_filter(entry, payment_method)
+        if filtered_entry is None:
             continue
-        filtered_entries.append(entry)
+        filtered_entries.append(filtered_entry)
     return filtered_entries
 
 
