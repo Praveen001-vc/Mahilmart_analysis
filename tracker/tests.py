@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from openpyxl import load_workbook
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.management import call_command
@@ -74,6 +75,14 @@ from .user_sync import (
     UserSyncStats,
     sync_users_from_rows,
 )
+
+
+def get_configured_test_recipients():
+    return [
+        email.strip()
+        for email in str(getattr(settings, "CONTACT_RECEIVER_EMAIL", "")).split(",")
+        if email.strip()
+    ]
 
 
 class TrackerViewsTests(TestCase):
@@ -2599,14 +2608,11 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(settlement.total_amount, Decimal("1741.00"))
         self.assertEqual(settlement.actual_sales, Decimal("1000.00"))
 
-    @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
-        DEFAULT_FROM_EMAIL="mahiltechlab.ops@gmail.com",
-        SERVER_EMAIL="mahiltechlab.ops@gmail.com",
-        CONTACT_RECEIVER_EMAIL="praveen.v@mahiltechlab.com",
-    )
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_daily_settlement_post_sends_email_summary_to_configured_recipient(self):
         self.client.force_login(self.user)
+        expected_recipients = get_configured_test_recipients()
+        self.assertTrue(expected_recipients)
         yesterday = date.today() - timedelta(days=1)
         DailyCashSettlement.objects.create(
             user=self.user,
@@ -2635,8 +2641,8 @@ class TrackerViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].from_email, "mahiltechlab.ops@gmail.com")
-        self.assertEqual(mail.outbox[0].to, ["praveen.v@mahiltechlab.com"])
+        self.assertEqual(mail.outbox[0].from_email, settings.DEFAULT_FROM_EMAIL)
+        self.assertEqual(mail.outbox[0].to, expected_recipients)
         self.assertIn("Daily Settlement Details", mail.outbox[0].subject)
         self.assertIn("Saved By: mahilmart_admin", mail.outbox[0].body)
         self.assertIn("Cash Settled To: Front Office", mail.outbox[0].body)
@@ -2650,14 +2656,11 @@ class TrackerViewsTests(TestCase):
         self.assertIn("Cash Handling", html_content)
         self.assertIn("Credit Bills", html_content)
 
-    @override_settings(
-        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
-        DEFAULT_FROM_EMAIL="mahiltechlab.ops@gmail.com",
-        SERVER_EMAIL="mahiltechlab.ops@gmail.com",
-        CONTACT_RECEIVER_EMAIL="praveen.v@mahiltechlab.com",
-    )
+    @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_daily_settlement_update_sends_email_summary_to_configured_recipient(self):
         self.client.force_login(self.user)
+        expected_recipients = get_configured_test_recipients()
+        self.assertTrue(expected_recipients)
         settlement = DailyCashSettlement.objects.create(
             user=self.user,
             settlement_date=date.today(),
@@ -2690,7 +2693,8 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(settlement.cash_settled_to, "Updated Counter")
         self.assertEqual(settlement.notes, "Updated from old saved settlement")
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ["praveen.v@mahiltechlab.com"])
+        self.assertEqual(mail.outbox[0].from_email, settings.DEFAULT_FROM_EMAIL)
+        self.assertEqual(mail.outbox[0].to, expected_recipients)
         self.assertIn("Updated Counter", mail.outbox[0].body)
         self.assertIn("Updated from old saved settlement", mail.outbox[0].body)
 
