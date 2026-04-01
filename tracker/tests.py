@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from openpyxl import load_workbook
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.core.management import call_command
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -2597,6 +2598,101 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(settlement.closing_balance, Decimal("141.00"))
         self.assertEqual(settlement.total_amount, Decimal("1741.00"))
         self.assertEqual(settlement.actual_sales, Decimal("1000.00"))
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="mahiltechlab.ops@gmail.com",
+        SERVER_EMAIL="mahiltechlab.ops@gmail.com",
+        CONTACT_RECEIVER_EMAIL="praveen.v@mahiltechlab.com",
+    )
+    def test_daily_settlement_post_sends_email_summary_to_configured_recipient(self):
+        self.client.force_login(self.user)
+        yesterday = date.today() - timedelta(days=1)
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=yesterday,
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("500.00"),
+        )
+        today_value = date.today().isoformat()
+
+        response = self.client.post(
+            reverse("daily-settlement"),
+            {
+                "settlement_date": today_value,
+                "gpay_settled": "125.00",
+                "cash_settled": "300.00",
+                "cash_denominations": json.dumps({"500": 1}),
+                "cash_settled_to": "Front Office",
+                "closing_balance": "0.00",
+                "notes": "Night close",
+                "selected_date": today_value,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].from_email, "mahiltechlab.ops@gmail.com")
+        self.assertEqual(mail.outbox[0].to, ["praveen.v@mahiltechlab.com"])
+        self.assertIn("Daily Settlement Details", mail.outbox[0].subject)
+        self.assertIn("Saved By: mahilmart_admin", mail.outbox[0].body)
+        self.assertIn("Cash Settled To: Front Office", mail.outbox[0].body)
+        self.assertIn("IV. Notes", mail.outbox[0].body)
+        self.assertIn("Night close", mail.outbox[0].body)
+        self.assertEqual(len(mail.outbox[0].alternatives), 1)
+        html_content, mimetype = mail.outbox[0].alternatives[0]
+        self.assertEqual(mimetype, "text/html")
+        self.assertIn("Daily Cash Settlement", html_content)
+        self.assertIn("Daily Summary", html_content)
+        self.assertIn("Cash Handling", html_content)
+        self.assertIn("Credit Bills", html_content)
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="mahiltechlab.ops@gmail.com",
+        SERVER_EMAIL="mahiltechlab.ops@gmail.com",
+        CONTACT_RECEIVER_EMAIL="praveen.v@mahiltechlab.com",
+    )
+    def test_daily_settlement_update_sends_email_summary_to_configured_recipient(self):
+        self.client.force_login(self.user)
+        settlement = DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=date.today(),
+            opening_balance=Decimal("700.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("100.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("600.00"),
+            cash_settled_to="Old Counter",
+            notes="Old note",
+        )
+
+        response = self.client.post(
+            reverse("daily-settlement"),
+            {
+                "selected_date": date.today().isoformat(),
+                "settlement_date": date.today().isoformat(),
+                "gpay_settled": "0.00",
+                "cash_settled": "200.00",
+                "cash_denominations": json.dumps({"500": 1, "200": 1}),
+                "cash_settled_to": "Updated Counter",
+                "closing_balance": "0.00",
+                "notes": "Updated from old saved settlement",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        settlement.refresh_from_db()
+        self.assertEqual(settlement.cash_settled, Decimal("200.00"))
+        self.assertEqual(settlement.cash_settled_to, "Updated Counter")
+        self.assertEqual(settlement.notes, "Updated from old saved settlement")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["praveen.v@mahiltechlab.com"])
+        self.assertIn("Updated Counter", mail.outbox[0].body)
+        self.assertIn("Updated from old saved settlement", mail.outbox[0].body)
 
     def test_daily_settlement_allows_opening_balance_edit_for_admin_only(self):
         self.client.force_login(self.admin_user)

@@ -2,18 +2,23 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 import json
+import logging
 import re
 import textwrap
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
+from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
@@ -103,6 +108,7 @@ RECONCILIATION_NON_CASH_METHODS = (
     PaymentMethod.OTHER,
 )
 MANUAL_PURCHASE_SOURCE_PREFIX = "MANUAL:"
+logger = logging.getLogger(__name__)
 
 def _sum_amount(queryset):
     return queryset.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
@@ -1555,6 +1561,22 @@ def get_effective_sales_balance_amount(record):
     return record.effective_balance_amount
 
 
+def get_credit_bill_records_for_date(settlement_date):
+    records = list(
+        SalesLedgerRecord.objects.filter(
+            is_cancelled=False,
+            sale_date=settlement_date,
+        ).order_by("-sale_date", "-source_sale_no")
+    )
+    credit_records = [
+        record for record in records if get_effective_sales_balance_amount(record) > 0
+    ]
+    return sorted(
+        credit_records,
+        key=lambda record: (-record.effective_balance_amount, record.bill_no),
+    )
+
+
 def build_sales_settlement_summary(settlement_date):
     sales_queryset = SalesLedgerRecord.objects.filter(
         is_cancelled=False,
@@ -1936,6 +1958,102 @@ def build_purchase_invoice_response(purchase):
 
 def format_money(amount):
     return f"{amount:.2f}"
+
+
+def get_daily_settlement_email_recipients():
+    raw_value = getattr(settings, "CONTACT_RECEIVER_EMAIL", "")
+    if isinstance(raw_value, str):
+        return [email.strip() for email in raw_value.split(",") if email.strip()]
+    if raw_value:
+        return [str(email).strip() for email in raw_value if str(email).strip()]
+    return []
+
+
+def build_cash_denomination_summary(denominations):
+    parts = []
+    for denomination in CASH_DENOMINATION_VALUES:
+        count = normalize_count_value(denominations.get(str(denomination)))
+        if count:
+            parts.append(f"{denomination} x {count}")
+    return ", ".join(parts) if parts else "-"
+
+
+def build_daily_settlement_email_context(settlement):
+    counter_income_amount = get_counter_income_total_for_date(
+        settlement.user,
+        settlement.settlement_date,
+    )
+    sales_cash_amount = get_sales_cash_from_settlement(settlement)
+    cash_denominations = settlement.cash_denominations or {}
+    preview_values = {
+        "opening_balance": settlement.opening_balance,
+        "sales_ledger_cash": sales_cash_amount,
+        "counter_income_amount": counter_income_amount,
+        "gpay_settled": settlement.gpay_settled,
+        "cash_settled": settlement.cash_settled,
+        "expense_amount": settlement.expense_amount,
+    }
+    preview = build_settlement_preview(
+        preview_values,
+        cash_denomination_total=settlement.cash_denomination_total,
+    )
+    credit_bill_records = get_credit_bill_records_for_date(settlement.settlement_date)[:10]
+    credit_bill_total = sum(
+        (record.effective_balance_amount for record in credit_bill_records),
+        Decimal("0.00"),
+    )
+    saved_on = (
+        timezone.localtime(settlement.updated_at).strftime("%d-%m-%Y %I:%M %p")
+        if settlement.updated_at
+        else "-"
+    )
+    return {
+        "settlement": settlement,
+        "saved_by": settlement.user.username,
+        "saved_on": saved_on,
+        "preview": preview,
+        "counter_income_amount": counter_income_amount,
+        "sales_cash_amount": sales_cash_amount,
+        "cash_denomination_rows": build_cash_denomination_rows(cash_denominations),
+        "cash_denomination_summary": build_cash_denomination_summary(cash_denominations),
+        "credit_bill_records": credit_bill_records,
+        "credit_bill_count": len(credit_bill_records),
+        "credit_bill_total": credit_bill_total,
+    }
+
+
+def build_daily_settlement_email_subject(settlement):
+    return f"Daily Settlement Details - {settlement.settlement_date:%d-%m-%Y}"
+
+
+def build_daily_settlement_email_body(settlement):
+    return render_to_string(
+        "tracker/emails/daily_settlement_email.txt",
+        build_daily_settlement_email_context(settlement),
+    )
+
+
+def build_daily_settlement_email_html(settlement):
+    return render_to_string(
+        "tracker/emails/daily_settlement_email.html",
+        build_daily_settlement_email_context(settlement),
+    )
+
+
+def send_daily_settlement_email(settlement):
+    recipients = get_daily_settlement_email_recipients()
+    if not recipients:
+        return []
+
+    send_mail(
+        subject=build_daily_settlement_email_subject(settlement),
+        message=build_daily_settlement_email_body(settlement),
+        html_message=build_daily_settlement_email_html(settlement),
+        from_email=(getattr(settings, "DEFAULT_FROM_EMAIL", "") or None),
+        recipient_list=recipients,
+        fail_silently=False,
+    )
+    return recipients
 
 
 def create_purchase_payment(
@@ -2933,19 +3051,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
         )
 
     def get_credit_bill_queryset(self, settlement_date):
-        records = list(
-            SalesLedgerRecord.objects.filter(
-                is_cancelled=False,
-                sale_date=settlement_date,
-            ).order_by("-sale_date", "-source_sale_no")
-        )
-        credit_records = [
-            record for record in records if get_effective_sales_balance_amount(record) > 0
-        ]
-        return sorted(
-            credit_records,
-            key=lambda record: (-record.effective_balance_amount, record.bill_no),
-        )
+        return get_credit_bill_records_for_date(settlement_date)
 
     def build_form(self, selected_entry_date, loaded_settlement, autofill_summary):
         if loaded_settlement:
@@ -3270,6 +3376,24 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 request,
                 f"Daily cash settlement saved for {settlement.settlement_date:%d-%m-%Y}.",
             )
+            try:
+                recipients = send_daily_settlement_email(settlement)
+            except Exception:
+                logger.exception(
+                    "Could not send daily settlement email for settlement %s.",
+                    settlement.pk,
+                )
+                messages.warning(
+                    request,
+                    "Settlement was saved, but the email could not be sent.",
+                )
+            else:
+                if recipients:
+                    messages.info(
+                        request,
+                        "Daily settlement email sent to "
+                        f"{', '.join(recipients)}.",
+                    )
             return redirect(build_settlement_redirect_url(settlement.settlement_date))
 
         messages.error(request, "Please correct the highlighted settlement details.")

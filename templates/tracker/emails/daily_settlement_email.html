@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Daily Settlement</title>
+</head>
+<body style="margin:0; padding:24px; background:#f3efe6; font-family:Segoe UI, Arial, sans-serif; color:#1f2933;">
+    <div style="max-width:960px; margin:0 auto; background:#fffdf8; border:1px solid #e6dcc9; border-radius:18px; overflow:hidden;">
+        <div style="background:#163b6d; color:#f7f1e3; padding:28px 32px;">
+            <div style="font-size:12px; letter-spacing:1.2px; text-transform:uppercase; opacity:0.8;">Mahilmart</div>
+            <h1 style="margin:8px 0 0; font-size:28px; line-height:1.2;">Daily Cash Settlement</h1>
+            <p style="margin:10px 0 0; font-size:14px;">Date: {{ settlement.settlement_date|date:"d F Y" }} | Saved by {{ saved_by }} | Saved on {{ saved_on }}</p>
+        </div>
+
+        <div style="padding:24px;">
+            <table role="presentation" style="width:100%; border-collapse:separate; border-spacing:16px 16px;">
+                <tr>
+                    <td valign="top" style="width:50%; background:#f8f5ee; border:1px solid #eadfcb; border-radius:16px; padding:20px;">
+                        <div style="font-size:12px; font-weight:700; letter-spacing:1px; color:#8a6d3b;">SECTION I</div>
+                        <h2 style="margin:8px 0 16px; font-size:20px; color:#163b6d;">Daily Summary</h2>
+                        <table role="presentation" style="width:100%; border-collapse:collapse;">
+                            <tr><td style="padding:8px 0;">Opening Balance</td><td style="padding:8px 0; text-align:right; font-weight:700;">Rs. {{ preview.opening_balance|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Sales Ledger Cash</td><td style="padding:8px 0; text-align:right; font-weight:700;">Rs. {{ preview.sales_ledger_cash|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Gpay/UPI Total</td><td style="padding:8px 0; text-align:right; font-weight:700;">Rs. {{ preview.gpay_settled|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0; border-top:1px solid #d9cdb7;">Total Amount</td><td style="padding:8px 0; border-top:1px solid #d9cdb7; text-align:right; font-weight:700; color:#163b6d;">Rs. {{ preview.total_amount|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Actual Total Sale Amount</td><td style="padding:8px 0; text-align:right; font-weight:700; color:#163b6d;">Rs. {{ preview.actual_sales|floatformat:2 }}</td></tr>
+                        </table>
+                    </td>
+                    <td valign="top" style="width:50%; background:#f8f5ee; border:1px solid #eadfcb; border-radius:16px; padding:20px;">
+                        <div style="font-size:12px; font-weight:700; letter-spacing:1px; color:#8a6d3b;">SECTION II</div>
+                        <h2 style="margin:8px 0 16px; font-size:20px; color:#163b6d;">Cash Handling</h2>
+                        <table role="presentation" style="width:100%; border-collapse:collapse;">
+                            <tr><td style="padding:8px 0;">Expense</td><td style="padding:8px 0; text-align:right; font-weight:700;">Rs. {{ preview.expense_amount|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Income</td><td style="padding:8px 0; text-align:right; font-weight:700;">Rs. {{ preview.counter_income_amount|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Cash In Hand</td><td style="padding:8px 0; text-align:right; font-weight:700; color:#163b6d;">Rs. {{ preview.cash_in_hand|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Cash Denomination Total</td><td style="padding:8px 0; text-align:right; font-weight:700;">Rs. {{ settlement.cash_denomination_total|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Difference</td><td style="padding:8px 0; text-align:right; font-weight:700;">Rs. {{ settlement.cash_difference|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Cash Settled</td><td style="padding:8px 0; text-align:right; font-weight:700;">Rs. {{ settlement.cash_settled|floatformat:2 }}</td></tr>
+                            <tr><td style="padding:8px 0;">Cash Settled To</td><td style="padding:8px 0; text-align:right; font-weight:700;">{{ settlement.cash_settled_to|default:"-" }}</td></tr>
+                            <tr><td style="padding:8px 0; border-top:1px solid #d9cdb7;">Closing Balance</td><td style="padding:8px 0; border-top:1px solid #d9cdb7; text-align:right; font-weight:700; color:#163b6d;">Rs. {{ settlement.closing_balance|floatformat:2 }}</td></tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+
+            <div style="margin:0 16px 16px; background:#f8f5ee; border:1px solid #eadfcb; border-radius:16px; padding:20px;">
+                <div style="font-size:12px; font-weight:700; letter-spacing:1px; color:#8a6d3b;">SECTION III</div>
+                <h2 style="margin:8px 0 16px; font-size:20px; color:#163b6d;">Cash Denominations</h2>
+                <table role="presentation" style="width:100%; border-collapse:collapse;">
+                    <tr>
+                        <th align="left" style="padding:10px 8px; border-bottom:1px solid #d9cdb7;">Denomination</th>
+                        <th align="right" style="padding:10px 8px; border-bottom:1px solid #d9cdb7;">Count</th>
+                        <th align="right" style="padding:10px 8px; border-bottom:1px solid #d9cdb7;">Total</th>
+                    </tr>
+                    {% for row in cash_denomination_rows %}
+                        {% if row.count %}
+                            <tr>
+                                <td style="padding:10px 8px; border-bottom:1px solid #efe7d7;">Rs. {{ row.value }}</td>
+                                <td style="padding:10px 8px; border-bottom:1px solid #efe7d7; text-align:right;">{{ row.count }}</td>
+                                <td style="padding:10px 8px; border-bottom:1px solid #efe7d7; text-align:right;">Rs. {{ row.total|floatformat:2 }}</td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                    {% if cash_denomination_summary == "-" %}
+                        <tr>
+                            <td colspan="3" style="padding:12px 8px; color:#5b6773;">No cash denominations entered.</td>
+                        </tr>
+                    {% endif %}
+                </table>
+            </div>
+
+            <div style="margin:0 16px 16px; background:#f8f5ee; border:1px solid #eadfcb; border-radius:16px; padding:20px;">
+                <div style="font-size:12px; font-weight:700; letter-spacing:1px; color:#8a6d3b;">SECTION IV</div>
+                <h2 style="margin:8px 0 12px; font-size:20px; color:#163b6d;">Notes</h2>
+                <div style="font-size:14px; line-height:1.6; color:#33414f;">{{ settlement.notes|default:"-"|linebreaksbr }}</div>
+            </div>
+
+            <div style="margin:0 16px 16px; background:#f8f5ee; border:1px solid #eadfcb; border-radius:16px; padding:20px;">
+                <div style="font-size:12px; font-weight:700; letter-spacing:1px; color:#8a6d3b;">SECTION V</div>
+                <h2 style="margin:8px 0 6px; font-size:20px; color:#163b6d;">Credit Bills for {{ settlement.settlement_date|date:"d-m-Y" }}</h2>
+                <p style="margin:0 0 16px; font-size:14px; color:#4a5560;">{{ credit_bill_count }} bill{{ credit_bill_count|pluralize }} | Pending Rs. {{ credit_bill_total|floatformat:2 }}</p>
+                {% if credit_bill_records %}
+                    <table role="presentation" style="width:100%; border-collapse:collapse;">
+                        <tr>
+                            <th align="left" style="padding:10px 8px; border-bottom:1px solid #d9cdb7;">Bill No</th>
+                            <th align="left" style="padding:10px 8px; border-bottom:1px solid #d9cdb7;">Customer</th>
+                            <th align="right" style="padding:10px 8px; border-bottom:1px solid #d9cdb7;">Net</th>
+                            <th align="right" style="padding:10px 8px; border-bottom:1px solid #d9cdb7;">Received</th>
+                            <th align="right" style="padding:10px 8px; border-bottom:1px solid #d9cdb7;">Pending</th>
+                        </tr>
+                        {% for record in credit_bill_records %}
+                            <tr>
+                                <td style="padding:10px 8px; border-bottom:1px solid #efe7d7;">{{ record.bill_no }}</td>
+                                <td style="padding:10px 8px; border-bottom:1px solid #efe7d7;">{{ record.customer_name|default:"-" }}</td>
+                                <td style="padding:10px 8px; border-bottom:1px solid #efe7d7; text-align:right;">Rs. {{ record.net_amount|floatformat:2 }}</td>
+                                <td style="padding:10px 8px; border-bottom:1px solid #efe7d7; text-align:right;">Rs. {{ record.effective_received_amount|floatformat:2 }}</td>
+                                <td style="padding:10px 8px; border-bottom:1px solid #efe7d7; text-align:right;">Rs. {{ record.effective_balance_amount|floatformat:2 }}</td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                {% else %}
+                    <div style="font-size:14px; color:#5b6773;">No credit bills found for this date.</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>
