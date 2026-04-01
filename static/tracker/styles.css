@@ -2836,20 +2836,27 @@ body.modal-open {
     margin: 0;
 }
 
-.supplier-toolbar-search {
+.supplier-toolbar-search,
+.user-toolbar-search {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
     margin: 0;
 }
 
-.supplier-toolbar-search .input-control {
+.supplier-toolbar-search .input-control,
+.user-toolbar-search .input-control {
     width: 260px;
     min-width: 260px;
 }
 
 .supplier-history-table {
     min-width: 1220px;
+}
+
+.user-history-table {
+    min-width: 860px;
 }
 
 .supplier-status-badge {
@@ -2874,6 +2881,84 @@ body.modal-open {
 }
 
 .supplier-status-badge-inactive {
+    background: rgba(239, 67, 80, 0.12);
+    border-color: rgba(239, 67, 80, 0.2);
+    color: #be123c;
+}
+
+.user-summary-card .expense-summary-row strong {
+    color: #1563f0;
+}
+
+.user-summary-active {
+    color: #0f8d43 !important;
+}
+
+.user-summary-inactive {
+    color: #d93025 !important;
+}
+
+.user-summary-admin {
+    color: #20293b !important;
+}
+
+.user-summary-store-admin {
+    color: #1563f0 !important;
+}
+
+.user-summary-staff {
+    color: #0f766e !important;
+}
+
+.user-summary-permission {
+    color: #20293b !important;
+}
+
+.user-ledger-sync-form {
+    margin: 0;
+}
+
+.user-list-shell .user-role-badge,
+.user-list-shell .user-status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 96px;
+    min-height: 30px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid #d9e1ef;
+    background: #f6f8fc;
+    color: #2b3953;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.user-list-shell .user-role-badge-admin {
+    background: rgba(32, 41, 59, 0.08);
+    border-color: rgba(32, 41, 59, 0.14);
+    color: #1f2a41;
+}
+
+.user-list-shell .user-role-badge-store-admin {
+    background: rgba(21, 99, 240, 0.12);
+    border-color: rgba(21, 99, 240, 0.18);
+    color: #154fbf;
+}
+
+.user-list-shell .user-role-badge-staff {
+    background: rgba(15, 118, 110, 0.12);
+    border-color: rgba(15, 118, 110, 0.18);
+    color: #0f766e;
+}
+
+.user-list-shell .user-status-badge-active {
+    background: rgba(72, 207, 156, 0.14);
+    border-color: rgba(72, 207, 156, 0.22);
+    color: #0f7d47;
+}
+
+.user-list-shell .user-status-badge-inactive {
     background: rgba(239, 67, 80, 0.12);
     border-color: rgba(239, 67, 80, 0.2);
     color: #be123c;
@@ -3336,6 +3421,31 @@ body.modal-open {
     color: #56647c;
     font-size: 0.92rem;
     line-height: 1.6;
+}
+
+.user-form-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.user-form-card-note {
+    margin-top: 2px;
+}
+
+.user-form-card-note-full {
+    grid-column: 1 / -1;
+}
+
+.user-form-guide {
+    display: grid;
+    gap: 12px;
+}
+
+.user-form-card-note-alert {
+    color: #8f1d2c;
+    background: rgba(239, 67, 80, 0.1);
+    border: 1px solid rgba(239, 67, 80, 0.18);
 }
 
 .supplier-empty-state-note {
@@ -3983,6 +4093,10 @@ body.modal-open {
     .dashboard-span-2,
     .entry-master-card-wide {
         grid-column: span 1;
+    }
+
+    .user-form-card-grid {
+        grid-template-columns: 1fr;
     }
 
     .purchase-filter-search {
@@ -5172,7 +5286,7 @@ body.modal-open {
     padding-top: 18px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1366px) {
     .app-authenticated .shell-header {
         position: static;
         width: auto;
@@ -5186,6 +5300,7 @@ body.modal-open {
     .app-authenticated .shell-nav {
         flex-direction: row;
         flex-wrap: wrap;
+        gap: 10px 8px;
     }
 
     .app-authenticated .shell-nav a {
@@ -5207,6 +5322,7 @@ body.modal-open {
 
     .app-authenticated .shell-main {
         margin-left: 0;
+        min-height: auto;
     }
 }
 
@@ -6223,6 +6339,17 @@ body.modal-open {
     .expense-hero .hero-actions .primary-button,
     .expense-hero .hero-actions .secondary-button {
         width: 100%;
+    }
+
+    .supplier-toolbar-search,
+    .user-toolbar-search {
+        width: 100%;
+    }
+
+    .supplier-toolbar-search .input-control,
+    .user-toolbar-search .input-control {
+        width: 100%;
+        min-width: 0;
     }
 
     .field-label-row {

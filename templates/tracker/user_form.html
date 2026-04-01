@@ -1,39 +1,127 @@
 {% extends "base.html" %}
 
 {% block title %}{{ page_title }} | Mahilmart{% endblock %}
+{% block body_class %}app-shell entry-master-shell user-master-shell{% endblock %}
 
 {% block content %}
-<section class="form-page premium-panel">
-    <div class="panel-heading">
-        <div>
-            <span class="eyebrow">{{ page_eyebrow }}</span>
-            <h1>{{ page_title }}</h1>
-            <p>{{ page_description }}</p>
-        </div>
+<section class="entry-master-hero entry-master-hero-light premium-panel">
+    <div>
+        <span class="eyebrow">{{ page_eyebrow }}</span>
+        <h1>{{ page_title }}</h1>
+        <p>{{ page_description }}</p>
     </div>
+    <div class="hero-actions">
+        <a class="secondary-button" href="{{ next_url }}">Back to Users</a>
+    </div>
+</section>
 
-    <form method="post" class="financial-form">
-        {% csrf_token %}
-        <div class="form-grid">
-            {% for field in form %}
-                <div class="field-block">
-                    <label for="{{ field.id_for_label }}">
-                        {{ field.label }}{% if field.field.required %} *{% endif %}
-                    </label>
-                    {{ field }}
-                    {% if field.help_text %}
-                        <small class="help-text">{{ field.help_text }}</small>
-                    {% endif %}
-                    {% if field.errors %}
-                        <div class="field-error">{{ field.errors|join:", " }}</div>
-                    {% endif %}
-                </div>
+<form method="post" class="financial-form entry-master-form">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url }}">
+
+    {% if form.non_field_errors %}
+        <div class="form-error">
+            {% for error in form.non_field_errors %}
+                <div>{{ error }}</div>
             {% endfor %}
         </div>
-        <div class="form-actions">
-            <a class="secondary-button" href="{% url 'user-list' %}">Back to Users</a>
-            <button type="submit" class="primary-button">{{ submit_label }}</button>
-        </div>
-    </form>
-</section>
+    {% endif %}
+
+    <section class="entry-master-grid">
+        <article class="premium-panel entry-master-card entry-master-card-wide">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128100;</span> Account Identity</h2>
+            </div>
+            <div class="entry-card-body user-form-card-grid">
+                <div class="field-block">
+                    <label for="{{ form.username.id_for_label }}">{{ form.username.label }}{% if form.username.field.required %} *{% endif %}</label>
+                    {{ form.username }}
+                    {% if form.username.help_text %}
+                        <small class="help-text">{{ form.username.help_text }}</small>
+                    {% endif %}
+                    {% if form.username.errors %}
+                        <div class="field-error">{{ form.username.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.master_name.id_for_label }}">{{ form.master_name.label }}{% if form.master_name.field.required %} *{% endif %}</label>
+                    {{ form.master_name }}
+                    {% if form.master_name.help_text %}
+                        <small class="help-text">{{ form.master_name.help_text }}</small>
+                    {% endif %}
+                    {% if form.master_name.errors %}
+                        <div class="field-error">{{ form.master_name.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128737;</span> Role & Status</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.role.id_for_label }}">{{ form.role.label }}{% if form.role.field.required %} *{% endif %}</label>
+                    {{ form.role }}
+                    {% if form.role.errors %}
+                        <div class="field-error">{{ form.role.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.status.id_for_label }}">{{ form.status.label }}{% if form.status.field.required %} *{% endif %}</label>
+                    {{ form.status }}
+                    {% if form.status.errors %}
+                        <div class="field-error">{{ form.status.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                
+            </div>
+        </article>
+
+        <article class="premium-panel entry-master-card">
+            <div class="entry-card-heading">
+                <h2><span aria-hidden="true">&#128274;</span> Password Security</h2>
+            </div>
+            <div class="entry-card-body">
+                <div class="field-block">
+                    <label for="{{ form.password1.id_for_label }}">{{ form.password1.label }}{% if not is_editing %} *{% endif %}</label>
+                    {{ form.password1 }}
+                    {% if form.password1.help_text %}
+                        <small class="help-text">{{ form.password1.help_text }}</small>
+                    {% endif %}
+                    {% if form.password1.errors %}
+                        <div class="field-error">{{ form.password1.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                <div class="field-block">
+                    <label for="{{ form.password2.id_for_label }}">{{ form.password2.label }}{% if not is_editing %} *{% endif %}</label>
+                    {{ form.password2 }}
+                    {% if form.password2.help_text %}
+                        <small class="help-text">{{ form.password2.help_text }}</small>
+                    {% endif %}
+                    {% if form.password2.errors %}
+                        <div class="field-error">{{ form.password2.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+
+    
+    </section>
+
+    <section class="premium-panel entry-master-tools">
+        <div class="entry-tool-pill">User Name</div>
+        <div class="entry-tool-pill">Master Name</div>
+        <div class="entry-tool-pill">Role Access</div>
+        <div class="entry-tool-pill">Account Status</div>
+        <div class="entry-tool-pill">Password</div>
+    </section>
+
+    <div class="entry-master-actions">
+        <button type="submit" class="primary-button">{{ submit_label }}</button>
+        <a class="secondary-button" href="{{ next_url }}">Cancel</a>
+        <button type="reset" class="secondary-button">Reset</button>
+    </div>
+</form>
 {% endblock %}
