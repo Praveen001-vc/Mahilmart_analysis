@@ -2603,7 +2603,7 @@ class TrackerViewsTests(TestCase):
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
         DEFAULT_FROM_EMAIL="mahiltechlab.ops@gmail.com",
         SERVER_EMAIL="mahiltechlab.ops@gmail.com",
-        CONTACT_RECEIVER_EMAIL="praveen.v@mahiltechlab.com",
+        CONTACT_RECEIVER_EMAIL="raja@mahiltechlab.com,praveen.v@mahiltechlab.com",
     )
     def test_daily_settlement_post_sends_email_summary_to_configured_recipient(self):
         self.client.force_login(self.user)
@@ -2636,7 +2636,10 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].from_email, "mahiltechlab.ops@gmail.com")
-        self.assertEqual(mail.outbox[0].to, ["praveen.v@mahiltechlab.com"])
+        self.assertEqual(
+            mail.outbox[0].to,
+            ["raja@mahiltechlab.com", "praveen.v@mahiltechlab.com"],
+        )
         self.assertIn("Daily Settlement Details", mail.outbox[0].subject)
         self.assertIn("Saved By: mahilmart_admin", mail.outbox[0].body)
         self.assertIn("Cash Settled To: Front Office", mail.outbox[0].body)
@@ -2654,7 +2657,7 @@ class TrackerViewsTests(TestCase):
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
         DEFAULT_FROM_EMAIL="mahiltechlab.ops@gmail.com",
         SERVER_EMAIL="mahiltechlab.ops@gmail.com",
-        CONTACT_RECEIVER_EMAIL="praveen.v@mahiltechlab.com",
+        CONTACT_RECEIVER_EMAIL="raja@mahiltechlab.com,praveen.v@mahiltechlab.com",
     )
     def test_daily_settlement_update_sends_email_summary_to_configured_recipient(self):
         self.client.force_login(self.user)
@@ -2690,7 +2693,10 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(settlement.cash_settled_to, "Updated Counter")
         self.assertEqual(settlement.notes, "Updated from old saved settlement")
         self.assertEqual(len(mail.outbox), 1)
-        self.assertEqual(mail.outbox[0].to, ["praveen.v@mahiltechlab.com"])
+        self.assertEqual(
+            mail.outbox[0].to,
+            ["raja@mahiltechlab.com", "praveen.v@mahiltechlab.com"],
+        )
         self.assertIn("Updated Counter", mail.outbox[0].body)
         self.assertIn("Updated from old saved settlement", mail.outbox[0].body)
 
