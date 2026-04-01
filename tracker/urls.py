@@ -31,6 +31,7 @@ from .views import (
     SupplierListView,
     SupplierUpdateView,
     UserCreateView,
+    UserInactiveView,
     UserListView,
     UserUpdateView,
 )
@@ -68,6 +69,7 @@ urlpatterns = [
     path("users/permissions/", PermissionSettingsView.as_view(), name="permission-settings"),
     path("users/add/", UserCreateView.as_view(), name="user-add"),
     path("users/<int:pk>/edit/", UserUpdateView.as_view(), name="user-edit"),
+    path("users/<int:pk>/inactive/", UserInactiveView.as_view(), name="user-inactive"),
     path("expenses/", ExpenseListView.as_view(), name="expense-list"),
     path("expenses/add/", ExpenseCreateView.as_view(), name="expense-add"),
     path("expenses/categories/", ExpenseCategoryListView.as_view(), name="expense-category-list"),

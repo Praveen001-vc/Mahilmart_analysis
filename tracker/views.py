@@ -3929,8 +3929,15 @@ class UserListView(AdminRequiredMixin, ListView):
     model = User
     template_name = "tracker/user_list.html"
     context_object_name = "users"
+    paginate_by = 15
+
+    def get_search_query(self):
+        return (self.request.GET.get("search") or "").strip()
 
     def post(self, request, *args, **kwargs):
+        action = (request.POST.get("action") or "").strip()
+        if action and action != "sync_users":
+            return redirect("user-list")
         try:
             stats = sync_users_from_sqlserver()
         except UserSyncError as exc:
@@ -3946,10 +3953,24 @@ class UserListView(AdminRequiredMixin, ListView):
         return redirect("user-list")
 
     def get_queryset(self):
-        return User.objects.select_related("account_profile").order_by("username")
+        queryset = User.objects.select_related("account_profile", "module_permissions").order_by(
+            "username"
+        )
+        search_query = self.get_search_query()
+        if search_query:
+            queryset = queryset.filter(
+                Q(username__icontains=search_query)
+                | Q(account_profile__master_name__icontains=search_query)
+            )
+        return queryset
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        users = self.get_queryset()
+        page_obj = context.get("page_obj")
+        start_index = page_obj.start_index() if page_obj else 1
+        for row_number, user in enumerate(context["users"], start=start_index):
+            user.row_number = row_number
         for user in context["users"]:
             profile = getattr(user, "account_profile", None)
             user.master_name_display = (
@@ -3957,12 +3978,84 @@ class UserListView(AdminRequiredMixin, ListView):
             )
             user.role_label = get_user_role_label(user)
             user.status_label = "Active" if user.is_active else "Inactive"
+            user.status_badge_class = (
+                "user-status-badge-active" if user.is_active else "user-status-badge-inactive"
+            )
+            role_class_map = {
+                "Admin": "user-role-badge-admin",
+                "Store Admin": "user-role-badge-store-admin",
+                "Staff": "user-role-badge-staff",
+            }
+            user.role_badge_class = role_class_map.get(
+                user.role_label,
+                "user-role-badge-staff",
+            )
 
-        user_queryset = User.objects.all()
-        context["page_count"] = user_queryset.count()
-        context["active_count"] = user_queryset.filter(is_active=True).count()
-        context["inactive_count"] = user_queryset.filter(is_active=False).count()
+        context["page_count"] = users.count()
+        context["active_count"] = users.filter(is_active=True).count()
+        context["inactive_count"] = users.filter(is_active=False).count()
+        context["admin_count"] = users.filter(is_superuser=True).count()
+        context["store_admin_count"] = users.filter(
+            is_superuser=False,
+            is_staff=True,
+        ).count()
+        context["staff_count"] = users.filter(
+            is_superuser=False,
+            is_staff=False,
+        ).count()
+        context["master_name_count"] = users.filter(
+            account_profile__isnull=False
+        ).exclude(account_profile__master_name="").count()
+        context["synced_user_count"] = users.filter(
+            account_profile__source_user_no__isnull=False
+        ).count()
+        context["permission_count"] = users.filter(
+            module_permissions__isnull=False
+        ).count()
+        context["search_query"] = self.get_search_query()
+        context["current_url"] = self.request.get_full_path()
+        context["previous_page_url"] = ""
+        context["next_page_url"] = ""
+        context["pagination_links"] = []
+        if page_obj:
+            if page_obj.has_previous():
+                context["previous_page_url"] = build_page_url(
+                    self.request, page_obj.previous_page_number()
+                )
+            if page_obj.has_next():
+                context["next_page_url"] = build_page_url(
+                    self.request, page_obj.next_page_number()
+                )
+            context["pagination_links"] = [
+                {
+                    "number": page_number,
+                    "url": build_page_url(self.request, page_number),
+                    "is_current": page_number == page_obj.number,
+                }
+                for page_number in page_obj.paginator.page_range
+            ]
+            context["showing_from"] = page_obj.start_index()
+            context["showing_to"] = page_obj.end_index()
+        else:
+            context["showing_from"] = 1 if context["page_count"] else 0
+            context["showing_to"] = context["page_count"]
         return context
+
+
+class UserInactiveView(AdminRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        managed_user = get_object_or_404(User.objects.all(), pk=kwargs["pk"])
+
+        if managed_user.pk == request.user.pk:
+            messages.error(request, "You cannot deactivate your own account.")
+        elif not managed_user.is_active:
+            messages.info(request, "User is already inactive.")
+        else:
+            managed_user.is_active = False
+            managed_user.save(update_fields=["is_active"])
+            messages.success(request, "User marked as inactive successfully.")
+
+        return redirect(get_safe_next_url(request, reverse("user-list")))
 
 
 class UserCreateView(AdminRequiredMixin, CreateView):
@@ -3970,6 +4063,12 @@ class UserCreateView(AdminRequiredMixin, CreateView):
     form_class = UserManagementForm
     template_name = "tracker/user_form.html"
     success_url = reverse_lazy("user-list")
+
+    def get_return_url(self):
+        return get_safe_next_url(self.request, reverse("user-list"))
+
+    def get_success_url(self):
+        return self.get_return_url()
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -3989,6 +4088,9 @@ class UserCreateView(AdminRequiredMixin, CreateView):
             "Create admin, store admin, or staff users and control whether the account is active."
         )
         context["submit_label"] = "Save User"
+        context["next_url"] = self.get_return_url()
+        context["is_editing"] = False
+        context["is_self_edit"] = False
         return context
 
 
@@ -3997,6 +4099,12 @@ class UserUpdateView(AdminRequiredMixin, UpdateView):
     form_class = UserManagementForm
     template_name = "tracker/user_form.html"
     success_url = reverse_lazy("user-list")
+
+    def get_return_url(self):
+        return get_safe_next_url(self.request, reverse("user-list"))
+
+    def get_success_url(self):
+        return self.get_return_url()
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
@@ -4016,6 +4124,9 @@ class UserUpdateView(AdminRequiredMixin, UpdateView):
             "Update role, active status, master name, and password for this account."
         )
         context["submit_label"] = "Update User"
+        context["next_url"] = self.get_return_url()
+        context["is_editing"] = True
+        context["is_self_edit"] = self.object.pk == self.request.user.pk
         return context
 
 

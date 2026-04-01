@@ -3270,6 +3270,32 @@ class TrackerViewsTests(TestCase):
         self.assertFalse(managed_user.is_active)
         self.assertEqual(managed_profile.master_name, "STOREADMINONE")
 
+    def test_user_create_page_uses_entry_master_layout(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("user-add"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Create User")
+        self.assertContains(response, "Account Identity")
+        self.assertContains(response, "Role & Status")
+        self.assertContains(response, "Password Security")
+        self.assertContains(response, "Access Guide")
+        self.assertContains(response, "Back to Users")
+
+    def test_user_edit_page_uses_entry_master_layout(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("user-edit", args=[self.user.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"Edit User - {self.user.username}")
+        self.assertContains(response, "Account Identity")
+        self.assertContains(response, "Role & Status")
+        self.assertContains(response, "Password Security")
+        self.assertContains(response, "Access Guide")
+        self.assertContains(response, "Back to Users")
+
     @patch("tracker.views.sync_users_from_sqlserver")
     def test_admin_can_trigger_user_sync_from_user_list(self, sync_mock):
         self.client.force_login(self.admin_user)
@@ -3292,7 +3318,49 @@ class TrackerViewsTests(TestCase):
         response = self.client.get(reverse("user-list"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Sync Users From SQL Server")
+        self.assertContains(response, "Sync Users")
+
+    def test_user_list_renders_supplier_style_layout(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("user-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "User Management")
+        self.assertContains(response, "Directory")
+        self.assertContains(response, "Roles")
+        self.assertContains(response, "Access")
+        self.assertContains(response, "Applied Filters:")
+        self.assertContains(response, "User Directory")
+        self.assertContains(response, "Permission Records:")
+        self.assertContains(response, "S.No")
+
+    def test_user_list_search_filters_username_and_master_name(self):
+        matched_user = get_user_model().objects.create_user(
+            username="search_target_user",
+            password="SearchPass123!",
+        )
+        other_user = get_user_model().objects.create_user(
+            username="other_person",
+            password="SearchPass123!",
+        )
+        UserAccountProfile.objects.create(
+            user=matched_user,
+            master_name="TARGET MASTER",
+        )
+        UserAccountProfile.objects.create(
+            user=other_user,
+            master_name="OTHER MASTER",
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("user-list"), {"search": "TARGET"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "search_target_user")
+        self.assertNotContains(response, "other_person")
+        self.assertEqual(response.context["page_count"], 1)
+        self.assertEqual(response.context["search_query"], "TARGET")
 
     def test_user_list_includes_mobile_friendly_table_labels(self):
         self.client.force_login(self.admin_user)
@@ -3301,8 +3369,81 @@ class TrackerViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "user-data-table")
+        self.assertContains(response, 'data-label="S.No"', html=False)
         self.assertContains(response, 'data-label="User Name"', html=False)
         self.assertContains(response, 'data-label="Action"', html=False)
+
+    def test_user_list_shows_inactive_button_for_active_users(self):
+        managed_user = get_user_model().objects.create_user(
+            username="inactive_target",
+            password="UserPass123!",
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse("user-list"), {"search": "inactive_target"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse("user-inactive", args=[managed_user.pk]))
+        self.assertContains(response, "Inactive")
+
+    def test_admin_can_mark_managed_user_inactive_from_user_list(self):
+        managed_user = get_user_model().objects.create_user(
+            username="managed_inactive_user",
+            password="UserPass123!",
+        )
+        self.client.force_login(self.admin_user)
+
+        response = self.client.post(
+            reverse("user-inactive", args=[managed_user.pk]),
+            {"next": reverse("user-list")},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("user-list"))
+        managed_user.refresh_from_db()
+        self.assertFalse(managed_user.is_active)
+
+    def test_admin_cannot_mark_own_account_inactive_from_user_list(self):
+        self.client.force_login(self.admin_user)
+
+        response = self.client.post(
+            reverse("user-inactive", args=[self.admin_user.pk]),
+            {"next": reverse("user-list")},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.admin_user.refresh_from_db()
+        self.assertTrue(self.admin_user.is_active)
+        self.assertContains(response, "You cannot deactivate your own account.")
+
+    def test_user_list_paginates_in_batches_of_15_with_running_row_numbers(self):
+        for index in range(20):
+            user = get_user_model().objects.create_user(
+                username=f"paged_user_{index:02d}",
+                password="UserPass123!",
+            )
+            UserAccountProfile.objects.create(
+                user=user,
+                master_name=f"PAGED MASTER {index:02d}",
+            )
+        self.client.force_login(self.admin_user)
+
+        first_page = self.client.get(reverse("user-list"), {"search": "paged_user_"})
+        second_page = self.client.get(
+            reverse("user-list"),
+            {"search": "paged_user_", "page": 2},
+        )
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(first_page.context["page_count"], 20)
+        self.assertEqual(len(first_page.context["users"]), 15)
+        self.assertEqual(len(second_page.context["users"]), 5)
+        self.assertEqual(first_page.context["users"][0].row_number, 1)
+        self.assertEqual(second_page.context["users"][0].row_number, 16)
+        self.assertContains(first_page, "Page 1 of 2")
+        self.assertContains(second_page, "Page 2 of 2")
 
     def test_permission_settings_page_renders_for_admin(self):
         self.client.force_login(self.admin_user)

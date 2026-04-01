@@ -1,53 +1,113 @@
 {% extends "base.html" %}
 
 {% block title %}Users | Mahilmart{% endblock %}
-{% block body_class %}app-shell user-list-shell{% endblock %}
+{% block body_class %}app-shell expense-ledger-shell user-list-shell user-ledger-shell{% endblock %}
 
 {% block content %}
-<section class="page-heading premium-panel">
-    <div>
-        <span class="eyebrow">User Access</span>
-        <h1>User Management</h1>
-        <p>Create accounts, change role, and switch users between active and inactive status.</p>
+<section class="expense-hero">
+    <div class="expense-hero-brand">
+        <span class="expense-hero-icon" aria-hidden="true">&#128101;</span>
+        <div>
+            <h1>User Management</h1>
+            <p>Create accounts, assign roles, and monitor account access in one tracker.</p>
+        </div>
     </div>
     <div class="hero-actions">
-        <form method="post" action="{% url 'user-list' %}">
+        <form method="get" action="{% url 'user-list' %}" class="user-toolbar-search">
+            <label class="sr-only" for="user-search">Search Users</label>
+            <input
+                id="user-search"
+                type="text"
+                name="search"
+                class="input-control"
+                value="{{ search_query }}"
+                placeholder="Search Users"
+            >
+            <button type="submit" class="secondary-button">Search</button>
+            {% if search_query %}
+                <a class="secondary-button" href="{% url 'user-list' %}">Reset</a>
+            {% endif %}
+        </form>
+        <form method="post" class="inline-action-form user-ledger-sync-form">
             {% csrf_token %}
-            <button type="submit" class="secondary-button">Sync Users From SQL Server</button>
+            <button type="submit" class="secondary-button" name="action" value="sync_users">Sync Users</button>
         </form>
         <a class="secondary-button" href="{% url 'permission-settings' %}">Permission Settings</a>
-        <a class="primary-button" href="{% url 'user-add' %}">Create User</a>
+        <a class="primary-button" href="{% url 'user-add' %}?next={{ current_url|urlencode }}">Create User</a>
     </div>
 </section>
 
-<section class="stats-grid compact-grid compact-grid-3">
-    <article class="stat-card premium-panel">
-        <span>Total Users</span>
-        <strong>{{ page_count }}</strong>
+<section class="expense-summary-grid">
+    <article class="premium-panel expense-summary-card user-summary-card">
+        <h2>Directory</h2>
+        <div class="expense-summary-row">
+            <span>Total Users</span>
+            <strong>{{ page_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Active Users</span>
+            <strong class="user-summary-active">{{ active_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Inactive Users</span>
+            <strong class="user-summary-inactive">{{ inactive_count }}</strong>
+        </div>
     </article>
-    <article class="stat-card premium-panel">
-        <span>Active Users</span>
-        <strong>{{ active_count }}</strong>
+    <article class="premium-panel expense-summary-card user-summary-card">
+        <h2>Roles</h2>
+        <div class="expense-summary-row">
+            <span>Admin Users</span>
+            <strong class="user-summary-admin">{{ admin_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Store Admin Users</span>
+            <strong class="user-summary-store-admin">{{ store_admin_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Staff Users</span>
+            <strong class="user-summary-staff">{{ staff_count }}</strong>
+        </div>
     </article>
-    <article class="stat-card premium-panel">
-        <span>Inactive Users</span>
-        <strong>{{ inactive_count }}</strong>
+    <article class="premium-panel expense-summary-card user-summary-card">
+        <h2>Access</h2>
+        <div class="expense-summary-row">
+            <span>Master Names Saved</span>
+            <strong>{{ master_name_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>SQL Synced Users</span>
+            <strong>{{ synced_user_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Permission Records</span>
+            <strong class="user-summary-permission">{{ permission_count }}</strong>
+        </div>
     </article>
 </section>
 
-<section class="premium-panel">
-    <div class="panel-heading">
-        <div>
-            <span class="eyebrow">Database Records</span>
-            <h2>User table</h2>
+<section class="expense-filter-banner">
+    <strong>Applied Filters:</strong>
+    {% if search_query %}
+        <span>Search: {{ search_query }}</span>
+    {% else %}
+        <span>All users</span>
+    {% endif %}
+</section>
+
+<section class="premium-panel expense-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128203;</span> User Directory</h2>
+        <div class="purchase-history-head-copy">
+            Permission Records: <strong>{{ permission_count }}</strong>
         </div>
     </div>
 
     {% if users %}
         <div class="table-shell">
-            <table class="data-table user-data-table">
+            <table class="data-table user-data-table expense-history-table user-history-table">
                 <thead>
                     <tr>
+                        <th>S.No</th>
                         <th>User Name</th>
                         <th>Master Name</th>
                         <th>Role</th>
@@ -58,20 +118,76 @@
                 <tbody>
                     {% for user in users %}
                         <tr>
+                            <td data-label="S.No">{{ user.row_number }}</td>
                             <td data-label="User Name">{{ user.username }}</td>
                             <td data-label="Master Name">{{ user.master_name_display }}</td>
-                            <td data-label="Role">{{ user.role_label }}</td>
-                            <td data-label="Status">{{ user.status_label }}</td>
+                            <td data-label="Role">
+                                <span class="user-role-badge {{ user.role_badge_class }}">
+                                    {{ user.role_label }}
+                                </span>
+                            </td>
+                            <td data-label="Status">
+                                <span class="user-status-badge {{ user.status_badge_class }}">
+                                    {{ user.status_label }}
+                                </span>
+                            </td>
                             <td data-label="Action">
-                                <a class="table-link" href="{% url 'user-edit' user.pk %}">Edit</a>
+                                <div class="expense-history-actions">
+                                    <a class="expense-action-button expense-action-edit" href="{% url 'user-edit' user.pk %}?next={{ current_url|urlencode }}">Edit</a>
+                                    {% if user.is_active and user.pk != request.user.pk %}
+                                        <form method="post" action="{% url 'user-inactive' user.pk %}" class="expense-inline-form" onsubmit="return confirm('Are you sure you want to mark this user inactive?');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="next" value="{{ current_url }}">
+                                            <button type="submit" class="expense-action-button expense-action-inactive">Inactive</button>
+                                        </form>
+                                    {% elif user.pk == request.user.pk %}
+                                        <span class="muted-text">Current User</span>
+                                    {% else %}
+                                        <span class="muted-text">Inactive</span>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+        <div class="purchase-pagination">
+            <div class="purchase-pagination-status">
+                Showing {{ showing_from }} to {{ showing_to }} of {{ page_count }} records.
+                {% if page_obj %}
+                    <span class="purchase-pagination-page">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                {% endif %}
+            </div>
+            {% if page_obj and page_obj.paginator.num_pages > 1 %}
+                <nav class="purchase-pagination-nav" aria-label="User pagination">
+                    {% if previous_page_url %}
+                        <a class="purchase-pagination-link" href="{{ previous_page_url }}">Previous</a>
+                    {% endif %}
+                    {% for page_link in pagination_links %}
+                        {% if page_link.is_current %}
+                            <span class="purchase-pagination-link is-current" aria-current="page">{{ page_link.number }}</span>
+                        {% else %}
+                            <a class="purchase-pagination-link" href="{{ page_link.url }}">{{ page_link.number }}</a>
+                        {% endif %}
+                    {% endfor %}
+                    {% if next_page_url %}
+                        <a class="purchase-pagination-link is-next" href="{{ next_page_url }}">Next</a>
+                    {% endif %}
+                </nav>
+            {% endif %}
+        </div>
     {% else %}
-        <div class="empty-state">No users available yet. Create or import the first user.</div>
+        <div class="empty-state">
+            <div>{% if search_query %}No users match the current search.{% else %}No users available yet. Create or import the first user.{% endif %}</div>
+            <div class="empty-state-actions">
+                <form method="post" class="inline-action-form">
+                    {% csrf_token %}
+                    <button type="submit" class="secondary-button" name="action" value="sync_users">Sync Users</button>
+                </form>
+                <a class="primary-button" href="{% url 'user-add' %}?next={{ current_url|urlencode }}">Create User</a>
+            </div>
+        </div>
     {% endif %}
 </section>
 {% endblock %}
