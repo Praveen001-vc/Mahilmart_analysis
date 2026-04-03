@@ -109,6 +109,7 @@ RECONCILIATION_NON_CASH_METHODS = (
 )
 MANUAL_PURCHASE_SOURCE_PREFIX = "MANUAL:"
 logger = logging.getLogger(__name__)
+SPLIT_PAYMENT_MODE_FILTER = "Split"
 
 def _sum_amount(queryset):
     return queryset.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
@@ -1381,7 +1382,12 @@ def apply_sales_filters(queryset, filter_values):
         queryset = queryset.filter(bill_no__icontains=bill_no)
     if customer_name:
         queryset = queryset.filter(customer_name__icontains=customer_name)
-    if payment_mode and payment_mode != "All":
+    if payment_mode == SPLIT_PAYMENT_MODE_FILTER:
+        queryset = queryset.filter(
+            split_cash_amount__gt=Decimal("0.00"),
+            split_card_amount__gt=Decimal("0.00"),
+        )
+    elif payment_mode and payment_mode != "All":
         queryset = queryset.filter(payment_mode=payment_mode)
     if date_from and date_to and date_from > date_to:
         date_from, date_to = date_to, date_from
@@ -1390,6 +1396,49 @@ def apply_sales_filters(queryset, filter_values):
     if date_to:
         queryset = queryset.filter(sale_date__lte=date_to)
     return queryset
+
+
+def summarize_sales_records(records):
+    records = list(records)
+    split_records = [
+        record for record in records if record.split_cash_amount > 0 or record.split_card_amount > 0
+    ]
+    credit_records = [
+        record for record in records if get_effective_sales_balance_amount(record) > 0
+    ]
+    return {
+        "count": len(records),
+        "total_amount": sum(
+            (record.net_amount for record in records),
+            Decimal("0.00"),
+        ),
+        "received_amount": sum(
+            (record.effective_received_amount for record in records),
+            Decimal("0.00"),
+        ),
+        "balance_amount": sum(
+            (record.effective_balance_amount for record in records),
+            Decimal("0.00"),
+        ),
+        "split_cash_amount": sum(
+            (record.split_cash_amount for record in records),
+            Decimal("0.00"),
+        ),
+        "split_card_amount": sum(
+            (record.split_card_amount for record in records),
+            Decimal("0.00"),
+        ),
+        "split_bill_count": len(split_records),
+        "split_total_amount": sum(
+            (record.split_total_amount for record in split_records),
+            Decimal("0.00"),
+        ),
+        "credit_count": len(credit_records),
+        "credit_total": sum(
+            (record.effective_balance_amount for record in credit_records),
+            Decimal("0.00"),
+        ),
+    }
 
 
 def get_sales_redirect_params(params):
@@ -3605,49 +3654,52 @@ class SalesListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        base_queryset = self.get_base_queryset()
+        filtered_queryset = self.get_queryset()
+        raw_filter_values = get_raw_sales_filter_values(self.request.GET)
+        filter_values = get_sales_filter_values(self.request.GET)
+        today = date.today()
         visible_records = list(context.get("records") or [])
-        filtered_records = list(self.get_queryset())
-        aggregates = self.get_queryset().aggregate(
-            total_split_cash=Sum("split_cash_amount"),
-            total_split_card=Sum("split_card_amount"),
-        )
+        filtered_records = list(filtered_queryset)
+        filtered_summary = summarize_sales_records(filtered_records)
         credit_records = [
             record for record in filtered_records if get_effective_sales_balance_amount(record) > 0
         ]
         context["records"] = visible_records
-        context["page_count"] = len(filtered_records)
-        context["page_total"] = sum(
-            (record.net_amount for record in filtered_records),
-            Decimal("0.00"),
+        context["sales_filters"] = filter_values
+        context["has_active_filters"] = any(raw_filter_values.values())
+        context["is_default_today_view"] = not context["has_active_filters"]
+        context["default_view_date"] = today
+        context["month_summary"] = summarize_sales_records(
+            base_queryset.filter(
+                sale_date__year=today.year,
+                sale_date__month=today.month,
+            )
         )
-        context["received_total"] = sum(
-            (record.effective_received_amount for record in filtered_records),
-            Decimal("0.00"),
+        context["today_summary"] = summarize_sales_records(
+            base_queryset.filter(sale_date=today)
         )
-        context["balance_total"] = sum(
-            (record.effective_balance_amount for record in filtered_records),
-            Decimal("0.00"),
-        )
-        context["split_cash_total"] = aggregates["total_split_cash"] or Decimal("0.00")
-        context["split_card_total"] = aggregates["total_split_card"] or Decimal("0.00")
+        context["filtered_summary"] = filtered_summary
+        context["page_count"] = filtered_summary["count"]
+        context["page_total"] = filtered_summary["total_amount"]
+        context["received_total"] = filtered_summary["received_amount"]
+        context["balance_total"] = filtered_summary["balance_amount"]
+        context["split_cash_total"] = filtered_summary["split_cash_amount"]
+        context["split_card_total"] = filtered_summary["split_card_amount"]
         context["credit_bill_records"] = credit_records[:10]
-        context["credit_bill_count"] = len(credit_records)
-        context["credit_bill_total"] = sum(
-            (record.effective_balance_amount for record in credit_records),
-            Decimal("0.00"),
-        )
-        context["sales_filters"] = get_sales_filter_values(self.request.GET)
-        context["has_active_filters"] = any(
-            get_raw_sales_filter_values(self.request.GET).values()
-        )
-        context["payment_mode_options"] = SalesPaymentMode.choices
-        context["synced_record_count"] = self.get_base_queryset().count()
+        context["credit_bill_count"] = filtered_summary["credit_count"]
+        context["credit_bill_total"] = filtered_summary["credit_total"]
+        context["payment_mode_options"] = [
+            *SalesPaymentMode.choices[:-1],
+            (SPLIT_PAYMENT_MODE_FILTER, SPLIT_PAYMENT_MODE_FILTER),
+            SalesPaymentMode.choices[-1],
+        ]
+        context["synced_record_count"] = base_queryset.count()
         context["last_synced_at"] = (
             SalesLedgerRecord.objects.order_by("-synced_at")
             .values_list("synced_at", flat=True)
             .first()
         )
-        context["is_default_today_view"] = not context["has_active_filters"]
         return context
 
 

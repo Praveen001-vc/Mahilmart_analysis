@@ -1,19 +1,20 @@
 {% extends "base.html" %}
 
 {% block title %}Sales Ledger | Mahilmart{% endblock %}
-{% block body_class %}app-shell sales-ledger-shell{% endblock %}
+{% block body_class %}app-shell expense-ledger-shell sales-list-shell sales-ledger-shell{% endblock %}
 
 {% block content %}
-<section class="page-heading premium-panel sales-page-head">
-    <div>
-        <span class="eyebrow">Sales Sync</span>
-        <h1>Sales Ledger</h1>
-        <p>SQL Server sales are synced into PostgreSQL and shown here with bill number, customer, amount, received amount, balance, and payment mode.</p>
+<section class="expense-hero sales-ui-hero">
+    <div class="expense-hero-brand">
+        <span class="expense-hero-icon" aria-hidden="true">&#128179;</span>
+        <div>
+            <h1>Sales Tracker</h1>
+            <p class="sales-hero-note">Sales Ledger</p>
+        </div>
     </div>
-    <div class="hero-actions sales-hero-actions">
-        <div class="sales-sync-meta">
-            <span>Synced Bills</span>
-            <strong>{{ synced_record_count }}</strong>
+    <div class="hero-actions sales-tracker-actions">
+        <div class="sales-tracker-sync-copy">
+            <span>Synced Bills: <strong>{{ synced_record_count }}</strong></span>
             <small>
                 {% if last_synced_at %}
                     Last sync {{ last_synced_at|date:"d-m-Y h:i A" }}
@@ -22,63 +23,93 @@
                 {% endif %}
             </small>
         </div>
-        <form method="post" action="{% url 'sales-list' %}">
+        <form method="post" action="{% url 'sales-list' %}" class="sales-sync-form">
             {% csrf_token %}
             <input type="hidden" name="bill_no" value="{{ sales_filters.bill_no }}">
             <input type="hidden" name="customer_name" value="{{ sales_filters.customer_name }}">
             <input type="hidden" name="payment_mode" value="{{ sales_filters.payment_mode }}">
             <input type="hidden" name="date_from" value="{{ sales_filters.date_from }}">
             <input type="hidden" name="date_to" value="{{ sales_filters.date_to }}">
-            <button type="submit" class="primary-button">Sync Sales From SQL Server</button>
+            <button type="submit" class="secondary-button">Sync Sales From SQL Server</button>
         </form>
     </div>
 </section>
 
-<section class="stats-grid compact-grid compact-grid-3">
-    <article class="stat-card premium-panel">
-        <span>Filtered Bills</span>
-        <strong>{{ page_count }}</strong>
+<section class="expense-summary-grid sales-summary-grid">
+    <article class="premium-panel expense-summary-card sales-summary-card">
+        <h2>Today</h2>
+        <div class="expense-summary-row">
+            <span>Bills</span>
+            <strong class="sales-summary-count">{{ today_summary.count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Net Amount</span>
+            <strong class="sales-summary-total">Rs {{ today_summary.total_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Received Amount</span>
+            <strong class="sales-summary-received">Rs {{ today_summary.received_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Balance Amount</span>
+            <strong class="sales-summary-balance">Rs {{ today_summary.balance_amount }}</strong>
+        </div>
     </article>
-    <article class="stat-card premium-panel">
-        <span>Net Amount</span>
-        <strong>Rs. {{ page_total }}</strong>
+    <article class="premium-panel expense-summary-card sales-summary-card">
+        <h2>Split Details</h2>
+        <div class="expense-summary-row">
+            <span>Bills</span>
+            <strong class="sales-summary-count">{{ filtered_summary.split_bill_count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Cash Amount</span>
+            <strong class="sales-summary-total">Rs {{ filtered_summary.split_cash_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Card Amount</span>
+            <strong class="sales-summary-received">Rs {{ filtered_summary.split_card_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Split Total</span>
+            <strong class="sales-summary-balance">Rs {{ filtered_summary.split_total_amount }}</strong>
+        </div>
     </article>
-    <article class="stat-card premium-panel">
-        <span>Received Amount</span>
-        <strong>Rs. {{ received_total }}</strong>
-    </article>
-    <article class="stat-card premium-panel">
-        <span>Balance Amount</span>
-        <strong>Rs. {{ balance_total }}</strong>
-    </article>
-    <article class="stat-card premium-panel">
-        <span>Split Cash Total</span>
-        <strong>Rs. {{ split_cash_total }}</strong>
-    </article>
-    <article class="stat-card premium-panel">
-        <span>Split Card Total</span>
-        <strong>Rs. {{ split_card_total }}</strong>
+    <article class="premium-panel expense-summary-card sales-summary-card">
+        <h2>Filtered</h2>
+        <div class="expense-summary-row">
+            <span>Bills</span>
+            <strong class="sales-summary-count">{{ filtered_summary.count }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Net Amount</span>
+            <strong class="sales-summary-total">Rs {{ filtered_summary.total_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Received Amount</span>
+            <strong class="sales-summary-received">Rs {{ filtered_summary.received_amount }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Balance Amount</span>
+            <strong class="sales-summary-balance">Rs {{ filtered_summary.balance_amount }}</strong>
+        </div>
     </article>
 </section>
 
-<section class="premium-panel filter-panel">
-    <div class="panel-heading">
-        <div>
-            <span class="eyebrow">Find Bills</span>
-            <h2>Filter synced sales</h2>
-        </div>
+<section class="premium-panel expense-card sales-filter-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128269;</span> Filter{% if is_default_today_view %} (By Default Today){% endif %}</h2>
         {% if is_default_today_view %}
-            <p class="muted-text">Today&apos;s sales are shown by default, and sync also pulls only today unless you choose another date.</p>
+            <div class="purchase-history-head-copy">Today&apos;s sales are shown until you choose another date.</div>
         {% elif has_active_filters %}
-            <p class="muted-text">Showing only sales matching the selected filters.</p>
+            <div class="purchase-history-head-copy">Showing only the sales that match your filters.</div>
         {% else %}
-            <p class="muted-text">Most recent synced sales are shown first.</p>
+            <div class="purchase-history-head-copy">Most recent synced sales appear first.</div>
         {% endif %}
     </div>
 
     <form method="get" action="{% url 'sales-list' %}" class="financial-form">
-        <div class="filter-grid sales-filter-grid">
-            <div class="field-block">
+        <div class="expense-filter-grid sales-filter-grid">
+            <div class="field-block sales-filter-wide">
                 <label for="sales-bill-no">Bill No</label>
                 <input
                     id="sales-bill-no"
@@ -89,7 +120,7 @@
                     placeholder="Search bill number"
                 >
             </div>
-            <div class="field-block">
+            <div class="field-block sales-filter-wide">
                 <label for="sales-customer-name">Customer Name</label>
                 <input
                     id="sales-customer-name"
@@ -101,16 +132,7 @@
                 >
             </div>
             <div class="field-block">
-                <label for="sales-payment-mode">Payment Mode</label>
-                <select id="sales-payment-mode" name="payment_mode" class="input-control">
-                    <option value="">All</option>
-                    {% for option_value, option_label in payment_mode_options %}
-                        <option value="{{ option_value }}"{% if option_value == sales_filters.payment_mode %} selected{% endif %}>{{ option_label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="field-block">
-                <label for="sales-date-from">Date From</label>
+                <label for="sales-date-from">Start Date</label>
                 <input
                     id="sales-date-from"
                     type="date"
@@ -120,7 +142,7 @@
                 >
             </div>
             <div class="field-block">
-                <label for="sales-date-to">Date To</label>
+                <label for="sales-date-to">End Date</label>
                 <input
                     id="sales-date-to"
                     type="date"
@@ -129,25 +151,48 @@
                     value="{{ sales_filters.date_to }}"
                 >
             </div>
+            <div class="field-block">
+                <label for="sales-payment-mode">Payment Mode</label>
+                <select id="sales-payment-mode" name="payment_mode" class="input-control">
+                    <option value="">All</option>
+                    {% for option_value, option_label in payment_mode_options %}
+                        <option value="{{ option_value }}"{% if option_value == sales_filters.payment_mode %} selected{% endif %}>{{ option_label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
         </div>
 
-        <div class="form-actions">
-            <button type="submit" class="primary-button">Apply Filters</button>
+        <div class="expense-filter-actions">
+            <button type="submit" class="primary-button">Apply</button>
             <a class="secondary-button" href="{% url 'sales-list' %}">Reset</a>
         </div>
     </form>
 </section>
 
-<section class="premium-panel sales-credit-card">
-    <div class="sales-history-head">
-        <div>
-            <span class="eyebrow">Credit Bills</span>
-            <h2>Pending credit from sales</h2>
+<!-- <section class="expense-filter-banner sales-filter-banner">
+    <strong>Applied Filters:</strong>
+    <span>From {{ sales_filters.date_from }} To {{ sales_filters.date_to }}</span>
+    {% if sales_filters.bill_no %}
+        <span>| Bill No: {{ sales_filters.bill_no }}</span>
+    {% endif %}
+    {% if sales_filters.customer_name %}
+        <span>| Customer: {{ sales_filters.customer_name }}</span>
+    {% endif %}
+    {% if sales_filters.payment_mode %}
+        <span>| Payment Mode: {{ sales_filters.payment_mode }}</span>
+    {% endif %}
+    <span>| Split Cash: Rs {{ split_cash_total }}</span>
+    <span>| Split Card: Rs {{ split_card_total }}</span>
+    <span>| Credit Bills: {{ credit_bill_count }}</span>
+    <span>| Pending Credit: Rs {{ credit_bill_total }}</span>
+</section> -->
+
+<section class="premium-panel expense-card sales-credit-card">
+    <div class="expense-card-head">
+        <h2><span aria-hidden="true">&#128176;</span> Credit Bills</h2>
+        <div class="purchase-history-head-copy">
+            {{ credit_bill_count }} bill{{ credit_bill_count|pluralize }} | Pending Rs. {{ credit_bill_total }}
         </div>
-        <p class="muted-text">
-            {{ credit_bill_count }} bill{{ credit_bill_count|pluralize }} |
-            Pending Rs. {{ credit_bill_total }}
-        </p>
     </div>
 
     {% if credit_bill_records %}
@@ -189,15 +234,18 @@
 </section>
 
 <section
-    class="premium-panel sales-history-card"
+    class="premium-panel expense-card sales-history-card"
     data-auto-load-table
     data-batch-size="50"
     data-total-count="{{ page_count }}"
     data-next-url="{{ next_page_url }}"
 >
-    <div class="sales-history-head">
+    <div class="expense-card-head">
         <h2><span aria-hidden="true">&#128203;</span> Sales Ledger</h2>
-        <p class="muted-text">50 rows load at a time. Scroll down to load more automatically.</p>
+        <div class="sales-records-head-copy">
+            <span>SQL Synced Bills: <strong>{{ synced_record_count }}</strong></span>
+            <small>50 rows load at a time. Scroll down to load more automatically.</small>
+        </div>
     </div>
 
     {% if records %}
