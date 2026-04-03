@@ -419,9 +419,11 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["net_total"], Decimal("180.00"))
         self.assertEqual(response.context["income_count"], 1)
         self.assertEqual(response.context["expense_count"], 1)
-        self.assertContains(response, "Reconciliation history")
+        self.assertContains(response, "Reconciliation History")
         self.assertContains(response, "Income entry history")
         self.assertContains(response, "Expense entry history")
+        self.assertContains(response, "Office Income")
+        self.assertContains(response, "Office Expense")
         self.assertContains(response, "Counter Cash Collection")
         self.assertContains(response, "Office Expense")
         self.assertNotContains(response, "Add reconciliation income")
@@ -549,10 +551,16 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["income_total"], Decimal("650.00"))
         self.assertEqual(response.context["expense_total"], Decimal("120.00"))
         self.assertEqual(response.context["net_total"], Decimal("530.00"))
-        self.assertEqual(response.context["income_count"], 2)
+        self.assertEqual(response.context["income_count"], 1)
+        self.assertEqual(
+            response.context["settlement_cash_target_display"],
+            "Admin Counter (Rs. 400.00)",
+        )
         self.assertContains(response, "Daily Cash Settlement")
-        self.assertContains(response, "Daily Card Settlement")
+        self.assertNotContains(response, "Daily Card Settlement")
         self.assertContains(response, "Cash settled to Admin Counter")
+        self.assertContains(response, "Admin Counter (Rs. 400.00)")
+        self.assertNotContains(response, "Automatic from Daily Cash Settlement")
 
     def test_reconciliation_page_includes_purchase_records_in_expense_history(self):
         self.client.force_login(self.user)
@@ -1082,6 +1090,74 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "data-history-toggle", html=False)
         self.assertContains(response, 'name="view" value="expense"', html=False)
         self.assertContains(response, "Expense entry history")
+
+    def test_reconciliation_history_paginates_income_and_expense_records(self):
+        self.client.force_login(self.user)
+        today = date.today()
+        start_date = today - timedelta(days=30)
+
+        for index in range(25):
+            IncomeRecord.objects.create(
+                user=self.user,
+                title=f"Income Row {index + 1:02d}",
+                source="Counter",
+                category="Counter Income",
+                amount=Decimal("100.00"),
+                transaction_date=today - timedelta(days=index),
+                payment_method=PaymentMethod.CASH,
+            )
+
+        for index in range(22):
+            ExpenseRecord.objects.create(
+                user=self.user,
+                title=f"Expense Row {index + 1:02d}",
+                vendor="Office Vendor",
+                category="Office Expense",
+                amount=Decimal("50.00"),
+                transaction_date=today - timedelta(days=index),
+                payment_method=PaymentMethod.CASH,
+            )
+
+        response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": start_date.isoformat(),
+                "end_date": today.isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["income_count"], 25)
+        self.assertEqual(response.context["expense_count"], 22)
+        self.assertEqual(len(response.context["income_records"]), 20)
+        self.assertEqual(len(response.context["expense_records"]), 20)
+        self.assertEqual(response.context["income_page_obj"].number, 1)
+        self.assertEqual(response.context["expense_page_obj"].number, 1)
+        self.assertIn("income_page=2", response.context["income_next_page_url"])
+        self.assertIn("view=income", response.context["income_next_page_url"])
+        self.assertIn("expense_page=2", response.context["expense_next_page_url"])
+        self.assertIn("view=expense", response.context["expense_next_page_url"])
+        self.assertContains(response, "Income Row 01")
+        self.assertContains(response, "Income Row 20")
+        self.assertNotContains(response, "Income Row 21")
+        self.assertContains(response, "Showing 1 to 20 of 25 records.")
+
+        page_two_response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": start_date.isoformat(),
+                "end_date": today.isoformat(),
+                "income_page": 2,
+            },
+        )
+
+        self.assertEqual(page_two_response.status_code, 200)
+        self.assertEqual(page_two_response.context["income_page_obj"].number, 2)
+        self.assertEqual(len(page_two_response.context["income_records"]), 5)
+        self.assertContains(page_two_response, "Income Row 21")
+        self.assertContains(page_two_response, "Income Row 25")
+        self.assertNotContains(page_two_response, "Income Row 01")
+        self.assertContains(page_two_response, "Showing 21 to 25 of 25 records.")
 
     def test_expense_category_page_creates_category(self):
         self.client.force_login(self.user)
