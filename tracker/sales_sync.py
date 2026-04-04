@@ -3,6 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import os
 
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import SalesLedgerRecord, SalesPaymentMode
@@ -86,6 +87,18 @@ def normalize_source_sale_type(value):
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def normalize_source_sale_numbers(values):
+    normalized_values = set()
+    for value in values or []:
+        try:
+            source_sale_no = int(value)
+        except (TypeError, ValueError):
+            continue
+        if source_sale_no > 0:
+            normalized_values.add(source_sale_no)
+    return sorted(normalized_values)
 
 
 def classify_sales_payment_mode(
@@ -196,6 +209,35 @@ def build_sqlserver_connection_string():
     return ";".join(connection_parts) + ";"
 
 
+def get_credit_sale_numbers_for_resync():
+    candidate_records = (
+        SalesLedgerRecord.objects.filter(is_cancelled=False)
+        .filter(
+            Q(payment_mode=SalesPaymentMode.CREDIT)
+            | Q(balance_amount__gt=Decimal("0.00"))
+        )
+        .only(
+            "source_sale_no",
+            "net_amount",
+            "received_amount",
+            "balance_amount",
+            "payment_mode",
+            "split_cash_amount",
+            "split_card_amount",
+        )
+        .order_by("source_sale_no")
+    )
+    return [
+        record.source_sale_no
+        for record in candidate_records
+        if not record.has_manual_split
+        and (
+            record.payment_mode == SalesPaymentMode.CREDIT
+            or record.effective_balance_amount > 0
+        )
+    ]
+
+
 def normalize_sales_sync_dates(date_from=None, date_to=None):
     if date_from and not date_to:
         date_to = date_from
@@ -215,21 +257,31 @@ def format_sqlserver_date_literal(value):
     return "{d '" + value.isoformat() + "'}"
 
 
-def build_sales_sync_query(date_from=None, date_to=None):
+def build_sales_sync_query(date_from=None, date_to=None, source_sale_numbers=None):
     date_from, date_to = normalize_sales_sync_dates(date_from, date_to)
+    source_sale_numbers = normalize_source_sale_numbers(source_sale_numbers)
     query_parts = [SALES_SYNC_SELECT]
+    where_clauses = []
 
     if date_from:
-        query_parts.append(
-            "WHERE CAST(SalMas_Date AS date) >= "
+        date_clauses = [
+            "CAST(SalMas_Date AS date) >= "
             f"{format_sqlserver_date_literal(date_from)}"
+        ]
+        if date_to:
+            date_clauses.append(
+                "CAST(SalMas_Date AS date) <= "
+                f"{format_sqlserver_date_literal(date_to)}"
+            )
+        where_clauses.append(f"({' AND '.join(date_clauses)})")
+
+    if source_sale_numbers:
+        where_clauses.append(
+            "SalMas_SNo IN (" + ", ".join(str(number) for number in source_sale_numbers) + ")"
         )
-    if date_to:
-        where_or_and = "AND" if date_from else "WHERE"
-        query_parts.append(
-            f"{where_or_and} CAST(SalMas_Date AS date) <= "
-            f"{format_sqlserver_date_literal(date_to)}"
-        )
+
+    if where_clauses:
+        query_parts.append("WHERE " + " OR ".join(where_clauses))
 
     query_parts.append("ORDER BY SalMas_SNo")
     return "\n".join(query_parts), []
@@ -301,10 +353,24 @@ def upsert_sales_batch(records, stats):
     )
 
 
-def sync_sales_from_sqlserver(date_from=None, date_to=None, batch_size=2000):
+def sync_sales_from_sqlserver(
+    date_from=None,
+    date_to=None,
+    batch_size=2000,
+    include_credit_recheck=True,
+):
     connection_string = build_sqlserver_connection_string()
     stats = SalesSyncStats()
-    query, parameters = build_sales_sync_query(date_from=date_from, date_to=date_to)
+    credit_sale_numbers = (
+        get_credit_sale_numbers_for_resync()
+        if include_credit_recheck
+        else []
+    )
+    query, parameters = build_sales_sync_query(
+        date_from=date_from,
+        date_to=date_to,
+        source_sale_numbers=credit_sale_numbers,
+    )
 
     try:
         connection = pyodbc.connect(
