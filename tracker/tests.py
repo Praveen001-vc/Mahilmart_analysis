@@ -67,7 +67,9 @@ from .sales_sync import (
     build_sales_sync_query,
     build_sqlserver_connection_string,
     classify_sales_payment_mode,
+    get_credit_sale_numbers_for_resync,
     sanitize_sales_amounts,
+    sync_sales_from_sqlserver,
 )
 from .supplier_sync import SupplierSyncStats, sync_suppliers_from_rows
 from .user_sync import (
@@ -188,158 +190,225 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Admin Role")
         self.assertContains(response, "Dashboard")
 
-    def test_reports_page_shows_requested_summary_totals(self):
+    def test_reports_page_shows_sales_only_sections_and_recent_summaries(self):
         self.client.force_login(self.user)
-        supplier = Supplier.objects.create(
-            user=self.user,
-            name="Reports Supplier",
-            contact_person="Kumar",
-            phone_number="9876500042",
+        today = date.today()
+        this_week_day = today - timedelta(days=1)
+        this_month_day = max(today.replace(day=1), today - timedelta(days=3))
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1001,
+            bill_no="RPT-1001",
+            sale_date=today,
+            customer_name="Today Customer",
+            net_amount=Decimal("500.00"),
+            received_amount=Decimal("500.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
         )
-        IncomeRecord.objects.create(
-            user=self.user,
-            title="Counter Sales",
-            source="Mahilmart Store",
-            category="Retail",
-            amount=Decimal("1200.00"),
-            transaction_date=date.today(),
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1002,
+            bill_no="RPT-1002",
+            sale_date=this_week_day,
+            customer_name="Week Customer",
+            net_amount=Decimal("300.00"),
+            received_amount=Decimal("300.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CARD,
         )
-        ExpenseRecord.objects.create(
-            user=self.user,
-            title="Shop Expense",
-            supplier=supplier,
-            vendor=supplier.name,
-            category="Operations",
-            amount=Decimal("300.00"),
-            transaction_date=date.today(),
-        )
-        PurchaseRecord.objects.create(
-            user=self.user,
-            supplier=supplier,
-            supplier_name="",
-            purchase_type="Groceries",
-            invoice_number="INV-REPORT-1",
-            total_amount=Decimal("450.00"),
-            paid_amount=Decimal("200.00"),
-            transaction_date=date.today(),
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1003,
+            bill_no="RPT-1003",
+            sale_date=this_month_day,
+            customer_name="Month Customer",
+            net_amount=Decimal("200.00"),
+            received_amount=Decimal("150.00"),
+            balance_amount=Decimal("50.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
         )
 
         response = self.client.get(reverse("reports"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["total_sales"], Decimal("1200.00"))
-        self.assertEqual(response.context["total_expenses"], Decimal("300.00"))
-        self.assertEqual(response.context["net_profit"], Decimal("900.00"))
-        self.assertEqual(response.context["total_purchases"], Decimal("450.00"))
-        self.assertEqual(response.context["total_suppliers"], 1)
-        self.assertContains(response, "Total Sales")
-        self.assertContains(response, "Total Purchases")
-        self.assertContains(response, "Net Profit")
-        self.assertNotContains(response, "<th>Balance</th>", html=False)
+        self.assertEqual(response.context["today_summary"]["total_amount"], Decimal("500.00"))
+        self.assertEqual(response.context["week_summary"]["total_amount"], Decimal("1000.00"))
+        self.assertEqual(response.context["month_summary"]["total_amount"], Decimal("1000.00"))
+        self.assertEqual(response.context["sales_report_filters"]["range"], "month")
+        self.assertEqual(response.context["filtered_summary"]["total_amount"], Decimal("1000.00"))
+        self.assertContains(response, "Daily sales")
+        self.assertContains(response, "Weekly sales")
+        self.assertContains(response, "Monthly sales")
+        self.assertContains(response, "Filter sales report")
+        self.assertContains(response, "Download Excel")
+        self.assertContains(response, "Payment method split")
+        self.assertContains(response, "Top-selling products")
+        self.assertContains(response, "Category-wise sales")
+        self.assertNotContains(response, "Net Profit")
+        self.assertNotContains(response, "Reconciliation Summary")
 
-    def test_reports_page_includes_daily_settlement_income(self):
+    def test_reports_page_builds_payment_split_from_sales_ledger(self):
         self.client.force_login(self.user)
-        IncomeRecord.objects.create(
-            user=self.user,
-            title="Manual Income",
-            source="Counter Sale",
-            category="Retail",
-            amount=Decimal("250.00"),
-            transaction_date=date.today(),
+        today = date.today()
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1101,
+            bill_no="PAY-1101",
+            sale_date=today,
+            customer_name="Cash Customer",
+            net_amount=Decimal("500.00"),
+            received_amount=Decimal("500.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
         )
-        DailyCashSettlement.objects.create(
-            user=self.user,
-            settlement_date=date.today(),
-            opening_balance=Decimal("0.00"),
-            gpay_settled=Decimal("700.00"),
-            cash_settled=Decimal("300.00"),
-            expense_amount=Decimal("50.00"),
-            closing_balance=Decimal("100.00"),
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1102,
+            bill_no="PAY-1102",
+            sale_date=today,
+            customer_name="Digital Customer",
+            net_amount=Decimal("300.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1103,
+            bill_no="PAY-1103",
+            sale_date=today,
+            customer_name="Credit Customer",
+            net_amount=Decimal("250.00"),
+            received_amount=Decimal("100.00"),
+            balance_amount=Decimal("150.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1104,
+            bill_no="PAY-1104",
+            sale_date=today,
+            customer_name="Split Customer",
+            net_amount=Decimal("400.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("0.00"),
+            split_cash_amount=Decimal("150.00"),
+            split_card_amount=Decimal("200.00"),
+            payment_mode=SalesPaymentMode.CASH,
         )
 
         response = self.client.get(reverse("reports"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["total_sales"], Decimal("1400.00"))
-        self.assertEqual(response.context["net_profit"], Decimal("1400.00"))
-        self.assertEqual(
-            response.context["monthly_overview"][-1]["income"],
-            Decimal("1400.00"),
-        )
-        self.assertEqual(
-            response.context["top_income_categories"][0]["category"],
-            "Daily Settlement",
-        )
-        self.assertContains(response, "Daily Settlement")
+        split_lookup = {
+            row["key"]: row["amount"] for row in response.context["payment_split_rows"]
+        }
+        self.assertEqual(split_lookup["cash"], Decimal("750.00"))
+        self.assertEqual(split_lookup["upi"], Decimal("500.00"))
+        self.assertEqual(split_lookup["credit"], Decimal("200.00"))
+        self.assertEqual(response.context["payment_split_total"], Decimal("1450.00"))
+        self.assertContains(response, "UPI / Card")
 
-    def test_reports_excel_download_exports_selected_month_records(self):
+    def test_reports_page_filters_sales_by_range_and_payment_mode(self):
         self.client.force_login(self.user)
-        selected_month = date.today().replace(day=1)
-        previous_month_date = selected_month - timedelta(days=1)
-        supplier = Supplier.objects.create(
-            user=self.user,
-            name="Excel Reports Supplier",
-            contact_person="Meena",
-            phone_number="9876500099",
+        today = date.today()
+        previous_month_date = today.replace(day=1) - timedelta(days=1)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1201,
+            bill_no="CHART-1201",
+            sale_date=today,
+            customer_name="Today Chart",
+            net_amount=Decimal("420.00"),
+            received_amount=Decimal("420.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
         )
-        IncomeRecord.objects.create(
-            user=self.user,
-            title="Selected Month Income",
-            source="Counter Sale",
-            category="Retail",
-            amount=Decimal("250.00"),
-            transaction_date=selected_month,
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1202,
+            bill_no="CHART-1202",
+            sale_date=previous_month_date,
+            customer_name="Month Chart",
+            net_amount=Decimal("310.00"),
+            received_amount=Decimal("310.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CARD,
         )
-        IncomeRecord.objects.create(
-            user=self.user,
-            title="Old Income",
-            source="Old Counter",
-            category="Retail",
-            amount=Decimal("999.00"),
-            transaction_date=previous_month_date,
-        )
-        ExpenseRecord.objects.create(
-            user=self.user,
-            title="Selected Month Expense",
-            supplier=supplier,
-            vendor=supplier.name,
-            category="Operations",
-            amount=Decimal("100.00"),
-            transaction_date=selected_month,
-        )
-        PurchaseRecord.objects.create(
-            user=self.user,
-            supplier=supplier,
-            supplier_name="",
-            purchase_type="Groceries",
-            invoice_number="INV-EXCEL-1",
-            total_amount=Decimal("450.00"),
-            paid_amount=Decimal("200.00"),
-            transaction_date=selected_month,
-        )
-        DailyCashSettlement.objects.create(
-            user=self.user,
-            settlement_date=selected_month,
-            opening_balance=Decimal("0.00"),
-            gpay_settled=Decimal("700.00"),
-            cash_settled=Decimal("300.00"),
-            expense_amount=Decimal("50.00"),
-            closing_balance=Decimal("100.00"),
-        )
-        DailyCashSettlement.objects.create(
-            user=self.user,
-            settlement_date=previous_month_date,
-            opening_balance=Decimal("0.00"),
-            gpay_settled=Decimal("100.00"),
-            cash_settled=Decimal("100.00"),
-            expense_amount=Decimal("0.00"),
-            closing_balance=Decimal("0.00"),
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1203,
+            bill_no="CHART-1203",
+            sale_date=today,
+            customer_name="Card Filter",
+            net_amount=Decimal("125.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CARD,
         )
 
         response = self.client.get(
             reverse("reports"),
             {
-                "report_month": selected_month.strftime("%Y-%m"),
+                "range": "custom",
+                "start_date": today.isoformat(),
+                "end_date": today.isoformat(),
+                "payment_mode": SalesPaymentMode.CARD,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["sales_report_filters"]["range"], "custom")
+        self.assertEqual(
+            response.context["sales_report_filters"]["payment_mode"],
+            SalesPaymentMode.CARD,
+        )
+        self.assertEqual(response.context["filtered_summary"]["count"], 1)
+        self.assertEqual(
+            response.context["filtered_summary"]["total_amount"],
+            Decimal("125.00"),
+        )
+        self.assertEqual(
+            response.context["sales_charts"][0]["rows"][-1]["total"],
+            Decimal("125.00"),
+        )
+        self.assertContains(response, "Custom range")
+        self.assertContains(response, "Current synced sales only store bill totals.")
+        self.assertContains(response, "does not include product categories")
+
+    def test_reports_excel_download_exports_filtered_sales_report(self):
+        self.client.force_login(self.user)
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        previous_month_date = today.replace(day=1) - timedelta(days=1)
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1301,
+            bill_no="EXCEL-1301",
+            sale_date=today,
+            customer_name="Excel Today",
+            net_amount=Decimal("420.00"),
+            received_amount=Decimal("420.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1302,
+            bill_no="EXCEL-1302",
+            sale_date=yesterday,
+            customer_name="Excel Yesterday",
+            net_amount=Decimal("310.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=1303,
+            bill_no="EXCEL-1303",
+            sale_date=previous_month_date,
+            customer_name="Excel Old",
+            net_amount=Decimal("999.00"),
+            received_amount=Decimal("999.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
+        )
+
+        response = self.client.get(
+            reverse("reports"),
+            {
+                "range": "custom",
+                "start_date": yesterday.isoformat(),
+                "end_date": today.isoformat(),
                 "export": "excel",
             },
         )
@@ -350,14 +419,14 @@ class TrackerViewsTests(TestCase):
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         self.assertIn(
-            f'mahilmart_report_{selected_month.strftime("%Y-%m")}.xlsx',
+            f"mahilmart_sales_report_{yesterday:%Y%m%d}_{today:%Y%m%d}.xlsx",
             response["Content-Disposition"],
         )
 
         workbook = load_workbook(BytesIO(response.content), data_only=True)
         self.assertEqual(
             workbook.sheetnames,
-            ["Summary", "Income", "Expenses", "Purchases", "Daily Settlement"],
+            ["Summary", "Daily Sales", "Weekly Sales", "Monthly Sales", "Payment Split", "Sales Ledger"],
         )
 
         summary_sheet = workbook["Summary"]
@@ -366,20 +435,22 @@ class TrackerViewsTests(TestCase):
             for row in summary_sheet.iter_rows(min_row=4, max_col=2, values_only=True)
             if row[0]
         }
-        self.assertEqual(summary_values["Selected Month"], selected_month.strftime("%B %Y"))
-        self.assertEqual(summary_values["Daily Settlement Income"], 1150)
-        self.assertEqual(summary_values["Total Sales"], 1400)
-        self.assertEqual(summary_values["Total Expenses"], 100)
-        self.assertEqual(summary_values["Total Purchases"], 450)
+        self.assertEqual(summary_values["Range"], "Custom range")
+        self.assertEqual(summary_values["Start Date"], yesterday.isoformat())
+        self.assertEqual(summary_values["End Date"], today.isoformat())
+        self.assertEqual(summary_values["Bill Count"], 2)
+        self.assertEqual(summary_values["Total Sales"], 730)
+        self.assertEqual(summary_values["Cash Collection"], 420)
+        self.assertEqual(summary_values["UPI / Card Collection"], 310)
 
-        income_titles = [
+        ledger_bills = [
             row[1]
-            for row in workbook["Income"].iter_rows(min_row=2, values_only=True)
+            for row in workbook["Sales Ledger"].iter_rows(min_row=2, values_only=True)
             if row[1]
         ]
-        self.assertIn("Selected Month Income", income_titles)
-        self.assertIn("Daily Settlement Income", income_titles)
-        self.assertNotIn("Old Income", income_titles)
+        self.assertIn("EXCEL-1301", ledger_bills)
+        self.assertIn("EXCEL-1302", ledger_bills)
+        self.assertNotIn("EXCEL-1303", ledger_bills)
 
     def test_reconciliation_page_shows_income_and_expense_in_one_place(self):
         self.client.force_login(self.user)
@@ -3547,14 +3618,14 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Reconciliation History")
         self.assertContains(response, reverse("reconciliation"))
 
-    def test_reports_page_links_to_reconciliation_summary_page(self):
+    def test_reports_page_does_not_show_old_reconciliation_link(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("reports"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Reconciliation Summary")
-        self.assertContains(response, reverse("reconciliation-summary"))
+        self.assertNotContains(response, "Reconciliation Summary")
+        self.assertNotContains(response, reverse("reconciliation-summary"))
 
     def test_admin_can_update_user_module_permission_from_settings_page(self):
         permission_record = UserModulePermission.objects.create(user=self.user)
@@ -4818,6 +4889,107 @@ class SalesSyncUnitTests(TestCase):
         self.assertIn("CAST(SalMas_Date AS date) >= {d '2025-11-01'}", query)
         self.assertIn("CAST(SalMas_Date AS date) <= {d '2025-11-09'}", query)
         self.assertEqual(params, [])
+
+    def test_build_sales_sync_query_includes_open_credit_sale_numbers(self):
+        query, params = build_sales_sync_query(
+            date_from=date(2025, 11, 1),
+            date_to=date(2025, 11, 9),
+            source_sale_numbers=[777, "888", 777, "bad"],
+        )
+
+        self.assertIn("CAST(SalMas_Date AS date) >= {d '2025-11-01'}", query)
+        self.assertIn("CAST(SalMas_Date AS date) <= {d '2025-11-09'}", query)
+        self.assertIn("SalMas_SNo IN (777, 888)", query)
+        self.assertIn(" OR ", query)
+        self.assertEqual(params, [])
+
+    def test_get_credit_sale_numbers_for_resync_skips_manual_split_credit_rows(self):
+        SalesLedgerRecord.objects.create(
+            source_sale_no=801,
+            bill_no="CREDIT-801",
+            sale_date=date.today(),
+            customer_name="Pending Credit",
+            net_amount=Decimal("900.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("900.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=802,
+            bill_no="PAID-802",
+            sale_date=date.today(),
+            customer_name="Paid Credit",
+            net_amount=Decimal("500.00"),
+            received_amount=Decimal("500.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=803,
+            bill_no="SPLIT-803",
+            sale_date=date.today(),
+            customer_name="Fully Split",
+            net_amount=Decimal("400.00"),
+            received_amount=Decimal("0.00"),
+            balance_amount=Decimal("400.00"),
+            split_cash_amount=Decimal("200.00"),
+            split_card_amount=Decimal("200.00"),
+            payment_mode=SalesPaymentMode.CREDIT,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=804,
+            bill_no="CASH-804",
+            sale_date=date.today(),
+            customer_name="Cash Bill",
+            net_amount=Decimal("250.00"),
+            received_amount=Decimal("250.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CASH,
+        )
+
+        self.assertEqual(get_credit_sale_numbers_for_resync(), [801, 802])
+
+    @patch("tracker.sales_sync.build_sqlserver_connection_string", return_value="Driver=stub;")
+    @patch("tracker.sales_sync.get_credit_sale_numbers_for_resync", return_value=[901])
+    def test_sync_sales_from_sqlserver_rechecks_old_credit_bills(
+        self,
+        _credit_recheck_mock,
+        _connection_string_mock,
+    ):
+        class FakeCursor:
+            def __init__(self):
+                self.executed_query = ""
+
+            def execute(self, query, params=None):
+                self.executed_query = query
+                return self
+
+            def fetchmany(self, _batch_size):
+                return []
+
+        class FakeConnection:
+            def __init__(self):
+                self.cursor_instance = FakeCursor()
+                self.closed = False
+
+            def cursor(self):
+                return self.cursor_instance
+
+            def close(self):
+                self.closed = True
+
+        fake_connection = FakeConnection()
+        fake_pyodbc = SimpleNamespace(connect=lambda *_args, **_kwargs: fake_connection)
+
+        with patch("tracker.sales_sync.pyodbc", fake_pyodbc):
+            stats = sync_sales_from_sqlserver(
+                date_from=date(2025, 11, 1),
+                date_to=date(2025, 11, 1),
+            )
+
+        self.assertEqual(stats.fetched_count, 0)
+        self.assertIn("SalMas_SNo IN (901)", fake_connection.cursor_instance.executed_query)
+        self.assertTrue(fake_connection.closed)
 
     def test_classify_sales_payment_mode_uses_source_type_for_card(self):
         self.assertEqual(

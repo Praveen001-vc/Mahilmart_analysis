@@ -15,6 +15,7 @@ from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q, Sum
+from django.db.models.functions import TruncMonth, TruncWeek
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
@@ -451,43 +452,54 @@ def get_reporting_income_total(income_queryset, settlement_queryset):
 def build_reporting_monthly_overview(user, months=6, anchor_date=None):
     anchor_date = anchor_date or date.today()
     month_anchor = anchor_date.replace(day=1)
+    window_start = _shift_month(month_anchor, months - 1)
+    window_end = min(_next_month(month_anchor), anchor_date + timedelta(days=1))
     income_queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user)
     expense_queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user)
     settlement_queryset = filter_queryset_by_role(
         DailyCashSettlement.objects.all(),
         user,
     )
+    income_totals = build_monthly_total_map(
+        income_queryset,
+        date_field="transaction_date",
+        amount_field="amount",
+        start_date=window_start,
+        end_date=window_end,
+    )
+    expense_totals = build_monthly_total_map(
+        expense_queryset,
+        date_field="transaction_date",
+        amount_field="amount",
+        start_date=window_start,
+        end_date=window_end,
+    )
+    settlement_totals = build_monthly_total_map(
+        settlement_queryset,
+        date_field="settlement_date",
+        amount_field="actual_sales",
+        start_date=window_start,
+        end_date=window_end,
+    )
     rows = []
 
     for months_back in range(months - 1, -1, -1):
         month_start = _shift_month(month_anchor, months_back)
-        month_end = _next_month(month_start)
-        if month_start.year == anchor_date.year and month_start.month == anchor_date.month:
-            month_end = anchor_date + timedelta(days=1)
-
-        income_total = _sum_amount(
-            income_queryset.filter(
-                transaction_date__gte=month_start,
-                transaction_date__lt=month_end,
-            )
-        ) + _sum_settlement_income(
-            settlement_queryset.filter(
-                settlement_date__gte=month_start,
-                settlement_date__lt=month_end,
-            )
+        income_total = income_totals.get(month_start, Decimal("0.00")) + settlement_totals.get(
+            month_start,
+            Decimal("0.00"),
         )
-        expense_total = _sum_amount(
-            expense_queryset.filter(
-                transaction_date__gte=month_start,
-                transaction_date__lt=month_end,
-            )
-        )
+        expense_total = expense_totals.get(month_start, Decimal("0.00"))
+        balance = income_total - expense_total
         rows.append(
             {
                 "label": month_start.strftime("%b %Y"),
                 "income": income_total,
                 "expense": expense_total,
-                "balance": income_total - expense_total,
+                "balance": balance,
+                "margin": round((balance / income_total) * 100, 1)
+                if income_total
+                else Decimal("0.0"),
             }
         )
 
@@ -546,6 +558,49 @@ def get_report_month_bounds(report_month):
     return month_start, _next_month(month_start)
 
 
+def get_report_month_details(report_month):
+    month_start, month_end = get_report_month_bounds(report_month)
+    today = date.today()
+    is_current_month = month_start.year == today.year and month_start.month == today.month
+    if is_current_month:
+        return {
+            "month_start": month_start,
+            "month_end": month_end,
+            "period_end": today + timedelta(days=1),
+            "anchor_date": today,
+            "is_partial": True,
+            "scope_label": f"Month to date through {today:%B} {today.day}, {today.year}",
+        }
+    return {
+        "month_start": month_start,
+        "month_end": month_end,
+        "period_end": month_end,
+        "anchor_date": month_end - timedelta(days=1),
+        "is_partial": False,
+        "scope_label": f"Full month of {report_month:%B %Y}",
+    }
+
+
+def build_monthly_total_map(queryset, date_field, amount_field, start_date, end_date):
+    filters = {
+        f"{date_field}__gte": start_date,
+        f"{date_field}__lt": end_date,
+    }
+    monthly_totals = {}
+    for row in (
+        queryset.filter(**filters)
+        .annotate(month=TruncMonth(date_field))
+        .values("month")
+        .annotate(total=Sum(amount_field))
+        .order_by("month")
+    ):
+        month_value = row["month"]
+        if hasattr(month_value, "date"):
+            month_value = month_value.date()
+        monthly_totals[month_value] = row["total"] or Decimal("0.00")
+    return monthly_totals
+
+
 def autosize_report_worksheet(worksheet):
     for column_cells in worksheet.columns:
         column_letter = get_column_letter(column_cells[0].column)
@@ -569,153 +624,96 @@ def style_report_export_sheet(worksheet, header_row=1):
     autosize_report_worksheet(worksheet)
 
 
-def build_reports_excel_response(user, report_month):
-    month_start, month_end = get_report_month_bounds(report_month)
-    month_label = report_month.strftime("%B %Y")
-    manual_income_queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user).filter(
-        transaction_date__gte=month_start,
-        transaction_date__lt=month_end,
-    )
-    expense_queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user).filter(
-        transaction_date__gte=month_start,
-        transaction_date__lt=month_end,
-    ).select_related("supplier")
-    purchase_queryset = get_purchase_base_queryset(user).filter(
-        transaction_date__gte=month_start,
-        transaction_date__lt=month_end,
-    )
-    settlement_queryset = filter_queryset_by_role(
-        DailyCashSettlement.objects.all(),
-        user,
-    ).filter(
-        settlement_date__gte=month_start,
-        settlement_date__lt=month_end,
-    )
-    manual_income_total = _sum_amount(manual_income_queryset)
-    settlement_income_total = _sum_settlement_income(settlement_queryset)
-    total_sales = manual_income_total + settlement_income_total
-    total_expenses = _sum_amount(expense_queryset)
-    total_purchases = (
-        purchase_queryset.aggregate(total=Sum("total_amount"))["total"] or Decimal("0.00")
-    )
-    income_entries = build_income_ledger_entries_for_period(user, month_start, month_end)
-
+def build_reports_excel_response(user, params):
+    workspace = build_sales_report_workspace(user, params, include_export_records=True)
+    filter_values = workspace["sales_report_filters"]
+    filtered_summary = workspace["filtered_summary"]
+    payment_split_lookup = workspace["payment_split_lookup"]
     workbook = Workbook()
     summary_sheet = workbook.active
     summary_sheet.title = "Summary"
-    summary_sheet["A1"] = "Mahilmart Monthly Report"
+    summary_sheet["A1"] = "Mahilmart Sales Report"
     summary_sheet["A1"].font = Font(bold=True, size=14)
     summary_sheet.append([])
     summary_sheet.append(["Metric", "Value"])
     for label, value in (
-        ("Selected Month", month_label),
-        ("Manual Income", float(manual_income_total)),
-        ("Daily Settlement Income", float(settlement_income_total)),
-        ("Total Sales", float(total_sales)),
-        ("Total Expenses", float(total_expenses)),
-        ("Net Profit", float(total_sales - total_expenses)),
-        ("Total Purchases", float(total_purchases)),
-        ("Income Entries", len(income_entries)),
-        ("Expense Entries", expense_queryset.count()),
-        ("Purchase Entries", purchase_queryset.count()),
-        ("Settlement Entries", settlement_queryset.count()),
+        ("Range", filter_values["range_label"]),
+        ("Start Date", filter_values["start_date"].isoformat()),
+        ("End Date", filter_values["end_date"].isoformat()),
+        ("Payment Mode", filter_values["payment_mode"] or "All"),
+        ("Scope", filter_values["scope_label"]),
+        ("Bill Count", filtered_summary["count"]),
+        ("Total Sales", float(filtered_summary["total_amount"])),
+        ("Received Amount", float(filtered_summary["received_amount"])),
+        ("Pending Credit", float(filtered_summary["balance_amount"])),
+        ("Average Bill", float(workspace["average_bill_amount"])),
+        ("Cash Collection", float(payment_split_lookup.get("cash", Decimal("0.00")))),
+        ("UPI / Card Collection", float(payment_split_lookup.get("upi", Decimal("0.00")))),
+        ("Credit Outstanding", float(payment_split_lookup.get("credit", Decimal("0.00")))),
+        ("Split Bills", filtered_summary["split_bill_count"]),
     ):
         summary_sheet.append([label, value])
     style_report_export_sheet(summary_sheet, header_row=3)
 
-    income_sheet = workbook.create_sheet("Income")
-    income_sheet.append(
-        ["Date", "Title", "Source", "Category", "Payment Method", "Amount", "Entry Type"]
-    )
-    for entry in income_entries:
-        income_sheet.append(
+    for sheet_name, chart in (
+        ("Daily Sales", workspace["sales_charts"][0]),
+        ("Weekly Sales", workspace["sales_charts"][1]),
+        ("Monthly Sales", workspace["sales_charts"][2]),
+    ):
+        chart_sheet = workbook.create_sheet(sheet_name)
+        chart_sheet.append(["Label", "Short Label", "Bill Count", "Sales Total"])
+        for row in chart["rows"]:
+            chart_sheet.append(
+                [
+                    row["label"],
+                    row["short_label"],
+                    row["count"],
+                    float(row["total"]),
+                ]
+            )
+        style_report_export_sheet(chart_sheet)
+
+    payment_split_sheet = workbook.create_sheet("Payment Split")
+    payment_split_sheet.append(["Payment Type", "Amount", "Share %"])
+    for row in workspace["payment_split_rows"]:
+        payment_split_sheet.append(
             [
-                entry["transaction_date"].isoformat() if entry["transaction_date"] else "",
-                entry["title"],
-                entry["source"],
-                entry["category"],
-                entry["payment_method"],
-                float(entry["amount"]),
-                entry["entry_type"].title(),
+                row["label"],
+                float(row["amount"]),
+                float(row["share"]),
             ]
         )
-    style_report_export_sheet(income_sheet)
+    style_report_export_sheet(payment_split_sheet)
 
-    expense_sheet = workbook.create_sheet("Expenses")
-    expense_sheet.append(
-        ["Date", "Purpose", "Vendor", "Category", "Payment Method", "Amount", "Notes"]
-    )
-    for record in expense_queryset.order_by("-transaction_date", "-created_at", "-pk"):
-        expense_sheet.append(
-            [
-                record.transaction_date.isoformat() if record.transaction_date else "",
-                record.title,
-                record.supplier_display,
-                record.category,
-                record.payment_method,
-                float(record.amount),
-                record.notes,
-            ]
-        )
-    style_report_export_sheet(expense_sheet)
-
-    purchase_sheet = workbook.create_sheet("Purchases")
-    purchase_sheet.append(
+    ledger_sheet = workbook.create_sheet("Sales Ledger")
+    ledger_sheet.append(
         [
-            "Date",
-            "Supplier",
-            "Purchase Type",
-            "Invoice Number",
-            "Total Amount",
-            "Paid Amount",
-            "Pending Amount",
-            "Notes",
+            "Sale Date",
+            "Bill No",
+            "Customer Name",
+            "Payment Mode",
+            "Net Amount",
+            "Received Amount",
+            "Balance Amount",
+            "Split Cash",
+            "Split Card",
         ]
     )
-    for record in purchase_queryset.order_by("-transaction_date", "-created_at", "-pk"):
-        purchase_sheet.append(
+    for record in workspace["export_records"]:
+        ledger_sheet.append(
             [
-                record.transaction_date.isoformat() if record.transaction_date else "",
-                record.supplier_name or (record.supplier.name if record.supplier else ""),
-                record.purchase_type,
-                record.invoice_number,
-                float(record.total_amount),
-                float(record.paid_amount),
-                float(record.pending_amount),
-                record.notes,
+                record.sale_date.isoformat() if record.sale_date else "",
+                record.bill_no,
+                record.customer_name or "Walk-in Customer",
+                record.display_payment_mode,
+                float(record.net_amount),
+                float(record.effective_received_amount),
+                float(record.effective_balance_amount),
+                float(record.split_cash_amount),
+                float(record.split_card_amount),
             ]
         )
-    style_report_export_sheet(purchase_sheet)
-
-    settlement_sheet = workbook.create_sheet("Daily Settlement")
-    settlement_sheet.append(
-        [
-            "Date",
-            "Opening Balance",
-            "GPay Settled",
-            "Cash Settled",
-            "Expense Amount",
-            "Closing Balance",
-            "Actual Sales",
-            "Cash Settled To",
-            "Notes",
-        ]
-    )
-    for settlement in settlement_queryset.order_by("-settlement_date", "-updated_at", "-pk"):
-        settlement_sheet.append(
-            [
-                settlement.settlement_date.isoformat(),
-                float(settlement.opening_balance),
-                float(settlement.gpay_settled),
-                float(settlement.cash_settled),
-                float(settlement.expense_amount),
-                float(settlement.closing_balance),
-                float(settlement.actual_sales),
-                settlement.cash_settled_to,
-                settlement.notes,
-            ]
-        )
-    style_report_export_sheet(settlement_sheet)
+    style_report_export_sheet(ledger_sheet)
 
     output = BytesIO()
     workbook.save(output)
@@ -726,7 +724,8 @@ def build_reports_excel_response(user, report_month):
         ),
     )
     response["Content-Disposition"] = (
-        f'attachment; filename="mahilmart_report_{report_month:%Y-%m}.xlsx"'
+        "attachment; filename="
+        f'"mahilmart_sales_report_{filter_values["start_date"]:%Y%m%d}_{filter_values["end_date"]:%Y%m%d}.xlsx"'
     )
     return response
 
@@ -1507,6 +1506,293 @@ def summarize_sales_records(records):
             Decimal("0.00"),
         ),
     }
+
+
+def get_sales_report_base_queryset(user):
+    return SalesLedgerRecord.objects.filter(
+        is_cancelled=False,
+        sale_date__isnull=False,
+    )
+
+
+def summarize_sales_queryset_for_range(queryset, start_date, end_date):
+    filtered_queryset = queryset.filter(
+        sale_date__gte=start_date,
+        sale_date__lte=end_date,
+    )
+    aggregates = filtered_queryset.aggregate(total_amount=Sum("net_amount"))
+    return {
+        "count": filtered_queryset.count(),
+        "total_amount": aggregates["total_amount"] or Decimal("0.00"),
+    }
+
+
+def get_sales_report_filter_values(params):
+    today = date.today()
+    range_key = (params.get("range") or "").strip().lower() or "month"
+    raw_start_date = (params.get("start_date") or "").strip()
+    raw_end_date = (params.get("end_date") or "").strip()
+    payment_mode = (params.get("payment_mode") or "").strip()
+    start_date = parse_date(raw_start_date)
+    end_date = parse_date(raw_end_date)
+
+    preset_labels = {
+        "today": "Today",
+        "week": "This week",
+        "month": "This month",
+        "last30": "Last 30 days",
+        "custom": "Custom range",
+    }
+
+    if range_key == "today":
+        start_date = today
+        end_date = today
+    elif range_key == "week":
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+    elif range_key == "last30":
+        start_date = today - timedelta(days=29)
+        end_date = today
+    elif range_key == "custom":
+        if start_date is None and end_date is None:
+            start_date = today.replace(day=1)
+            end_date = today
+        elif start_date is None:
+            start_date = end_date
+        elif end_date is None:
+            end_date = start_date
+    else:
+        range_key = "month"
+        start_date = today.replace(day=1)
+        end_date = today
+
+    if start_date is None:
+        start_date = today.replace(day=1)
+    if end_date is None:
+        end_date = today
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    scope_label = (
+        f"{preset_labels.get(range_key, 'Filtered range')} "
+        f"({start_date:%d %b %Y} to {end_date:%d %b %Y})"
+    )
+    if range_key == "custom":
+        scope_label = f"Custom range ({start_date:%d %b %Y} to {end_date:%d %b %Y})"
+
+    return {
+        "range": range_key,
+        "start_date": start_date,
+        "end_date": end_date,
+        "payment_mode": payment_mode,
+        "scope_label": scope_label,
+        "range_label": preset_labels.get(range_key, "Filtered range"),
+        "has_active_filters": range_key != "month" or bool(payment_mode),
+    }
+
+
+def apply_sales_report_filters(queryset, filter_values):
+    queryset = queryset.filter(
+        sale_date__gte=filter_values["start_date"],
+        sale_date__lte=filter_values["end_date"],
+    )
+    payment_mode = filter_values["payment_mode"]
+    if payment_mode == SPLIT_PAYMENT_MODE_FILTER:
+        queryset = queryset.filter(
+            split_cash_amount__gt=Decimal("0.00"),
+            split_card_amount__gt=Decimal("0.00"),
+        )
+    elif payment_mode:
+        queryset = queryset.filter(payment_mode=payment_mode)
+    return queryset
+
+
+def build_sales_chart_rows(queryset, period, max_points=12):
+    if period == "day":
+        chart_title = "Daily sales"
+        base_rows = [
+            {
+                "bucket": row["sale_date"],
+                "label": row["sale_date"].strftime("%d %b %Y"),
+                "short_label": row["sale_date"].strftime("%d %b"),
+                "total": row["total"] or Decimal("0.00"),
+                "count": row["count"] or 0,
+            }
+            for row in (
+                queryset.values("sale_date")
+                .annotate(total=Sum("net_amount"), count=Count("source_sale_no"))
+                .order_by("sale_date")
+            )
+        ]
+    elif period == "week":
+        chart_title = "Weekly sales"
+        base_rows = []
+        for row in (
+            queryset.annotate(bucket=TruncWeek("sale_date"))
+            .values("bucket")
+            .annotate(total=Sum("net_amount"), count=Count("source_sale_no"))
+            .order_by("bucket")
+        ):
+            bucket_value = row["bucket"]
+            if hasattr(bucket_value, "date"):
+                bucket_value = bucket_value.date()
+            base_rows.append(
+                {
+                    "bucket": bucket_value,
+                    "label": f"Week of {bucket_value:%d %b %Y}",
+                    "short_label": bucket_value.strftime("%d %b"),
+                    "total": row["total"] or Decimal("0.00"),
+                    "count": row["count"] or 0,
+                }
+            )
+    else:
+        chart_title = "Monthly sales"
+        base_rows = []
+        for row in (
+            queryset.annotate(bucket=TruncMonth("sale_date"))
+            .values("bucket")
+            .annotate(total=Sum("net_amount"), count=Count("source_sale_no"))
+            .order_by("bucket")
+        ):
+            bucket_value = row["bucket"]
+            if hasattr(bucket_value, "date"):
+                bucket_value = bucket_value.date()
+            base_rows.append(
+                {
+                    "bucket": bucket_value,
+                    "label": bucket_value.strftime("%B %Y"),
+                    "short_label": bucket_value.strftime("%b %Y"),
+                    "total": row["total"] or Decimal("0.00"),
+                    "count": row["count"] or 0,
+                }
+            )
+
+    rows = base_rows[-max_points:]
+    return finalize_sales_chart_rows(
+        rows,
+        title=chart_title,
+        scope_label=f"Filtered range | showing {len(rows)} bucket{'' if len(rows) == 1 else 's'}",
+    )
+
+
+def finalize_sales_chart_rows(rows, title, scope_label):
+    highest_total = max(
+        [row["total"] for row in rows],
+        default=Decimal("1.00"),
+    )
+    if highest_total == 0:
+        highest_total = Decimal("1.00")
+
+    for row in rows:
+        row["height"] = round((row["total"] / highest_total) * 100, 2)
+
+    return {
+        "title": title,
+        "scope_label": scope_label,
+        "rows": rows,
+        "total_sales": sum((row["total"] for row in rows), Decimal("0.00")),
+        "total_bills": sum((row["count"] for row in rows), 0),
+    }
+
+
+def build_sales_payment_split_rows(records):
+    cash_total = Decimal("0.00")
+    upi_total = Decimal("0.00")
+    credit_total = Decimal("0.00")
+
+    for record in records:
+        if record.has_manual_split:
+            cash_total += record.split_cash_amount
+            upi_total += record.split_card_amount
+            credit_total += max(
+                record.net_amount - record.split_total_amount,
+                Decimal("0.00"),
+            )
+            continue
+
+        if record.payment_mode == SalesPaymentMode.CARD:
+            upi_total += record.effective_received_amount
+        else:
+            cash_total += record.effective_received_amount
+
+        credit_total += record.effective_balance_amount
+
+    split_rows = [
+        {"key": "cash", "label": "Cash", "amount": cash_total},
+        {"key": "upi", "label": "UPI / Card", "amount": upi_total},
+        {"key": "credit", "label": "Credit", "amount": credit_total},
+    ]
+    split_total = sum((row["amount"] for row in split_rows), Decimal("0.00"))
+    for row in split_rows:
+        row["share"] = round((row["amount"] / split_total) * 100, 1) if split_total else Decimal("0.0")
+        row["width"] = row["share"]
+    return split_rows, split_total
+
+
+def build_sales_report_workspace(user, params, include_export_records=False):
+    today = date.today()
+    base_queryset = get_sales_report_base_queryset(user)
+    filter_values = get_sales_report_filter_values(params)
+    filtered_queryset = apply_sales_report_filters(base_queryset, filter_values)
+    split_records = list(
+        filtered_queryset.only(
+            "bill_no",
+            "sale_date",
+            "customer_name",
+            "net_amount",
+            "received_amount",
+            "balance_amount",
+            "split_cash_amount",
+            "split_card_amount",
+            "payment_mode",
+        ).order_by("sale_date", "source_sale_no")
+    )
+    filtered_summary = summarize_sales_records(split_records)
+    payment_split_rows, payment_split_total = build_sales_payment_split_rows(split_records)
+    payment_split_lookup = {row["key"]: row["amount"] for row in payment_split_rows}
+    total_bills = filtered_summary["count"]
+    average_bill_amount = (
+        round(filtered_summary["total_amount"] / total_bills, 2)
+        if total_bills
+        else Decimal("0.00")
+    )
+    workspace = {
+        "today_summary": summarize_sales_queryset_for_range(base_queryset, today, today),
+        "week_summary": summarize_sales_queryset_for_range(
+            base_queryset,
+            today - timedelta(days=today.weekday()),
+            today,
+        ),
+        "month_summary": summarize_sales_queryset_for_range(
+            base_queryset,
+            today.replace(day=1),
+            today,
+        ),
+        "sales_report_filters": filter_values,
+        "filtered_summary": filtered_summary,
+        "average_bill_amount": average_bill_amount,
+        "sales_charts": [
+            build_sales_chart_rows(filtered_queryset, period="day", max_points=14),
+            build_sales_chart_rows(filtered_queryset, period="week", max_points=12),
+            build_sales_chart_rows(filtered_queryset, period="month", max_points=12),
+        ],
+        "payment_split_rows": payment_split_rows,
+        "payment_split_total": payment_split_total,
+        "payment_split_lookup": payment_split_lookup,
+        "payment_split_scope_label": filter_values["scope_label"],
+        "payment_mode_options": [
+            *SalesPaymentMode.choices[:-1],
+            (SPLIT_PAYMENT_MODE_FILTER, SPLIT_PAYMENT_MODE_FILTER),
+            SalesPaymentMode.choices[-1],
+        ],
+        "top_selling_products": [],
+        "category_sales": [],
+    }
+    if include_export_records:
+        workspace["export_records"] = list(
+            filtered_queryset.order_by("-sale_date", "-source_sale_no")
+        )
+    return workspace
 
 
 def get_sales_redirect_params(params):
@@ -4584,83 +4870,10 @@ class ReportsView(ModulePermissionRequiredMixin, TemplateView):
 
     def get(self, request, *args, **kwargs):
         if (request.GET.get("export") or "").strip() == "excel":
-            return build_reports_excel_response(
-                request.user,
-                get_report_month(request),
-            )
+            return build_reports_excel_response(request.user, request.GET)
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        user = self.request.user
-        selected_report_month = get_report_month(self.request)
-        income_queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user)
-        expense_queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user)
-        settlement_queryset = filter_queryset_by_role(
-            DailyCashSettlement.objects.all(),
-            user,
-        )
-        purchase_queryset = get_purchase_base_queryset(user)
-        supplier_queryset = filter_queryset_by_role(Supplier.objects.all(), user)
-        income_by_category = build_reporting_income_category_overview(
-            income_queryset,
-            settlement_queryset,
-        )
-        expense_by_category = build_ranked_category_overview(
-            expense_queryset
-            .values("category")
-            .annotate(total=Sum("amount"))
-            .order_by("-total")[:5]
-        )
-        total_sales = get_reporting_income_total(
-            income_queryset,
-            settlement_queryset,
-        )
-        total_expenses = _sum_amount(expense_queryset)
-        net_profit = total_sales - total_expenses
-        total_purchases = (
-            purchase_queryset.aggregate(total=Sum("total_amount"))["total"]
-            or Decimal("0.00")
-        )
-        monthly_overview = build_reporting_monthly_overview(user)
-        current_month_snapshot = monthly_overview[-1] if monthly_overview else None
-        best_balance_month = max(
-            monthly_overview,
-            key=lambda row: row["balance"],
-            default=None,
-        )
-        window_sales_total = sum(
-            (row["income"] for row in monthly_overview),
-            Decimal("0.00"),
-        )
-        window_expenses_total = sum(
-            (row["expense"] for row in monthly_overview),
-            Decimal("0.00"),
-        )
-        window_net_total = sum(
-            (row["balance"] for row in monthly_overview),
-            Decimal("0.00"),
-        )
-        context.update(
-            {
-                "total_sales": total_sales,
-                "total_expenses": total_expenses,
-                "net_profit": net_profit,
-                "total_purchases": total_purchases,
-                "total_suppliers": supplier_queryset.count(),
-                "monthly_overview": monthly_overview,
-                "current_month_snapshot": current_month_snapshot,
-                "best_balance_month": best_balance_month,
-                "window_sales_total": window_sales_total,
-                "window_expenses_total": window_expenses_total,
-                "window_net_total": window_net_total,
-                "overall_profit_margin": round((net_profit / total_sales) * 100, 1)
-                if total_sales
-                else Decimal("0.0"),
-                "selected_report_month": selected_report_month,
-                "selected_report_month_label": selected_report_month.strftime("%B %Y"),
-                "top_income_categories": income_by_category,
-                "top_expense_categories": expense_by_category,
-            }
-        )
+        context.update(build_sales_report_workspace(self.request.user, self.request.GET))
         return context

@@ -1,227 +1,252 @@
 {% extends "base.html" %}
 
 {% block title %}Reports | Mahilmart{% endblock %}
-{% block body_class %}app-shell report-analytics-shell{% endblock %}
+{% block body_class %}app-shell report-analytics-shell sales-report-shell{% endblock %}
 
 {% block content %}
 <section class="report-stage premium-panel">
     <div class="report-stage-head">
         <div class="report-stage-copy">
-            <span class="eyebrow">Financial Reports</span>
-            <h1>Reports workspace</h1>
-            <p>Review all recorded totals, follow the latest six-month trend, and spot the categories moving your cash flow fastest.</p>
+            <span class="eyebrow">Sales Reports</span>
+            <h1>Sales report overview</h1>
+            <p>Track recent sales movement, apply filters, and download the same filtered report in Excel format when you need to share it.</p>
         </div>
 
         <div class="report-stage-glance">
             <article class="report-glance-card">
-                <span>Current month net profit</span>
-                {% if current_month_snapshot %}
-                    <strong class="{% if current_month_snapshot.balance > 0 %}positive{% elif current_month_snapshot.balance < 0 %}negative{% endif %}">Rs. {{ current_month_snapshot.balance }}</strong>
-                    <small>{{ current_month_snapshot.label }}</small>
-                {% else %}
-                    <strong>Rs. 0.00</strong>
-                    <small>No month data yet</small>
-                {% endif %}
+                <span>Today sales</span>
+                <strong class="positive">Rs. {{ today_summary.total_amount }}</strong>
+                <small>{{ today_summary.count }} bill{{ today_summary.count|pluralize }} today</small>
             </article>
 
             <article class="report-glance-card">
-                <span>Best 6-month month</span>
-                {% if best_balance_month %}
-                    <strong class="{% if best_balance_month.balance > 0 %}positive{% elif best_balance_month.balance < 0 %}negative{% endif %}">Rs. {{ best_balance_month.balance }}</strong>
-                    <small>{{ best_balance_month.label }}</small>
-                {% else %}
-                    <strong>Rs. 0.00</strong>
-                    <small>No month data yet</small>
-                {% endif %}
+                <span>This week</span>
+                <strong class="positive">Rs. {{ week_summary.total_amount }}</strong>
+                <small>{{ week_summary.count }} bill{{ week_summary.count|pluralize }} this week</small>
             </article>
 
             <article class="report-glance-card">
-                <span>Overall profit margin</span>
-                <strong class="{% if net_profit > 0 %}positive{% elif net_profit < 0 %}negative{% endif %}">{{ overall_profit_margin|floatformat:1 }}%</strong>
-                <small>{{ monthly_overview|length }} months tracked in trend view</small>
+                <span>This month</span>
+                <strong class="positive">Rs. {{ month_summary.total_amount }}</strong>
+                <small>{{ month_summary.count }} bill{{ month_summary.count|pluralize }} this month</small>
             </article>
         </div>
     </div>
 </section>
 
-<section class="premium-panel report-export-panel">
+<section class="premium-panel report-export-panel sales-report-filter-panel">
     <div class="report-card-head">
         <div>
-            <span class="eyebrow">Excel Export</span>
-            <h2>Download selected month</h2>
+            <span class="eyebrow">Filters And Export</span>
+            <h2>Filter sales report</h2>
         </div>
-        <p>Choose a month and export a workbook with summary, income, expenses, purchases, and Daily Settlement records.</p>
+        <p>Use one filter set for the cards, charts, payment split, and Excel export so the report always stays aligned.</p>
     </div>
 
     <form method="get" action="{% url 'reports' %}" class="report-export-form">
-        <label class="report-export-field" for="report-month">
-            <span>Month</span>
+        <label class="report-export-field" for="report-range">
+            <span>Range</span>
+            <select id="report-range" name="range" class="input-control">
+                <option value="today"{% if sales_report_filters.range == "today" %} selected{% endif %}>Today</option>
+                <option value="week"{% if sales_report_filters.range == "week" %} selected{% endif %}>This Week</option>
+                <option value="month"{% if sales_report_filters.range == "month" %} selected{% endif %}>This Month</option>
+                <option value="last30"{% if sales_report_filters.range == "last30" %} selected{% endif %}>Last 30 Days</option>
+                <option value="custom"{% if sales_report_filters.range == "custom" %} selected{% endif %}>Custom Range</option>
+            </select>
+        </label>
+
+        <label class="report-export-field" for="report-start-date">
+            <span>Start Date</span>
             <input
-                id="report-month"
-                type="month"
-                name="report_month"
+                id="report-start-date"
+                type="date"
+                name="start_date"
                 class="input-control"
-                value="{{ selected_report_month|date:'Y-m' }}"
+                value="{{ sales_report_filters.start_date|date:'Y-m-d' }}"
             >
         </label>
 
+        <label class="report-export-field" for="report-end-date">
+            <span>End Date</span>
+            <input
+                id="report-end-date"
+                type="date"
+                name="end_date"
+                class="input-control"
+                value="{{ sales_report_filters.end_date|date:'Y-m-d' }}"
+            >
+        </label>
+
+        <label class="report-export-field" for="report-payment-mode">
+            <span>Payment Mode</span>
+            <select id="report-payment-mode" name="payment_mode" class="input-control">
+                <option value="">All</option>
+                {% for option_value, option_label in payment_mode_options %}
+                    <option value="{{ option_value }}"{% if sales_report_filters.payment_mode == option_value %} selected{% endif %}>
+                        {% if option_value == "Card" %}
+                            UPI / Card
+                        {% else %}
+                            {{ option_label }}
+                        {% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+        </label>
+
         <div class="report-export-actions">
-            <a href="{% url 'reconciliation-summary' %}" class="secondary-button">Reconciliation Summary</a>
+            <button type="submit" class="secondary-button">Apply Filter</button>
+            <a href="{% url 'reports' %}" class="secondary-button">Reset</a>
             <button type="submit" name="export" value="excel" class="primary-button">Download Excel</button>
         </div>
     </form>
 
-    <p class="report-export-note">Current export selection: {{ selected_report_month_label }}.</p>
+    <p class="report-export-note">Showing {{ sales_report_filters.scope_label }}{% if sales_report_filters.payment_mode %} | Payment mode: {% if sales_report_filters.payment_mode == "Card" %}UPI / Card{% else %}{{ sales_report_filters.payment_mode }}{% endif %}{% endif %}.</p>
 </section>
 
-<section class="report-kpi-grid">
+<section class="report-kpi-grid sales-report-kpi-grid">
     <article class="report-kpi-card report-kpi-sales premium-panel">
-        <span class="report-kpi-label">Total Sales</span>
-        <strong class="positive">Rs. {{ total_sales }}</strong>
-        <p>All recorded sales entries.</p>
+        <span class="report-kpi-label">Filtered Sales</span>
+        <strong class="positive">Rs. {{ filtered_summary.total_amount }}</strong>
+        <p>Sales total inside the current report filter.</p>
+    </article>
+
+    <article class="report-kpi-card premium-panel">
+        <span class="report-kpi-label">Bills</span>
+        <strong>{{ filtered_summary.count }}</strong>
+        <p>Bill count matched by the active report filter.</p>
+    </article>
+
+    <article class="report-kpi-card premium-panel">
+        <span class="report-kpi-label">Average Bill</span>
+        <strong>Rs. {{ average_bill_amount }}</strong>
+        <p>Average bill value across the filtered sales range.</p>
+    </article>
+
+    <article class="report-kpi-card premium-panel">
+        <span class="report-kpi-label">Received</span>
+        <strong class="positive">Rs. {{ filtered_summary.received_amount }}</strong>
+        <p>Collected value after split and payment-mode logic.</p>
     </article>
 
     <article class="report-kpi-card report-kpi-expenses premium-panel">
-        <span class="report-kpi-label">Total Expenses</span>
-        <strong class="negative">Rs. {{ total_expenses }}</strong>
-        <p>All recorded expense entries.</p>
-    </article>
-
-    <article class="report-kpi-card report-kpi-profit premium-panel">
-        <span class="report-kpi-label">Net Profit</span>
-        <strong class="{% if net_profit > 0 %}positive{% elif net_profit < 0 %}negative{% endif %}">Rs. {{ net_profit }}</strong>
-        <p>Sales minus expenses.</p>
+        <span class="report-kpi-label">Pending Credit</span>
+        <strong class="negative">Rs. {{ filtered_summary.balance_amount }}</strong>
+        <p>Outstanding amount still pending in the filtered range.</p>
     </article>
 
     <article class="report-kpi-card premium-panel">
-        <span class="report-kpi-label">Total Purchases</span>
-        <strong>Rs. {{ total_purchases }}</strong>
-        <p>All recorded purchase amounts.</p>
-    </article>
-
-    <article class="report-kpi-card premium-panel">
-        <span class="report-kpi-label">Total Suppliers</span>
-        <strong>{{ total_suppliers }}</strong>
-        <p>Suppliers available in this workspace.</p>
-    </article>
-
-    <article class="report-kpi-card premium-panel">
-        <span class="report-kpi-label">6 Month Window</span>
-        <strong>Rs. {{ window_net_total }}</strong>
-        <p>Net result across the current trend window.</p>
+        <span class="report-kpi-label">Split Bills</span>
+        <strong>{{ filtered_summary.split_bill_count }}</strong>
+        <p>Manual split entries mixing cash and UPI/card in this report.</p>
     </article>
 </section>
 
-<section class="report-main-grid">
-    <article class="premium-panel report-trend-card report-span-2">
+<section class="report-main-grid sales-report-chart-grid">
+    {% for chart in sales_charts %}
+        <article class="premium-panel report-trend-card sales-report-trend-card">
+            <div class="report-card-head">
+                <div>
+                    <span class="eyebrow">Sales Chart</span>
+                    <h2>{{ chart.title }}</h2>
+                </div>
+                <p>{{ chart.scope_label }} | Rs. {{ chart.total_sales }}</p>
+            </div>
+
+            {% if chart.rows %}
+                <div class="sales-report-mini-chart">
+                    {% for row in chart.rows %}
+                        <div class="sales-report-mini-column">
+                            <div class="sales-report-mini-track">
+                                <span class="sales-report-mini-fill" style="height: {{ row.height|floatformat:2 }}%;"></span>
+                            </div>
+                            <strong>{{ row.short_label }}</strong>
+                            <small>Rs. {{ row.total }}</small>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="sales-report-chart-summary">
+                    <span>{{ chart.total_bills }} bill{{ chart.total_bills|pluralize }}</span>
+                    <span>Rs. {{ chart.total_sales }}</span>
+                </div>
+            {% else %}
+                <div class="empty-state">No sales rows match the current filter for this chart.</div>
+            {% endif %}
+        </article>
+    {% endfor %}
+</section>
+
+<section class="report-category-grid sales-report-insight-grid">
+    <article class="premium-panel report-category-board sales-report-split-board">
         <div class="report-card-head">
             <div>
-                <span class="eyebrow">Monthly Performance</span>
-                <h2>Six month financial pulse</h2>
+                <span class="eyebrow">Collections</span>
+                <h2>Payment method split</h2>
             </div>
-            <p>Income and expenses are plotted together for quick month-over-month comparison.</p>
+            <p>{{ payment_split_scope_label }}</p>
         </div>
 
-        <div class="report-pulse-chart">
-            {% for row in monthly_overview %}
-                <div class="report-pulse-column">
-                    <div class="report-pulse-track">
-                        <span class="report-pulse-income" style="height: {{ row.income_width|floatformat:2 }}%;"></span>
-                        <span class="report-pulse-expense" style="height: {{ row.expense_width|floatformat:2 }}%;"></span>
-                    </div>
-                    <strong>{{ row.label|slice:":3" }}</strong>
-                    <small class="{% if row.balance > 0 %}positive{% elif row.balance < 0 %}negative{% endif %}">Rs. {{ row.balance }}</small>
-                </div>
+        <div class="sales-report-split-bar">
+            {% for row in payment_split_rows %}
+                <span class="sales-report-split-segment sales-report-split-{{ row.key }}" style="width: {{ row.width|floatformat:2 }}%;"></span>
             {% endfor %}
         </div>
 
-        <div class="report-pulse-legend">
-            <span><i class="report-legend-dot report-legend-income"></i> Total Sales</span>
-            <span><i class="report-legend-dot report-legend-expense"></i> Total Expenses</span>
-            <span><i class="report-legend-dot report-legend-balance"></i> Net Profit</span>
-        </div>
-
-        <div class="report-window-summary">
-            <span>6-month sales: Rs. {{ window_sales_total }}</span>
-            <span>6-month expenses: Rs. {{ window_expenses_total }}</span>
-            <span>6-month net: Rs. {{ window_net_total }}</span>
+        <div class="sales-report-split-grid">
+            {% for row in payment_split_rows %}
+                <div class="sales-report-split-card sales-report-split-card-{{ row.key }}">
+                    <span>{{ row.label }}</span>
+                    <strong>Rs. {{ row.amount }}</strong>
+                    <small>{{ row.share|floatformat:1 }}% of Rs. {{ payment_split_total }}</small>
+                </div>
+            {% endfor %}
         </div>
     </article>
 
-    <article class="premium-panel report-focus-card">
+    <article class="premium-panel report-category-board">
         <div class="report-card-head">
             <div>
-                <span class="eyebrow">Snapshot</span>
-                <h2>Report pulse</h2>
+                <span class="eyebrow">Products</span>
+                <h2>Top-selling products</h2>
             </div>
-            <p>High-level status from all saved entries.</p>
+            <p>Waiting for item-level sales sync.</p>
         </div>
 
-        <div class="report-focus-banner {% if net_profit > 0 %}is-positive{% elif net_profit < 0 %}is-negative{% else %}is-neutral{% endif %}">
-            <span>Overall status</span>
-            <strong>
-                {% if net_profit > 0 %}
-                    Sales are ahead of spending
-                {% elif net_profit < 0 %}
-                    Spending is ahead of sales
-                {% else %}
-                    Sales and expenses are balanced
-                {% endif %}
-            </strong>
-            <p>Overall profit margin is {{ overall_profit_margin|floatformat:1 }}%.</p>
-        </div>
-
-        <div class="report-focus-stack">
-            <div class="report-focus-metric">
-                <span>Best month</span>
-                {% if best_balance_month %}
-                    <strong>Rs. {{ best_balance_month.balance }}</strong>
-                    <small>{{ best_balance_month.label }}</small>
-                {% else %}
-                    <strong>Rs. 0.00</strong>
-                    <small>No month data yet</small>
-                {% endif %}
-            </div>
-
-            <div class="report-focus-metric">
-                <span>Current month</span>
-                {% if current_month_snapshot %}
-                    <strong>Rs. {{ current_month_snapshot.balance }}</strong>
-                    <small>{{ current_month_snapshot.label }}</small>
-                {% else %}
-                    <strong>Rs. 0.00</strong>
-                    <small>No month data yet</small>
-                {% endif %}
-            </div>
-
-            <div class="report-focus-metric">
-                <span>Purchases tracked</span>
-                <strong>Rs. {{ total_purchases }}</strong>
-                <small>Helps compare stock movement with cash flow.</small>
-            </div>
-
-            <div class="report-focus-metric">
-                <span>Suppliers in workspace</span>
-                <strong>{{ total_suppliers }}</strong>
-                <small>Active supplier records available for operations.</small>
-            </div>
-        </div>
-    </article>
-</section>
-
-<section class="report-category-grid">
-    <article class="premium-panel report-category-board report-category-board-income">
-        <div class="report-card-head">
-            <div>
-                <span class="eyebrow">Category Leaders</span>
-                <h2>Income categories</h2>
-            </div>
-            <p>Top five income buckets by value.</p>
-        </div>
-
-        {% if top_income_categories %}
+        {% if top_selling_products %}
             <div class="report-category-list">
-                {% for item in top_income_categories %}
+                {% for item in top_selling_products %}
+                    <div class="report-category-row">
+                        <span class="report-category-rank">{{ item.rank|stringformat:"02d" }}</span>
+                        <div class="report-category-copy">
+                            <div class="report-category-headline">
+                                <strong>{{ item.name }}</strong>
+                                <span>{{ item.quantity }} qty</span>
+                            </div>
+                            <div class="report-category-bar">
+                                <span style="width: {{ item.width|floatformat:2 }}%;"></span>
+                            </div>
+                        </div>
+                        <strong class="report-category-amount positive">Rs. {{ item.total }}</strong>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">Top-selling products need item-level sales data. Current synced sales only store bill totals.</div>
+        {% endif %}
+    </article>
+
+    <article class="premium-panel report-category-board report-span-2">
+        <div class="report-card-head">
+            <div>
+                <span class="eyebrow">Categories</span>
+                <h2>Category-wise sales</h2>
+            </div>
+            <p>Groceries, Dairy, Snacks and other product groups need category data from the sales source.</p>
+        </div>
+
+        {% if category_sales %}
+            <div class="report-category-list">
+                {% for item in category_sales %}
                     <div class="report-category-row">
                         <span class="report-category-rank">{{ item.rank|stringformat:"02d" }}</span>
                         <div class="report-category-copy">
@@ -238,85 +263,8 @@
                 {% endfor %}
             </div>
         {% else %}
-            <div class="empty-state">No income category data yet.</div>
+            <div class="empty-state">Category-wise sales are not available yet because the synced sales ledger does not include product categories.</div>
         {% endif %}
     </article>
-
-    <article class="premium-panel report-category-board report-category-board-expense">
-        <div class="report-card-head">
-            <div>
-                <span class="eyebrow">Category Leaders</span>
-                <h2>Expense categories</h2>
-            </div>
-            <p>Top five expense buckets by value.</p>
-        </div>
-
-        {% if top_expense_categories %}
-            <div class="report-category-list">
-                {% for item in top_expense_categories %}
-                    <div class="report-category-row">
-                        <span class="report-category-rank">{{ item.rank|stringformat:"02d" }}</span>
-                        <div class="report-category-copy">
-                            <div class="report-category-headline">
-                                <strong>{{ item.category }}</strong>
-                                <span>{{ item.share|floatformat:1 }}% share</span>
-                            </div>
-                            <div class="report-category-bar">
-                                <span style="width: {{ item.width|floatformat:2 }}%;"></span>
-                            </div>
-                        </div>
-                        <strong class="report-category-amount negative">Rs. {{ item.total }}</strong>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="empty-state">No expense category data yet.</div>
-        {% endif %}
-    </article>
-</section>
-
-<section class="premium-panel report-table-card">
-    <div class="report-card-head">
-        <div>
-            <span class="eyebrow">Performance Ledger</span>
-            <h2>6 month summary</h2>
-        </div>
-        <p>Detailed month-by-month totals for sales, expenses, and net result.</p>
-    </div>
-
-    <div class="table-shell">
-        <table class="data-table report-data-table">
-            <thead>
-                <tr>
-                    <th>Month</th>
-                    <th>Total Sales</th>
-                    <th>Total Expenses</th>
-                    <th>Net Profit</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in monthly_overview %}
-                    <tr>
-                        <td>{{ row.label }}</td>
-                        <td class="positive">Rs. {{ row.income }}</td>
-                        <td class="negative">Rs. {{ row.expense }}</td>
-                        <td class="{% if row.balance > 0 %}positive{% elif row.balance < 0 %}negative{% endif %}">Rs. {{ row.balance }}</td>
-                        <td>
-                            <span class="report-status-pill {% if row.balance > 0 %}is-positive{% elif row.balance < 0 %}is-negative{% else %}is-neutral{% endif %}">
-                                {% if row.balance > 0 %}
-                                    Profit
-                                {% elif row.balance < 0 %}
-                                    Loss
-                                {% else %}
-                                    Even
-                                {% endif %}
-                            </span>
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
 </section>
 {% endblock %}

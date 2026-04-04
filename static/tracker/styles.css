@@ -7154,6 +7154,165 @@ body.modal-open {
     color: #59677f;
 }
 
+.sales-report-chart-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sales-report-trend-card {
+    display: grid;
+    gap: 16px;
+}
+
+.sales-report-mini-chart {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+    gap: 12px;
+    align-items: end;
+    min-height: 220px;
+}
+
+.sales-report-mini-column {
+    display: grid;
+    gap: 8px;
+    justify-items: center;
+}
+
+.sales-report-mini-track {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    width: 100%;
+    min-height: 150px;
+    padding: 12px 10px;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #f7faff, #eef4fc);
+    border: 1px solid #e1e9f3;
+}
+
+.sales-report-mini-fill {
+    display: block;
+    width: 100%;
+    min-height: 8px;
+    border-radius: 999px 999px 10px 10px;
+    background: linear-gradient(180deg, #4bcaa1, #0fa279);
+    box-shadow: 0 12px 22px rgba(15, 162, 121, 0.18);
+}
+
+.sales-report-mini-column strong {
+    color: #20304f;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.sales-report-mini-column small {
+    color: #617089;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    text-align: center;
+}
+
+.sales-report-chart-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.sales-report-chart-summary span {
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #f8fbff, #f1f6fc);
+    border: 1px solid #e1e8f3;
+    color: #485873;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.sales-report-insight-grid {
+    align-items: start;
+}
+
+.sales-report-split-board {
+    grid-column: span 2;
+}
+
+.sales-report-split-bar {
+    display: flex;
+    width: 100%;
+    height: 16px;
+    margin-bottom: 16px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e6edf7;
+}
+
+.sales-report-split-segment {
+    min-width: 0;
+    height: 100%;
+}
+
+.sales-report-split-cash {
+    background: linear-gradient(90deg, #28c58e, #77d8af);
+}
+
+.sales-report-split-upi {
+    background: linear-gradient(90deg, #1d7fd8, #69ace8);
+}
+
+.sales-report-split-credit {
+    background: linear-gradient(90deg, #f08b58, #ea556a);
+}
+
+.sales-report-split-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.sales-report-split-card {
+    padding: 14px 15px;
+    border-radius: 18px;
+    border: 1px solid #e1e8f3;
+    background: linear-gradient(180deg, #f8fbff, #f2f6fc);
+}
+
+.sales-report-split-card span {
+    display: block;
+    margin-bottom: 6px;
+    color: #6a7a94;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.sales-report-split-card strong {
+    display: block;
+    margin-bottom: 4px;
+    color: #122241;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.sales-report-split-card small {
+    color: #7a889f;
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.sales-report-split-card-cash {
+    box-shadow: inset 0 4px 0 #21b17f;
+}
+
+.sales-report-split-card-upi {
+    box-shadow: inset 0 4px 0 #2a82d7;
+}
+
+.sales-report-split-card-credit {
+    box-shadow: inset 0 4px 0 #eb6470;
+}
+
 .reconciliation-shell {
     overflow-x: hidden;
 }
@@ -9035,6 +9194,10 @@ body.modal-open {
         grid-column: span 2;
     }
 
+    .sales-report-split-board {
+        grid-column: span 2;
+    }
+
     .reconciliation-shell .main-layout,
     .reconciliation-shell .summary-sections-grid,
     .reconciliation-history-grid {
@@ -9075,6 +9238,10 @@ body.modal-open {
         grid-column: span 1;
     }
 
+    .sales-report-split-board {
+        grid-column: span 1;
+    }
+
     .report-card-head {
         flex-direction: column;
         align-items: stretch;
@@ -9094,7 +9261,7 @@ body.modal-open {
     }
 
     .report-export-actions,
-    .report-export-actions .primary-button {
+    .report-export-actions > * {
         width: 100%;
     }
 
@@ -9159,6 +9326,10 @@ body.modal-open {
         grid-template-columns: 1fr;
     }
 
+    .sales-report-split-grid {
+        grid-template-columns: 1fr;
+    }
+
     .purchase-daily-shell .purchase-ui-header,
     .purchase-daily-shell .purchase-ui-strip,
     .purchase-daily-shell .purchase-form-head {
@@ -9211,6 +9382,10 @@ body.modal-open {
     .report-category-amount {
         grid-column: 2;
         text-align: left;
+    }
+
+    .sales-report-mini-chart {
+        grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
     }
 }
 
