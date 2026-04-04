@@ -3,8 +3,9 @@
 
     <div class="reconciliation-metric-list">
         <div class="reconciliation-metric-row">
-            <span>Income entry total</span>
+            <span>Office income</span>
             <strong class="positive">Rs. {{ manual_income_total }}</strong>
+            <small>Manual income entries for the selected dates.</small>
         </div>
         <div class="reconciliation-metric-row reconciliation-metric-row-editable">
             <div class="reconciliation-metric-head">
@@ -31,6 +32,10 @@
                     <span>Cash settled</span>
                     <strong>Rs. {{ settlement_cash_total }}</strong>
                 </div>
+                <div class="reconciliation-settlement-item reconciliation-settlement-item-wrap">
+                    <span>Cash settled to</span>
+                    <strong class="reconciliation-settlement-text">{{ settlement_cash_target_display }}</strong>
+                </div>
                 <div class="reconciliation-settlement-item">
                     <span>Split card balance</span>
                     <strong>Rs. {{ split_card_balance_total }}</strong>
@@ -40,6 +45,11 @@
         <div class="reconciliation-metric-row">
             <span>Total income</span>
             <strong class="positive">Rs. {{ income_total }}</strong>
+        </div>
+        <div class="reconciliation-metric-row">
+            <span>Office expense</span>
+            <strong class="negative">Rs. {{ manual_expense_total }}</strong>
+            <small>Manual expense entries for the selected dates.</small>
         </div>
         <div class="reconciliation-settlement-panel reconciliation-expense-panel">
             <div class="reconciliation-settlement-head">

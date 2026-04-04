@@ -12,6 +12,7 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.mail import send_mail
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse, JsonResponse
@@ -812,6 +813,7 @@ def build_reconciliation_income_entries(user, filter_values):
         )
     )
     entries = []
+    settlement_cash_target_totals = {}
     for record in manual_queryset.order_by("-transaction_date", "-created_at", "-pk"):
         entries.append(
             {
@@ -822,13 +824,29 @@ def build_reconciliation_income_entries(user, filter_values):
                 "payment_method": record.payment_method,
                 "amount": record.amount,
                 "entry_type": "income",
+                "entry_note": "",
                 "sort_date": record.transaction_date,
                 "sort_timestamp": record.created_at,
             }
         )
 
     for settlement in settlement_records:
+        settlement_target = " ".join(str(settlement.cash_settled_to or "").split())
+        if settlement.cash_settled > 0 and settlement_target:
+            settlement_cash_note = f"Cash settled to {settlement_target}"
+        elif settlement.cash_settled > 0:
+            settlement_cash_note = "Cash settled"
+        else:
+            settlement_cash_note = ""
+
         if settlement.cash_settled > 0:
+            target_label = " ".join(str(settlement.cash_settled_to or "").split())
+            if not target_label:
+                target_label = "Not specified"
+            settlement_cash_target_totals[target_label] = (
+                settlement_cash_target_totals.get(target_label, Decimal("0.00"))
+                + (settlement.cash_settled or Decimal("0.00"))
+            )
             entries.append(
                 {
                     "transaction_date": settlement.settlement_date,
@@ -836,27 +854,13 @@ def build_reconciliation_income_entries(user, filter_values):
                     "source": (
                         f"Cash settled to {settlement.cash_settled_to}"
                         if settlement.cash_settled_to
-                        else "Automatic from Daily Cash Settlement"
+                        else "Cash settled"
                     ),
                     "category": "Daily Settlement",
                     "payment_method": "Cash",
                     "amount": settlement.cash_settled,
                     "entry_type": "settlement",
-                    "sort_date": settlement.settlement_date,
-                    "sort_timestamp": settlement.updated_at,
-                }
-            )
-
-        if settlement.gpay_settled > 0:
-            entries.append(
-                {
-                    "transaction_date": settlement.settlement_date,
-                    "title": "Daily Card Settlement",
-                    "source": "Automatic from Daily Cash Settlement",
-                    "category": "Daily Settlement",
-                    "payment_method": "Card / UPI",
-                    "amount": settlement.gpay_settled,
-                    "entry_type": "settlement",
+                    "entry_note": settlement_cash_note,
                     "sort_date": settlement.settlement_date,
                     "sort_timestamp": settlement.updated_at,
                 }
@@ -888,6 +892,10 @@ def build_reconciliation_income_entries(user, filter_values):
         (settlement.gpay_settled or Decimal("0.00") for settlement in settlement_records),
         Decimal("0.00"),
     )
+    settlement_cash_target_display = ", ".join(
+        f"{label} (Rs. {format_money(amount)})"
+        for label, amount in settlement_cash_target_totals.items()
+    ) or "-"
     return {
         "records": entries,
         "manual_income_total": manual_income_total,
@@ -895,6 +903,7 @@ def build_reconciliation_income_entries(user, filter_values):
         "settlement_income_total": settlement_income_total,
         "settlement_cash_total": settlement_cash_total,
         "settlement_card_total": settlement_card_total,
+        "settlement_cash_target_display": settlement_cash_target_display,
     }
 
 
@@ -1209,10 +1218,69 @@ def get_next_supplier_code():
     return f"SUP-{next_number:04d}"
 
 
-def build_page_url(request, page_number):
+def build_page_url(request, page_number, page_param="page", **extra_params):
     query_params = request.GET.copy()
-    query_params["page"] = page_number
+    query_params[page_param] = page_number
+    for key, value in extra_params.items():
+        if value is None:
+            query_params.pop(key, None)
+        else:
+            query_params[key] = value
     return f"{request.path}?{query_params.urlencode()}"
+
+
+def paginate_record_list(
+    request,
+    records,
+    *,
+    page_param="page",
+    per_page=20,
+    history_view=None,
+):
+    paginator = Paginator(records, per_page)
+    page_obj = paginator.get_page((request.GET.get(page_param) or "").strip() or 1)
+    url_overrides = {}
+    if history_view:
+        url_overrides["view"] = history_view
+
+    previous_page_url = ""
+    next_page_url = ""
+    if page_obj.has_previous():
+        previous_page_url = build_page_url(
+            request,
+            page_obj.previous_page_number(),
+            page_param=page_param,
+            **url_overrides,
+        )
+    if page_obj.has_next():
+        next_page_url = build_page_url(
+            request,
+            page_obj.next_page_number(),
+            page_param=page_param,
+            **url_overrides,
+        )
+
+    return {
+        "records": list(page_obj.object_list),
+        "page_obj": page_obj,
+        "previous_page_url": previous_page_url,
+        "next_page_url": next_page_url,
+        "pagination_links": [
+            {
+                "number": page_number,
+                "url": build_page_url(
+                    request,
+                    page_number,
+                    page_param=page_param,
+                    **url_overrides,
+                ),
+                "is_current": page_number == page_obj.number,
+            }
+            for page_number in page_obj.paginator.page_range
+        ],
+        "showing_from": page_obj.start_index(),
+        "showing_to": page_obj.end_index(),
+    }
 
 
 def get_safe_next_url(request, fallback_url):
@@ -4381,6 +4449,24 @@ class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
             filter_values,
         )
         expense_records = expense_summary["records"]
+        income_count = len(income_records)
+        expense_count = len(expense_records)
+        income_pagination = paginate_record_list(
+            self.request,
+            income_records,
+            page_param="income_page",
+            per_page=20,
+            history_view="income",
+        )
+        expense_pagination = paginate_record_list(
+            self.request,
+            expense_records,
+            page_param="expense_page",
+            per_page=20,
+            history_view="expense",
+        )
+        income_records = income_pagination["records"]
+        expense_records = expense_pagination["records"]
         reconciliation_opening_balance = get_reconciliation_opening_balance_for_date(
             self.request.user,
             filter_values["start_date"],
@@ -4439,6 +4525,18 @@ class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
                 "opening_balance_form_action_url": reverse(self.redirect_route_name),
                 "income_records": income_records,
                 "expense_records": expense_records,
+                "income_page_obj": income_pagination["page_obj"],
+                "expense_page_obj": expense_pagination["page_obj"],
+                "income_previous_page_url": income_pagination["previous_page_url"],
+                "expense_previous_page_url": expense_pagination["previous_page_url"],
+                "income_next_page_url": income_pagination["next_page_url"],
+                "expense_next_page_url": expense_pagination["next_page_url"],
+                "income_pagination_links": income_pagination["pagination_links"],
+                "expense_pagination_links": expense_pagination["pagination_links"],
+                "income_showing_from": income_pagination["showing_from"],
+                "income_showing_to": income_pagination["showing_to"],
+                "expense_showing_from": expense_pagination["showing_from"],
+                "expense_showing_to": expense_pagination["showing_to"],
                 "reconciliation_opening_balance_date": opening_balance_date,
                 "income_total": income_total,
                 "settlement_income_total": settlement_income_total,
@@ -4446,6 +4544,9 @@ class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
                 "manual_cash_income_total": income_summary["manual_cash_income_total"],
                 "settlement_cash_total": income_summary["settlement_cash_total"],
                 "settlement_card_total": income_summary["settlement_card_total"],
+                "settlement_cash_target_display": income_summary[
+                    "settlement_cash_target_display"
+                ],
                 "split_card_balance_total": split_card_balance_total,
                 "reconciliation_opening_balance": reconciliation_opening_balance,
                 "reconciliation_closing_balance": reconciliation_closing_balance,
@@ -4460,8 +4561,8 @@ class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
                 "non_cash_expense_total": non_cash_expense_total,
                 "expense_total": expense_total,
                 "net_total": income_total - expense_total,
-                "income_count": len(income_records),
-                "expense_count": len(expense_records),
+                "income_count": income_count,
+                "expense_count": expense_count,
             }
         )
         return context

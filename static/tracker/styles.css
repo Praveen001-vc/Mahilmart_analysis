@@ -7182,8 +7182,66 @@ body.modal-open {
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: nowrap;
+}
+
+.reconciliation-shell .reconciliation-hero {
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.reconciliation-shell .reconciliation-header-links {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
     gap: 10px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+}
+
+.reconciliation-shell .reconciliation-header-links .secondary-button,
+.reconciliation-shell .reconciliation-header-links .back-btn {
+    white-space: nowrap;
+}
+
+.reconciliation-shell .reconciliation-header-filter {
+    display: flex;
+    align-items: end;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: nowrap;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.reconciliation-shell .reconciliation-header-filter-field {
+    display: grid;
+    gap: 4px;
+}
+
+.reconciliation-shell .reconciliation-header-filter-field label {
+    color: #64748b;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.reconciliation-shell .reconciliation-header-filter .input-control {
+    width: 172px;
+    min-width: 172px;
+    min-height: 38px;
+    padding: 7px 10px;
+    font-size: 0.9rem;
+}
+
+.reconciliation-shell .reconciliation-header-filter .primary-button,
+.reconciliation-shell .reconciliation-header-filter .secondary-button {
+    min-height: 38px;
+    padding: 7px 14px;
+    white-space: nowrap;
 }
 
 .reconciliation-shell .header-bar h1 {
@@ -7213,6 +7271,90 @@ body.modal-open {
 
 .reconciliation-shell .back-btn:hover {
     background: #dbeafe;
+}
+
+.reconciliation-shell .reconciliation-filter-banner {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.reconciliation-shell .reconciliation-filter-banner strong {
+    white-space: nowrap;
+}
+
+.reconciliation-shell .reconciliation-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.reconciliation-shell .reconciliation-summary-top-card {
+    min-width: 0;
+}
+
+.reconciliation-shell .reconciliation-summary-top-card::before {
+    background: #1d6cff;
+}
+
+.reconciliation-shell .reconciliation-summary-top-card-income::before {
+    background: #0f8d43;
+}
+
+.reconciliation-shell .reconciliation-summary-top-card-settlement::before {
+    background: #0b8aa3;
+}
+
+.reconciliation-shell .reconciliation-summary-top-card-expense::before {
+    background: #d95563;
+}
+
+.reconciliation-shell .reconciliation-summary-top-card .expense-summary-row {
+    align-items: flex-start;
+}
+
+.reconciliation-shell .reconciliation-summary-top-card .expense-summary-row strong.positive {
+    color: #0f8d43;
+}
+
+.reconciliation-shell .reconciliation-summary-top-card .expense-summary-row strong.negative {
+    color: #d95563;
+}
+
+.reconciliation-shell .reconciliation-summary-total {
+    color: #20293b !important;
+}
+
+.reconciliation-shell .reconciliation-summary-row-action {
+    align-items: center;
+}
+
+.reconciliation-shell .reconciliation-summary-action-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    text-align: right;
+}
+
+.reconciliation-shell .reconciliation-summary-edit {
+    min-height: 28px;
+    padding: 4px 10px;
+}
+
+.reconciliation-shell .reconciliation-summary-row-stack {
+    display: grid;
+    gap: 6px;
+}
+
+.reconciliation-shell .reconciliation-summary-text {
+    display: block;
+    text-align: left;
+    white-space: normal;
+    word-break: break-word;
+    color: #20293b !important;
+    font-size: 0.92rem;
+    line-height: 1.4;
 }
 
 .reconciliation-shell .date-strip {
@@ -7327,10 +7469,12 @@ body.modal-open {
 }
 
 .reconciliation-shell .form-column {
-    background: #ffffff;
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    display: grid;
+    gap: 16px;
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
     min-width: 0;
 }
 
@@ -7447,7 +7591,7 @@ body.modal-open {
 }
 
 .reconciliation-shell .reconciliation-history-copy {
-    margin: 0 0 20px;
+    margin: 0;
     color: #475569;
     font-size: 14px;
     line-height: 1.6;
@@ -7691,7 +7835,15 @@ body.modal-open {
 
 .reconciliation-shell .reconciliation-history-stack {
     display: grid;
-    gap: 24px;
+    gap: 16px;
+}
+
+.reconciliation-shell .reconciliation-history-stage {
+    margin-bottom: 0;
+}
+
+.reconciliation-shell .reconciliation-history-head {
+    align-items: flex-start;
 }
 
 .reconciliation-shell .reconciliation-entry-form {
@@ -7796,12 +7948,23 @@ body.modal-open {
     min-width: 0;
 }
 
-.reconciliation-shell .cash-count-card,
-.reconciliation-history-card {
+.reconciliation-shell .cash-count-card {
     background: #ffffff;
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.reconciliation-shell .reconciliation-history-card {
+    min-width: 0;
+    padding: 0 0 16px;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.reconciliation-shell .reconciliation-history-card:last-child {
+    padding-bottom: 0;
 }
 
 .reconciliation-shell .cash-count-card h3,
@@ -7979,6 +8142,10 @@ body.modal-open {
     gap: 12px;
 }
 
+.reconciliation-shell .reconciliation-settlement-item-wrap {
+    align-items: flex-start;
+}
+
 .reconciliation-shell .reconciliation-settlement-item span {
     color: #475569;
     font-size: 0.84rem;
@@ -7992,6 +8159,12 @@ body.modal-open {
     font-weight: 700;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
+}
+
+.reconciliation-shell .reconciliation-settlement-text {
+    white-space: normal;
+    text-align: right;
+    font-variant-numeric: normal;
 }
 
 .reconciliation-shell .reconciliation-expense-panel .reconciliation-settlement-head strong,
@@ -8159,9 +8332,9 @@ body.modal-open {
     justify-content: space-between;
     align-items: center;
     gap: 14px;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid #e2e8f0;
+    margin: 0 0 16px;
+    padding: 0 16px 14px;
+    border-bottom: 1px solid #dfe4ee;
 }
 
 .reconciliation-card-head .recent-label {
@@ -8177,7 +8350,7 @@ body.modal-open {
 }
 
 .reconciliation-table {
-    min-width: 640px;
+    min-width: 1080px;
 }
 
 .reconciliation-history-card {
@@ -8187,6 +8360,7 @@ body.modal-open {
 .reconciliation-history-card .table-shell {
     width: 100%;
     overflow-x: auto;
+    padding-bottom: 16px;
 }
 
 @media (max-width: 1700px) {
@@ -8195,10 +8369,17 @@ body.modal-open {
     }
 }
 
+@media (max-width: 1450px) {
+    .reconciliation-shell .reconciliation-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 .reconciliation-empty-state {
     background: #f8fafc;
     border: 1px dashed #cbd5e1;
     border-radius: 8px;
+    margin: 0 16px 16px;
     padding: 16px;
     color: #64748b;
 }
@@ -8637,7 +8818,8 @@ body.modal-open {
 
 .purchase-daily-shell .purchase-pagination,
 .supplier-ledger-shell .purchase-pagination,
-.user-ledger-shell .purchase-pagination {
+.user-ledger-shell .purchase-pagination,
+.reconciliation-shell .purchase-pagination {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -8650,7 +8832,8 @@ body.modal-open {
 
 .purchase-daily-shell .purchase-pagination-status,
 .supplier-ledger-shell .purchase-pagination-status,
-.user-ledger-shell .purchase-pagination-status {
+.user-ledger-shell .purchase-pagination-status,
+.reconciliation-shell .purchase-pagination-status {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
@@ -8661,14 +8844,16 @@ body.modal-open {
 
 .purchase-daily-shell .purchase-pagination-page,
 .supplier-ledger-shell .purchase-pagination-page,
-.user-ledger-shell .purchase-pagination-page {
+.user-ledger-shell .purchase-pagination-page,
+.reconciliation-shell .purchase-pagination-page {
     font-weight: 600;
     color: #334155;
 }
 
 .purchase-daily-shell .purchase-pagination-nav,
 .supplier-ledger-shell .purchase-pagination-nav,
-.user-ledger-shell .purchase-pagination-nav {
+.user-ledger-shell .purchase-pagination-nav,
+.reconciliation-shell .purchase-pagination-nav {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -8679,7 +8864,8 @@ body.modal-open {
 
 .purchase-daily-shell .purchase-pagination-link,
 .supplier-ledger-shell .purchase-pagination-link,
-.user-ledger-shell .purchase-pagination-link {
+.user-ledger-shell .purchase-pagination-link,
+.reconciliation-shell .purchase-pagination-link {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -8697,7 +8883,8 @@ body.modal-open {
 
 .purchase-daily-shell .purchase-pagination-link:hover,
 .supplier-ledger-shell .purchase-pagination-link:hover,
-.user-ledger-shell .purchase-pagination-link:hover {
+.user-ledger-shell .purchase-pagination-link:hover,
+.reconciliation-shell .purchase-pagination-link:hover {
     background: #f8fafc;
 }
 
@@ -8706,7 +8893,9 @@ body.modal-open {
 .supplier-ledger-shell .purchase-pagination-link.is-current,
 .supplier-ledger-shell .purchase-pagination-link.is-next,
 .user-ledger-shell .purchase-pagination-link.is-current,
-.user-ledger-shell .purchase-pagination-link.is-next {
+.user-ledger-shell .purchase-pagination-link.is-next,
+.reconciliation-shell .purchase-pagination-link.is-current,
+.reconciliation-shell .purchase-pagination-link.is-next {
     border-color: #2563eb;
     background: #3b82f6;
     color: #fff;
@@ -8913,9 +9102,13 @@ body.modal-open {
     .reconciliation-shell .date-strip,
     .reconciliation-shell .date-form,
     .reconciliation-shell .date-header,
+    .reconciliation-shell .reconciliation-header-actions,
+    .reconciliation-shell .reconciliation-history-stage .expense-card-head,
+    .reconciliation-shell .reconciliation-header-filter,
     .reconciliation-shell .reconciliation-header-tools,
     .reconciliation-card-head,
-    .reconciliation-shell .form-buttons {
+    .reconciliation-shell .form-buttons,
+    .reconciliation-shell .expense-filter-actions {
         flex-direction: column;
         align-items: stretch;
     }
@@ -8935,6 +9128,11 @@ body.modal-open {
         grid-column: span 1;
     }
 
+    .reconciliation-shell .reconciliation-header-links {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
     .reconciliation-shell .section-body {
         padding-left: 0;
     }
@@ -8944,6 +9142,9 @@ body.modal-open {
     .reconciliation-shell .date-form button,
     .reconciliation-shell .date-form a,
     .reconciliation-shell .date-form input[type="date"],
+    .reconciliation-shell .reconciliation-header-filter .input-control,
+    .reconciliation-shell .reconciliation-header-filter .primary-button,
+    .reconciliation-shell .reconciliation-header-filter .secondary-button,
     .reconciliation-shell .reconciliation-header-actions .secondary-button,
     .reconciliation-shell .reconciliation-header-actions .back-btn {
         width: 100%;
@@ -9035,10 +9236,12 @@ body.modal-open {
     }
 
     .reconciliation-shell .date-strip,
-    .reconciliation-shell .form-column,
-    .reconciliation-shell .cash-count-card,
-    .reconciliation-history-card {
+    .reconciliation-shell .cash-count-card {
         padding: 16px;
+    }
+
+    .reconciliation-shell .reconciliation-history-card {
+        padding: 0 0 16px;
     }
 
     .report-stage-copy h1 {
@@ -9111,7 +9314,8 @@ body.modal-open {
 
     .purchase-daily-shell .purchase-pagination-nav,
     .supplier-ledger-shell .purchase-pagination-nav,
-    .user-ledger-shell .purchase-pagination-nav {
+    .user-ledger-shell .purchase-pagination-nav,
+    .reconciliation-shell .purchase-pagination-nav {
         width: 100%;
     }
 

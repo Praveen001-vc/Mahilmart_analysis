@@ -1,201 +1,308 @@
 {% extends "base.html" %}
 
 {% block title %}Reconciliation History | Mahilmart{% endblock %}
-{% block body_class %}app-shell daily-settlement-shell reconciliation-shell{% endblock %}
+{% block body_class %}app-shell daily-settlement-shell expense-ledger-shell reconciliation-shell{% endblock %}
 
 {% block content %}
-<div class="header-bar reconciliation-header-bar">
-    <div>
-        <h1>Reconciliation history</h1>
-        <p class="reconciliation-subtitle">Review income and expense rows for the selected period, then jump to the standalone summary page when you only need totals.</p>
+<section class="expense-hero reconciliation-hero">
+    <div class="expense-hero-brand">
+        <span class="expense-hero-icon" aria-hidden="true">&#128202;</span>
+        <div>
+            <h1>Reconciliation History</h1>
+        </div>
     </div>
-    <div class="reconciliation-header-actions">
-        <a href="{{ reconciliation_summary_url }}" class="secondary-button">Open Summary Page</a>
-        <a href="{% url 'reports' %}" class="back-btn">Back to Reports</a>
-    </div>
-</div>
+    <div class="hero-actions reconciliation-header-actions">
+        <!-- <div class="reconciliation-header-links">
+            <a href="{{ reconciliation_summary_url }}" class="secondary-button">Open Summary Page</a>
+            <a href="{% url 'reports' %}" class="back-btn">Back to Reports</a>
+        </div> -->
 
-<div class="date-strip reconciliation-date-strip">
-    <div class="date-range">
-        <span class="date-label">{{ reconciliation_label }}</span>
-        <p class="reconciliation-date-help">Choose the period to review income and expense history in one place.</p>
-    </div>
-
-    <form method="get" action="{% url 'reconciliation' %}" class="date-form reconciliation-date-form">
-        <input type="hidden" name="view" value="{{ reconciliation_history_view }}" data-history-view-input>
-        <input
-            id="reconciliation-start-date"
-            type="date"
-            name="start_date"
-            value="{{ reconciliation_filters.start_date }}"
-        >
-        <input
-            id="reconciliation-end-date"
-            type="date"
-            name="end_date"
-            value="{{ reconciliation_filters.end_date }}"
-        >
-        <button type="submit">Apply</button>
-        <a href="{% url 'reconciliation' %}">Reset</a>
-    </form>
-</div>
-
-<div class="main-layout reconciliation-main-layout">
-    <div class="form-column reconciliation-form-column">
-        <div class="date-header reconciliation-date-header">
-            <div class="current-date">
-                <span class="day">Income and expense history</span>
-                <span class="full-date">{{ reconciliation_label }}</span>
+        <form method="get" action="{% url 'reconciliation' %}" class="reconciliation-header-filter">
+            <input type="hidden" name="view" value="{{ reconciliation_history_view }}" data-history-view-input>
+            <div class="reconciliation-header-filter-field">
+                <!-- <label for="reconciliation-start-date">Start</label> -->
+                <input
+                    id="reconciliation-start-date"
+                    type="date"
+                    name="start_date"
+                    class="input-control"
+                    value="{{ reconciliation_filters.start_date }}"
+                >
             </div>
-
-            <div class="reconciliation-header-tools">
-                <div class="recent-mini">
-                    <span class="recent-label">Rows:</span>
-                    <span class="recent-item active">{{ income_count }} income</span>
-                    <span class="recent-item">{{ expense_count }} expense</span>
-                </div>
-
-                <div class="reconciliation-view-toggle" data-history-toggle-shell>
-                    <span class="reconciliation-view-label {% if reconciliation_history_view == 'income' %}is-active{% endif %}" data-history-label="income">Income</span>
-                    <label class="reconciliation-view-switch">
-                        <input
-                            type="checkbox"
-                            data-history-toggle
-                            {% if reconciliation_history_view == "expense" %}checked{% endif %}
-                        >
-                        <span class="reconciliation-view-slider">
-                            <span class="reconciliation-view-runner" aria-hidden="true">
-                                <span class="reconciliation-view-runner-figure">
-                                    <span class="runner-head"></span>
-                                    <span class="runner-torso"></span>
-                                    <span class="runner-arm runner-arm-front"></span>
-                                    <span class="runner-arm runner-arm-back"></span>
-                                    <span class="runner-leg runner-leg-front"></span>
-                                    <span class="runner-leg runner-leg-back"></span>
-                                </span>
-                            </span>
-                        </span>
-                    </label>
-                    <span class="reconciliation-view-label {% if reconciliation_history_view == 'expense' %}is-active{% endif %}" data-history-label="expense">Expense</span>
-                </div>
+            <div class="reconciliation-header-filter-field">
+                <!-- <label for="reconciliation-end-date">End</label> -->
+                <input
+                    id="reconciliation-end-date"
+                    type="date"
+                    name="end_date"
+                    class="input-control"
+                    value="{{ reconciliation_filters.end_date }}"
+                >
             </div>
+            <button type="submit" class="primary-button">Apply</button>
+            <a class="secondary-button" href="{% url 'reconciliation' %}">Reset</a>
+        </form>
+    </div>
+</section>
+
+<section class="expense-summary-grid reconciliation-summary-grid">
+    <article class="premium-panel expense-summary-card reconciliation-summary-top-card reconciliation-summary-top-card-income">
+        <h2>Income</h2>
+        <div class="expense-summary-row">
+            <span>Office Income</span>
+            <strong>Rs. {{ manual_income_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Daily Settlement</span>
+            <strong>Rs. {{ settlement_income_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Total Income</span>
+            <strong class="reconciliation-summary-total">Rs. {{ income_total }}</strong>
+        </div>
+    </article>
+
+    <article class="premium-panel expense-summary-card reconciliation-summary-top-card reconciliation-summary-top-card-settlement">
+        <h2>Settlement</h2>
+        <div class="expense-summary-row">
+            <span>Cash Settled</span>
+            <strong>Rs. {{ settlement_cash_total }}</strong>
+        </div>
+        <div class="expense-summary-row reconciliation-summary-row-stack">
+            <span>Cash Settled To</span>
+            <strong class="reconciliation-summary-text">{{ settlement_cash_target_display }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Split Card Balance</span>
+            <strong>Rs. {{ split_card_balance_total }}</strong>
+        </div>
+    </article>
+
+    <article class="premium-panel expense-summary-card reconciliation-summary-top-card reconciliation-summary-top-card-expense">
+        <h2>Expense</h2>
+        <div class="expense-summary-row">
+            <span>Office Expense</span>
+            <strong class="negative">Rs. {{ manual_expense_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Cash Expense</span>
+            <strong class="negative">Rs. {{ cash_expense_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Card / Other Expense</span>
+            <strong class="negative">Rs. {{ non_cash_expense_total }}</strong>
+        </div>
+        <div class="expense-summary-row">
+            <span>Total Expense</span>
+            <strong class="negative">Rs. {{ expense_total }}</strong>
+        </div>
+    </article>
+</section>
+
+<!--  -->
+
+<section class="premium-panel expense-card reconciliation-history-stage">
+    <div class="expense-card-head reconciliation-history-head">
+        <div class="current-date">
+            <h2><span aria-hidden="true">&#128203;</span> Income and Expense History</h2>
+            <div class="purchase-history-head-copy">{{ reconciliation_label }}</div>
         </div>
 
+        <div class="reconciliation-header-tools">
+            <div class="recent-mini">
+                <span class="recent-label">Rows:</span>
+                <span class="recent-item active">{{ income_count }} income</span>
+                <span class="recent-item">{{ expense_count }} expense</span>
+            </div>
+
+            <div class="reconciliation-view-toggle" data-history-toggle-shell>
+                <span class="reconciliation-view-label {% if reconciliation_history_view == 'income' %}is-active{% endif %}" data-history-label="income">Income</span>
+                <label class="reconciliation-view-switch">
+                    <input
+                        type="checkbox"
+                        data-history-toggle
+                        {% if reconciliation_history_view == "expense" %}checked{% endif %}
+                    >
+                    <span class="reconciliation-view-slider">
+                        <span class="reconciliation-view-runner" aria-hidden="true">
+                            <span class="reconciliation-view-runner-figure">
+                                <span class="runner-head"></span>
+                                <span class="runner-torso"></span>
+                                <span class="runner-arm runner-arm-front"></span>
+                                <span class="runner-arm runner-arm-back"></span>
+                                <span class="runner-leg runner-leg-front"></span>
+                                <span class="runner-leg runner-leg-back"></span>
+                            </span>
+                        </span>
+                    </span>
+                </label>
+                <span class="reconciliation-view-label {% if reconciliation_history_view == 'expense' %}is-active{% endif %}" data-history-label="expense">Expense</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="expense-card-callout reconciliation-history-callout">
         <p class="reconciliation-history-copy">
             Add new records from the <a href="{% url 'income-add' %}">Income</a> and
             <a href="{% url 'expense-add' %}">Expenses</a> pages. This screen only shows the
             selected history.
         </p>
-
-        <div class="reconciliation-history-stack">
-            <article
-                class="reconciliation-history-card"
-                data-history-panel="income"
-                {% if reconciliation_history_view == "expense" %}hidden{% endif %}
-            >
-                <div class="reconciliation-card-head">
-                    <div>
-                        <span class="recent-label">Income History</span>
-                        <h3>Income entry history</h3>
-                        <p class="reconciliation-card-copy">Includes manual income and daily settlement rows for the selected dates.</p>
-                    </div>
-                    <span class="recent-item active">{{ income_count }} records</span>
-                </div>
-
-                {% if income_records %}
-                    <div class="table-shell">
-                        <table class="data-table reconciliation-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Title</th>
-                                    <th>Source</th>
-                                    <th>Category</th>
-                                    <th>Payment</th>
-                                    <th>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for record in income_records %}
-                                    <tr>
-                                        <td>{{ record.transaction_date|date:"d-m-Y" }}</td>
-                                        <td>
-                                            {{ record.title }}
-                                            {% if record.entry_type == "settlement" %}
-                                                <div class="muted-text">Auto added from Daily Settlement</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>{{ record.source|default:"-" }}</td>
-                                        <td>{{ record.category|default:"-" }}</td>
-                                        <td>{{ record.payment_method }}</td>
-                                        <td class="positive">Rs. {{ record.amount }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="empty-state reconciliation-empty-state">No income or settlement history found for the selected dates.</div>
-                {% endif %}
-            </article>
-
-            <article
-                class="reconciliation-history-card"
-                data-history-panel="expense"
-                {% if reconciliation_history_view != "expense" %}hidden{% endif %}
-            >
-                <div class="reconciliation-card-head">
-                    <div>
-                        <span class="recent-label">Expense History</span>
-                        <h3>Expense entry history</h3>
-                        <p class="reconciliation-card-copy">Includes expense records and purchase payments for the selected dates.</p>
-                    </div>
-                    <span class="recent-item">{{ expense_count }} records</span>
-                </div>
-
-                {% if expense_records %}
-                    <div class="table-shell">
-                        <table class="data-table reconciliation-table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Title</th>
-                                    <th>Vendor</th>
-                                    <th>Category</th>
-                                    <th>Payment</th>
-                                    <th>Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for record in expense_records %}
-                                    <tr>
-                                        <td>{{ record.transaction_date|date:"d-m-Y" }}</td>
-                                        <td>
-                                            {{ record.title }}
-                                            {% if record.entry_type == "purchase" %}
-                                                <div class="muted-text">Purchase payment</div>
-                                            {% endif %}
-                                        </td>
-                                        <td>{{ record.vendor|default:"-" }}</td>
-                                        <td>{{ record.category|default:"-" }}</td>
-                                        <td>{{ record.payment_method }}</td>
-                                        <td class="negative">Rs. {{ record.amount }}</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <div class="empty-state reconciliation-empty-state">No expense or purchase history found for the selected dates.</div>
-                {% endif %}
-            </article>
-        </div>
     </div>
 
-    <div class="calculator-column reconciliation-sidebar">
-        {% include "tracker/includes/reconciliation_summary_card.html" %}
+    <div class="reconciliation-history-stack">
+        <article
+            class="reconciliation-history-card"
+            data-history-panel="income"
+            {% if reconciliation_history_view == "expense" %}hidden{% endif %}
+        >
+            <div class="reconciliation-card-head">
+                <div>
+                    <span class="recent-label">Income History</span>
+                    <h3>Income entry history</h3>
+                    <p class="reconciliation-card-copy">Includes manual income and daily settlement rows for the selected dates.</p>
+                </div>
+                <span class="recent-item active">{{ income_count }} records</span>
+            </div>
+
+            {% if income_records %}
+                <div class="table-shell">
+                    <table class="data-table expense-history-table reconciliation-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Title</th>
+                                <th>Source</th>
+                                <th>Category</th>
+                                <th>Payment</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in income_records %}
+                                <tr>
+                                    <td>{{ record.transaction_date|date:"d-m-Y" }}</td>
+                                    <td>
+                                        <strong>{{ record.title }}</strong>
+                                        {% if record.entry_note %}
+                                            <div class="expense-table-note">{{ record.entry_note }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ record.source|default:"-" }}</td>
+                                    <td>{{ record.category|default:"-" }}</td>
+                                    <td>{{ record.payment_method }}</td>
+                                    <td class="positive">Rs. {{ record.amount }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="purchase-pagination">
+                    <div class="purchase-pagination-status">
+                        Showing {{ income_showing_from }} to {{ income_showing_to }} of {{ income_count }} records.
+                        {% if income_page_obj %}
+                            <span class="purchase-pagination-page">Page {{ income_page_obj.number }} of {{ income_page_obj.paginator.num_pages }}</span>
+                        {% endif %}
+                    </div>
+                    {% if income_page_obj and income_page_obj.paginator.num_pages > 1 %}
+                        <nav class="purchase-pagination-nav" aria-label="Income pagination">
+                            {% if income_previous_page_url %}
+                                <a class="purchase-pagination-link" href="{{ income_previous_page_url }}">Previous</a>
+                            {% endif %}
+                            {% for page_link in income_pagination_links %}
+                                {% if page_link.is_current %}
+                                    <span class="purchase-pagination-link is-current" aria-current="page">{{ page_link.number }}</span>
+                                {% else %}
+                                    <a class="purchase-pagination-link" href="{{ page_link.url }}">{{ page_link.number }}</a>
+                                {% endif %}
+                            {% endfor %}
+                            {% if income_next_page_url %}
+                                <a class="purchase-pagination-link is-next" href="{{ income_next_page_url }}">Next</a>
+                            {% endif %}
+                        </nav>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="empty-state reconciliation-empty-state">No income or settlement history found for the selected dates.</div>
+            {% endif %}
+        </article>
+
+        <article
+            class="reconciliation-history-card"
+            data-history-panel="expense"
+            {% if reconciliation_history_view != "expense" %}hidden{% endif %}
+        >
+            <div class="reconciliation-card-head">
+                <div>
+                    <span class="recent-label">Expense History</span>
+                    <h3>Expense entry history</h3>
+                    <p class="reconciliation-card-copy">Includes expense records and purchase payments for the selected dates.</p>
+                </div>
+                <span class="recent-item active">{{ expense_count }} records</span>
+            </div>
+
+            {% if expense_records %}
+                <div class="table-shell">
+                    <table class="data-table expense-history-table reconciliation-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Title</th>
+                                <th>Vendor</th>
+                                <th>Category</th>
+                                <th>Payment</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in expense_records %}
+                                <tr>
+                                    <td>{{ record.transaction_date|date:"d-m-Y" }}</td>
+                                    <td>
+                                        <strong>{{ record.title }}</strong>
+                                        {% if record.entry_type == "purchase" %}
+                                            <div class="expense-table-note">Purchase payment</div>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ record.vendor|default:"-" }}</td>
+                                    <td>{{ record.category|default:"-" }}</td>
+                                    <td>{{ record.payment_method }}</td>
+                                    <td class="negative">Rs. {{ record.amount }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="purchase-pagination">
+                    <div class="purchase-pagination-status">
+                        Showing {{ expense_showing_from }} to {{ expense_showing_to }} of {{ expense_count }} records.
+                        {% if expense_page_obj %}
+                            <span class="purchase-pagination-page">Page {{ expense_page_obj.number }} of {{ expense_page_obj.paginator.num_pages }}</span>
+                        {% endif %}
+                    </div>
+                    {% if expense_page_obj and expense_page_obj.paginator.num_pages > 1 %}
+                        <nav class="purchase-pagination-nav" aria-label="Expense pagination">
+                            {% if expense_previous_page_url %}
+                                <a class="purchase-pagination-link" href="{{ expense_previous_page_url }}">Previous</a>
+                            {% endif %}
+                            {% for page_link in expense_pagination_links %}
+                                {% if page_link.is_current %}
+                                    <span class="purchase-pagination-link is-current" aria-current="page">{{ page_link.number }}</span>
+                                {% else %}
+                                    <a class="purchase-pagination-link" href="{{ page_link.url }}">{{ page_link.number }}</a>
+                                {% endif %}
+                            {% endfor %}
+                            {% if expense_next_page_url %}
+                                <a class="purchase-pagination-link is-next" href="{{ expense_next_page_url }}">Next</a>
+                            {% endif %}
+                        </nav>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="empty-state reconciliation-empty-state">No expense or purchase history found for the selected dates.</div>
+            {% endif %}
+        </article>
     </div>
-</div>
+</section>
 
 {% include "tracker/includes/reconciliation_opening_balance_modal.html" %}
 {% endblock %}
