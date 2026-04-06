@@ -14,8 +14,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, Q, Sum
-from django.db.models.functions import TruncMonth, TruncWeek
+from django.db.models import Count, Q, Sum, Value
+from django.db.models.functions import Coalesce, Lower, Trim, TruncMonth, TruncWeek
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
@@ -109,12 +109,20 @@ RECONCILIATION_NON_CASH_METHODS = (
     PaymentMethod.BANK_TRANSFER,
     PaymentMethod.OTHER,
 )
+RECONCILIATION_NON_CASH_METHOD_CASEFOLD = tuple(
+    method.casefold() for method in RECONCILIATION_NON_CASH_METHODS
+)
+RECONCILIATION_HISTORY_PER_PAGE = 20
 MANUAL_PURCHASE_SOURCE_PREFIX = "MANUAL:"
 logger = logging.getLogger(__name__)
 SPLIT_PAYMENT_MODE_FILTER = "Split"
 
+def _sum_field(queryset, field_name):
+    return queryset.aggregate(total=Sum(field_name))["total"] or Decimal("0.00")
+
+
 def _sum_amount(queryset):
-    return queryset.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+    return _sum_field(queryset, "amount")
 
 
 def _sum_settlement_income(queryset):
@@ -786,7 +794,60 @@ def build_reconciliation_redirect_url(params, route_name="reconciliation"):
     )
 
 
-def build_reconciliation_income_entries(user, filter_values):
+def build_reconciliation_pagination(
+    request,
+    total_count,
+    *,
+    page_param="page",
+    per_page=RECONCILIATION_HISTORY_PER_PAGE,
+    history_view=None,
+):
+    paginator = Paginator(range(total_count), per_page)
+    page_obj = paginator.get_page((request.GET.get(page_param) or "").strip() or 1)
+    url_overrides = {}
+    if history_view:
+        url_overrides["view"] = history_view
+
+    previous_page_url = ""
+    next_page_url = ""
+    if page_obj.has_previous():
+        previous_page_url = build_page_url(
+            request,
+            page_obj.previous_page_number(),
+            page_param=page_param,
+            **url_overrides,
+        )
+    if page_obj.has_next():
+        next_page_url = build_page_url(
+            request,
+            page_obj.next_page_number(),
+            page_param=page_param,
+            **url_overrides,
+        )
+
+    return {
+        "page_obj": page_obj,
+        "previous_page_url": previous_page_url,
+        "next_page_url": next_page_url,
+        "pagination_links": [
+            {
+                "number": page_number,
+                "url": build_page_url(
+                    request,
+                    page_number,
+                    page_param=page_param,
+                    **url_overrides,
+                ),
+                "is_current": page_number == page_obj.number,
+            }
+            for page_number in page_obj.paginator.page_range
+        ],
+        "showing_from": page_obj.start_index() if total_count else 0,
+        "showing_to": page_obj.end_index() if total_count else 0,
+    }
+
+
+def get_reconciliation_income_querysets(user, filter_values):
     manual_queryset = filter_queryset_by_role(
         IncomeRecord.objects.all(),
         user,
@@ -803,18 +864,63 @@ def build_reconciliation_income_entries(user, filter_values):
     ).filter(
         Q(cash_settled__gt=0) | Q(gpay_settled__gt=0),
     )
+    return {
+        "manual_queryset": manual_queryset,
+        "settlement_queryset": settlement_queryset,
+        "cash_settlement_queryset": settlement_queryset.filter(cash_settled__gt=0),
+    }
 
-    settlement_records = list(
-        settlement_queryset.order_by(
-            "-settlement_date",
-            "-updated_at",
-            "-pk",
-        )
-    )
-    entries = []
+
+def build_reconciliation_income_entries(
+    user,
+    filter_values,
+    *,
+    page_number=1,
+    per_page=RECONCILIATION_HISTORY_PER_PAGE,
+    include_records=True,
+):
+    querysets = get_reconciliation_income_querysets(user, filter_values)
+    manual_queryset = querysets["manual_queryset"]
+    settlement_queryset = querysets["settlement_queryset"]
+    cash_settlement_queryset = querysets["cash_settlement_queryset"]
+
     settlement_cash_target_totals = {}
-    for record in manual_queryset.order_by("-transaction_date", "-created_at", "-pk"):
-        entries.append(
+    for cash_settled_to, cash_settled_amount in cash_settlement_queryset.order_by(
+        "-settlement_date",
+        "-updated_at",
+        "-pk",
+    ).values_list("cash_settled_to", "cash_settled"):
+        target_label = " ".join(str(cash_settled_to or "").split()) or "Not specified"
+        settlement_cash_target_totals[target_label] = (
+            settlement_cash_target_totals.get(target_label, Decimal("0.00"))
+            + (cash_settled_amount or Decimal("0.00"))
+        )
+
+    manual_count = manual_queryset.count()
+    settlement_count = cash_settlement_queryset.count()
+    record_count = manual_count + settlement_count
+    manual_income_total = _sum_amount(manual_queryset)
+    manual_cash_income_total = _sum_amount(
+        manual_queryset.filter(payment_method=PaymentMethod.CASH)
+    )
+    settlement_cash_total = _sum_field(settlement_queryset, "cash_settled")
+    settlement_card_total = _sum_field(settlement_queryset, "gpay_settled")
+    settlement_income_total = settlement_cash_total + settlement_card_total
+    settlement_cash_target_display = ", ".join(
+        f"{label} (Rs. {format_money(amount)})"
+        for label, amount in settlement_cash_target_totals.items()
+    ) or "-"
+
+    resolved_page_number = 1
+    entries = []
+    if include_records:
+        page_obj = Paginator(range(record_count), per_page).get_page(page_number)
+        resolved_page_number = page_obj.number
+        page_end = resolved_page_number * per_page
+        page_start = max((resolved_page_number - 1) * per_page, 0)
+
+        # Only fetch enough rows to render the requested page.
+        manual_entries = [
             {
                 "transaction_date": record.transaction_date,
                 "title": record.title,
@@ -826,77 +932,67 @@ def build_reconciliation_income_entries(user, filter_values):
                 "entry_note": "",
                 "sort_date": record.transaction_date,
                 "sort_timestamp": record.created_at,
+                "sort_source_priority": 1,
+                "sort_pk": record.pk,
             }
-        )
-
-    for settlement in settlement_records:
-        settlement_target = " ".join(str(settlement.cash_settled_to or "").split())
-        if settlement.cash_settled > 0 and settlement_target:
-            settlement_cash_note = f"Cash settled to {settlement_target}"
-        elif settlement.cash_settled > 0:
-            settlement_cash_note = "Cash settled"
-        else:
-            settlement_cash_note = ""
-
-        if settlement.cash_settled > 0:
-            target_label = " ".join(str(settlement.cash_settled_to or "").split())
-            if not target_label:
-                target_label = "Not specified"
-            settlement_cash_target_totals[target_label] = (
-                settlement_cash_target_totals.get(target_label, Decimal("0.00"))
-                + (settlement.cash_settled or Decimal("0.00"))
-            )
-            entries.append(
-                {
-                    "transaction_date": settlement.settlement_date,
-                    "title": "Daily Cash Settlement",
-                    "source": (
-                        f"Cash settled to {settlement.cash_settled_to}"
-                        if settlement.cash_settled_to
-                        else "Cash settled"
-                    ),
-                    "category": "Daily Settlement",
-                    "payment_method": "Cash",
-                    "amount": settlement.cash_settled,
-                    "entry_type": "settlement",
-                    "entry_note": settlement_cash_note,
-                    "sort_date": settlement.settlement_date,
-                    "sort_timestamp": settlement.updated_at,
-                }
-            )
-
-    entries.sort(
-        key=lambda item: (item["sort_date"], item["sort_timestamp"]),
-        reverse=True,
-    )
-    manual_income_total = _sum_amount(manual_queryset)
-    manual_cash_income_total = _sum_amount(
-        manual_queryset.filter(payment_method=PaymentMethod.CASH)
-    )
-    settlement_income_total = (
-        sum(
-            (
-                (settlement.cash_settled or Decimal("0.00"))
-                + (settlement.gpay_settled or Decimal("0.00"))
-                for settlement in settlement_records
+            for record in manual_queryset.only(
+                "transaction_date",
+                "title",
+                "source",
+                "category",
+                "payment_method",
+                "amount",
+                "created_at",
+            ).order_by("-transaction_date", "-created_at", "-pk")[:page_end]
+        ]
+        settlement_entries = [
+            {
+                "transaction_date": settlement.settlement_date,
+                "title": "Daily Cash Settlement",
+                "source": (
+                    f"Cash settled to {settlement.cash_settled_to}"
+                    if settlement.cash_settled_to
+                    else "Cash settled"
+                ),
+                "category": "Daily Settlement",
+                "payment_method": PaymentMethod.CASH,
+                "amount": settlement.cash_settled,
+                "entry_type": "settlement",
+                "entry_note": (
+                    f"Cash settled to {' '.join(str(settlement.cash_settled_to or '').split())}"
+                    if " ".join(str(settlement.cash_settled_to or "").split())
+                    else "Cash settled"
+                ),
+                "sort_date": settlement.settlement_date,
+                "sort_timestamp": settlement.updated_at,
+                "sort_source_priority": 0,
+                "sort_pk": settlement.pk,
+            }
+            for settlement in cash_settlement_queryset.only(
+                "settlement_date",
+                "cash_settled",
+                "cash_settled_to",
+                "updated_at",
+            ).order_by("-settlement_date", "-updated_at", "-pk")[:page_end]
+        ]
+        entries = sorted(
+            manual_entries + settlement_entries,
+            key=lambda item: (
+                item["sort_date"],
+                item["sort_timestamp"],
+                item["sort_source_priority"],
+                item["sort_pk"],
             ),
-            Decimal("0.00"),
-        )
-    )
-    settlement_cash_total = sum(
-        (settlement.cash_settled or Decimal("0.00") for settlement in settlement_records),
-        Decimal("0.00"),
-    )
-    settlement_card_total = sum(
-        (settlement.gpay_settled or Decimal("0.00") for settlement in settlement_records),
-        Decimal("0.00"),
-    )
-    settlement_cash_target_display = ", ".join(
-        f"{label} (Rs. {format_money(amount)})"
-        for label, amount in settlement_cash_target_totals.items()
-    ) or "-"
+            reverse=True,
+        )[page_start:page_end]
+        for entry in entries:
+            entry.pop("sort_source_priority", None)
+            entry.pop("sort_pk", None)
+
     return {
         "records": entries,
+        "record_count": record_count,
+        "resolved_page_number": resolved_page_number,
         "manual_income_total": manual_income_total,
         "manual_cash_income_total": manual_cash_income_total,
         "settlement_income_total": settlement_income_total,
@@ -907,50 +1003,13 @@ def build_reconciliation_income_entries(user, filter_values):
 
 
 def get_reconciliation_closing_balance_for_date(user, target_date):
-    opening_balance = get_reconciliation_opening_balance_for_date(user, target_date)
-    manual_income_total = _sum_amount(
-        filter_queryset_by_role(
-            IncomeRecord.objects.all(),
-            user,
-        ).filter(transaction_date=target_date)
-    )
-    settlement_income_total = (
-        filter_queryset_by_role(
-            DailyCashSettlement.objects.all(),
-            user,
-        )
-        .filter(settlement_date=target_date)
-        .aggregate(
-            total=Sum("cash_settled") + Sum("gpay_settled")
-        )["total"]
-        or Decimal("0.00")
-    )
-    manual_cash_expense_total = _sum_amount(
-        filter_queryset_by_role(
-            ExpenseRecord.objects.all(),
-            user,
-        ).filter(
-            transaction_date=target_date,
-            payment_method=PaymentMethod.CASH,
-        )
-    )
-    purchase_cash_total = sum(
-        (
-            purchase.paid_amount or Decimal("0.00")
-            for purchase in get_purchase_base_queryset(user).filter(
-                transaction_date=target_date,
-            )
-            if get_reconciliation_purchase_payment_method(purchase.purchase_type)
-            == PaymentMethod.CASH
-        ),
-        Decimal("0.00"),
-    )
-    return (
-        opening_balance
-        + manual_income_total
-        + settlement_income_total
-        - manual_cash_expense_total
-        - purchase_cash_total
+    return get_reconciliation_opening_balance_for_date(
+        user,
+        target_date,
+    ) + get_reconciliation_cash_delta_for_range(
+        user,
+        target_date,
+        target_date,
     )
 
 
@@ -1011,8 +1070,8 @@ def get_first_reconciliation_activity_date(user):
     return min(candidate_dates) if candidate_dates else None
 
 
-def get_reconciliation_opening_balance_for_date(user, target_date):
-    saved_balance_record = (
+def get_saved_reconciliation_opening_balance_for_date(user, target_date):
+    return (
         filter_queryset_by_role(
             ReconciliationOpeningBalance.objects.all(),
             user,
@@ -1021,10 +1080,10 @@ def get_reconciliation_opening_balance_for_date(user, target_date):
         .values_list("amount", flat=True)
         .first()
     )
-    if saved_balance_record is not None:
-        return saved_balance_record
 
-    saved_opening_balance = (
+
+def get_legacy_reconciliation_opening_balance_for_date(user, target_date):
+    return (
         filter_queryset_by_role(
             ReconciliationIncomeEntry.objects.all(),
             user,
@@ -1034,14 +1093,158 @@ def get_reconciliation_opening_balance_for_date(user, target_date):
         .values_list("opening_balance", flat=True)
         .first()
     )
+
+
+def get_latest_reconciliation_opening_reset_before_date(user, target_date):
+    saved_reset = (
+        filter_queryset_by_role(
+            ReconciliationOpeningBalance.objects.all(),
+            user,
+        )
+        .filter(balance_date__lt=target_date)
+        .order_by("-balance_date", "-updated_at", "-pk")
+        .values("balance_date", "amount")
+        .first()
+    )
+    legacy_reset = (
+        filter_queryset_by_role(
+            ReconciliationIncomeEntry.objects.all(),
+            user,
+        )
+        .filter(transaction_date__lt=target_date, opening_balance__gt=0)
+        .order_by("-transaction_date", "-created_at", "-pk")
+        .values("transaction_date", "opening_balance")
+        .first()
+    )
+
+    if saved_reset and legacy_reset:
+        if saved_reset["balance_date"] >= legacy_reset["transaction_date"]:
+            return {
+                "balance_date": saved_reset["balance_date"],
+                "amount": saved_reset["amount"],
+            }
+        return {
+            "balance_date": legacy_reset["transaction_date"],
+            "amount": legacy_reset["opening_balance"],
+        }
+    if saved_reset:
+        return {
+            "balance_date": saved_reset["balance_date"],
+            "amount": saved_reset["amount"],
+        }
+    if legacy_reset:
+        return {
+            "balance_date": legacy_reset["transaction_date"],
+            "amount": legacy_reset["opening_balance"],
+        }
+    return None
+
+
+def get_reconciliation_purchase_non_cash_total(queryset):
+    return (
+        queryset.annotate(
+            normalized_purchase_type=Lower(
+                Trim(Coalesce("purchase_type", Value("")))
+            )
+        )
+        .filter(
+            normalized_purchase_type__in=RECONCILIATION_NON_CASH_METHOD_CASEFOLD
+        )
+        .aggregate(total=Sum("paid_amount"))["total"]
+        or Decimal("0.00")
+    )
+
+
+def get_reconciliation_purchase_cash_total(queryset):
+    purchase_total = _sum_field(queryset, "paid_amount")
+    purchase_non_cash_total = get_reconciliation_purchase_non_cash_total(queryset)
+    return purchase_total - purchase_non_cash_total
+
+
+def get_reconciliation_cash_delta_for_range(user, start_date, end_date):
+    if start_date is None or end_date is None or start_date > end_date:
+        return Decimal("0.00")
+
+    manual_income_total = _sum_amount(
+        filter_queryset_by_role(
+            IncomeRecord.objects.all(),
+            user,
+        ).filter(
+            transaction_date__gte=start_date,
+            transaction_date__lte=end_date,
+        )
+    )
+    settlement_income_total = (
+        filter_queryset_by_role(
+            DailyCashSettlement.objects.all(),
+            user,
+        )
+        .filter(
+            settlement_date__gte=start_date,
+            settlement_date__lte=end_date,
+        )
+        .aggregate(total=Sum("cash_settled") + Sum("gpay_settled"))["total"]
+        or Decimal("0.00")
+    )
+    manual_cash_expense_total = _sum_amount(
+        filter_queryset_by_role(
+            ExpenseRecord.objects.all(),
+            user,
+        ).filter(
+            transaction_date__gte=start_date,
+            transaction_date__lte=end_date,
+            payment_method=PaymentMethod.CASH,
+        )
+    )
+    purchase_cash_total = get_reconciliation_purchase_cash_total(
+        get_purchase_base_queryset(user).filter(
+            transaction_date__gte=start_date,
+            transaction_date__lte=end_date,
+        )
+    )
+    return (
+        manual_income_total
+        + settlement_income_total
+        - manual_cash_expense_total
+        - purchase_cash_total
+    )
+
+
+def get_reconciliation_opening_balance_for_date(user, target_date):
+    saved_balance_record = get_saved_reconciliation_opening_balance_for_date(
+        user,
+        target_date,
+    )
+    if saved_balance_record is not None:
+        return saved_balance_record
+
+    saved_opening_balance = get_legacy_reconciliation_opening_balance_for_date(
+        user,
+        target_date,
+    )
     if saved_opening_balance is not None:
         return saved_opening_balance
+
+    latest_reset = get_latest_reconciliation_opening_reset_before_date(
+        user,
+        target_date,
+    )
+    if latest_reset is not None:
+        return latest_reset["amount"] + get_reconciliation_cash_delta_for_range(
+            user,
+            latest_reset["balance_date"],
+            target_date - timedelta(days=1),
+        )
 
     first_activity_date = get_first_reconciliation_activity_date(user)
     if first_activity_date is None or target_date <= first_activity_date:
         return Decimal("0.00")
 
-    return get_reconciliation_closing_balance_for_date(user, target_date - timedelta(days=1))
+    return get_reconciliation_cash_delta_for_range(
+        user,
+        first_activity_date,
+        target_date - timedelta(days=1),
+    )
 
 
 def get_reconciliation_split_card_balance_for_date(user, target_date):
@@ -1100,7 +1303,7 @@ def get_reconciliation_purchase_payment_method(purchase_type):
     return PaymentMethod.CASH
 
 
-def build_reconciliation_expense_entries(user, filter_values):
+def get_reconciliation_expense_querysets(user, filter_values):
     manual_queryset = filter_queryset_by_role(
         ExpenseRecord.objects.all(),
         user,
@@ -1112,12 +1315,49 @@ def build_reconciliation_expense_entries(user, filter_values):
         transaction_date__gte=filter_values["start_date"],
         transaction_date__lte=filter_values["end_date"],
     )
+    return {
+        "manual_queryset": manual_queryset,
+        "purchase_queryset": purchase_queryset,
+    }
 
+
+def build_reconciliation_expense_entries(
+    user,
+    filter_values,
+    *,
+    page_number=1,
+    per_page=RECONCILIATION_HISTORY_PER_PAGE,
+    include_records=True,
+):
+    querysets = get_reconciliation_expense_querysets(user, filter_values)
+    manual_queryset = querysets["manual_queryset"]
+    purchase_queryset = querysets["purchase_queryset"]
+
+    manual_count = manual_queryset.count()
+    purchase_count = purchase_queryset.count()
+    record_count = manual_count + purchase_count
+    manual_expense_total = _sum_amount(manual_queryset)
+    manual_cash_expense_total = _sum_amount(
+        manual_queryset.filter(payment_method=PaymentMethod.CASH)
+    )
+    manual_non_cash_expense_total = _sum_amount(
+        manual_queryset.filter(payment_method__in=RECONCILIATION_NON_CASH_METHODS)
+    )
+    purchase_total = _sum_field(purchase_queryset, "paid_amount")
+    purchase_non_cash_total = get_reconciliation_purchase_non_cash_total(
+        purchase_queryset
+    )
+    purchase_cash_total = purchase_total - purchase_non_cash_total
+
+    resolved_page_number = 1
     entries = []
-    purchase_cash_total = Decimal("0.00")
-    purchase_non_cash_total = Decimal("0.00")
-    for record in manual_queryset.order_by("-transaction_date", "-created_at", "-pk"):
-        entries.append(
+    if include_records:
+        page_obj = Paginator(range(record_count), per_page).get_page(page_number)
+        resolved_page_number = page_obj.number
+        page_end = resolved_page_number * per_page
+        page_start = max((resolved_page_number - 1) * per_page, 0)
+
+        manual_entries = [
             {
                 "transaction_date": record.transaction_date,
                 "title": record.title,
@@ -1128,50 +1368,65 @@ def build_reconciliation_expense_entries(user, filter_values):
                 "entry_type": "expense",
                 "sort_date": record.transaction_date,
                 "sort_timestamp": record.created_at,
+                "sort_source_priority": 1,
+                "sort_pk": record.pk,
             }
-        )
+            for record in manual_queryset.only(
+                "transaction_date",
+                "title",
+                "vendor",
+                "category",
+                "payment_method",
+                "amount",
+                "created_at",
+                "supplier__name",
+            ).order_by("-transaction_date", "-created_at", "-pk")[:page_end]
+        ]
+        purchase_entries = []
+        for purchase in purchase_queryset.order_by(
+            "-transaction_date",
+            "-created_at",
+            "-pk",
+        )[:page_end]:
+            purchase_payment_method = get_reconciliation_purchase_payment_method(
+                purchase.purchase_type
+            )
+            purchase_entries.append(
+                {
+                    "transaction_date": purchase.transaction_date,
+                    "title": purchase.invoice_number or "Purchase Record",
+                    "vendor": purchase.supplier_name or (
+                        purchase.supplier.name if purchase.supplier_id else "-"
+                    ),
+                    "category": purchase.purchase_type or "Purchase",
+                    "payment_method": purchase_payment_method,
+                    "amount": purchase.paid_amount,
+                    "entry_type": "purchase",
+                    "sort_date": purchase.transaction_date,
+                    "sort_timestamp": purchase.created_at,
+                    "sort_source_priority": 0,
+                    "sort_pk": purchase.pk,
+                }
+            )
 
-    for purchase in purchase_queryset.order_by("-transaction_date", "-created_at", "-pk"):
-        purchase_payment_method = get_reconciliation_purchase_payment_method(
-            purchase.purchase_type
-        )
-        if purchase_payment_method == PaymentMethod.CASH:
-            purchase_cash_total += purchase.paid_amount or Decimal("0.00")
-        else:
-            purchase_non_cash_total += purchase.paid_amount or Decimal("0.00")
-        entries.append(
-            {
-                "transaction_date": purchase.transaction_date,
-                "title": purchase.invoice_number or "Purchase Record",
-                "vendor": purchase.supplier_name or (
-                    purchase.supplier.name if purchase.supplier_id else "-"
-                ),
-                "category": purchase.purchase_type or "Purchase",
-                "payment_method": purchase_payment_method,
-                "amount": purchase.paid_amount,
-                "entry_type": "purchase",
-                "sort_date": purchase.transaction_date,
-                "sort_timestamp": purchase.created_at,
-            }
-        )
+        entries = sorted(
+            manual_entries + purchase_entries,
+            key=lambda item: (
+                item["sort_date"],
+                item["sort_timestamp"],
+                item["sort_source_priority"],
+                item["sort_pk"],
+            ),
+            reverse=True,
+        )[page_start:page_end]
+        for entry in entries:
+            entry.pop("sort_source_priority", None)
+            entry.pop("sort_pk", None)
 
-    entries.sort(
-        key=lambda item: (item["sort_date"], item["sort_timestamp"]),
-        reverse=True,
-    )
-    manual_expense_total = _sum_amount(manual_queryset)
-    manual_cash_expense_total = _sum_amount(
-        manual_queryset.filter(payment_method=PaymentMethod.CASH)
-    )
-    manual_non_cash_expense_total = _sum_amount(
-        manual_queryset.filter(payment_method__in=RECONCILIATION_NON_CASH_METHODS)
-    )
-    purchase_total = (
-        purchase_queryset.aggregate(total=Sum("paid_amount"))["total"]
-        or Decimal("0.00")
-    )
     return {
         "records": entries,
+        "record_count": record_count,
+        "resolved_page_number": resolved_page_number,
         "manual_expense_total": manual_expense_total,
         "manual_cash_expense_total": manual_cash_expense_total,
         "manual_non_cash_expense_total": manual_non_cash_expense_total,
@@ -4647,6 +4902,8 @@ class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
     permission_field = "allow_reports"
     permission_denied_message = "You do not have access to Reconciliation."
     redirect_route_name = "reconciliation"
+    include_history_records = True
+    history_per_page = RECONCILIATION_HISTORY_PER_PAGE
 
     def get_redirect_url(self, params):
         return build_reconciliation_redirect_url(
@@ -4703,6 +4960,10 @@ class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
         )
         opening_balance_modal_open = kwargs.pop("opening_balance_modal_open", False)
 
+        reconciliation_opening_balance = get_reconciliation_opening_balance_for_date(
+            self.request.user,
+            filter_values["start_date"],
+        )
         opening_balance_date = filter_values["start_date"]
         if opening_balance_form.is_bound:
             bound_balance_date = parse_date(
@@ -4716,47 +4977,46 @@ class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
             if bound_balance_date is not None:
                 opening_balance_date = bound_balance_date
         else:
-            opening_balance_value = get_reconciliation_opening_balance_for_date(
-                self.request.user,
-                opening_balance_date,
-            )
             opening_balance_form.fields["balance_date"].initial = opening_balance_date
             opening_balance_form.initial["balance_date"] = opening_balance_date
-            opening_balance_form.fields["amount"].initial = opening_balance_value
-            opening_balance_form.initial["amount"] = opening_balance_value
+            opening_balance_form.fields["amount"].initial = reconciliation_opening_balance
+            opening_balance_form.initial["amount"] = reconciliation_opening_balance
+
+        load_income_records = self.include_history_records and history_view == "income"
+        load_expense_records = self.include_history_records and history_view == "expense"
 
         income_summary = build_reconciliation_income_entries(
             self.request.user,
             filter_values,
+            page_number=(self.request.GET.get("income_page") or "").strip() or 1,
+            per_page=self.history_per_page,
+            include_records=load_income_records,
         )
-        income_records = income_summary["records"]
         expense_summary = build_reconciliation_expense_entries(
             self.request.user,
             filter_values,
+            page_number=(self.request.GET.get("expense_page") or "").strip() or 1,
+            per_page=self.history_per_page,
+            include_records=load_expense_records,
         )
-        expense_records = expense_summary["records"]
-        income_count = len(income_records)
-        expense_count = len(expense_records)
-        income_pagination = paginate_record_list(
+        income_count = income_summary["record_count"]
+        expense_count = expense_summary["record_count"]
+        income_pagination = build_reconciliation_pagination(
             self.request,
-            income_records,
+            income_count,
             page_param="income_page",
-            per_page=20,
+            per_page=self.history_per_page,
             history_view="income",
         )
-        expense_pagination = paginate_record_list(
+        expense_pagination = build_reconciliation_pagination(
             self.request,
-            expense_records,
+            expense_count,
             page_param="expense_page",
-            per_page=20,
+            per_page=self.history_per_page,
             history_view="expense",
         )
-        income_records = income_pagination["records"]
-        expense_records = expense_pagination["records"]
-        reconciliation_opening_balance = get_reconciliation_opening_balance_for_date(
-            self.request.user,
-            filter_values["start_date"],
-        )
+        income_records = income_summary["records"] if load_income_records else []
+        expense_records = expense_summary["records"] if load_expense_records else []
         manual_income_total = income_summary["manual_income_total"]
         settlement_income_total = income_summary["settlement_income_total"]
         split_card_balance_total = get_reconciliation_split_card_balance_for_date(
@@ -4809,6 +5069,8 @@ class ReconciliationWorkspaceView(ModulePermissionRequiredMixin, TemplateView):
                     route_name="reconciliation-summary",
                 ),
                 "opening_balance_form_action_url": reverse(self.redirect_route_name),
+                "income_history_loaded": load_income_records,
+                "expense_history_loaded": load_expense_records,
                 "income_records": income_records,
                 "expense_records": expense_records,
                 "income_page_obj": income_pagination["page_obj"],
@@ -4861,6 +5123,7 @@ class ReconciliationView(ReconciliationWorkspaceView):
 class ReconciliationSummaryView(ReconciliationWorkspaceView):
     template_name = "tracker/reconciliation_summary.html"
     redirect_route_name = "reconciliation-summary"
+    include_history_records = False
 
 
 class ReportsView(ModulePermissionRequiredMixin, TemplateView):

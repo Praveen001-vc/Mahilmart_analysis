@@ -23,17 +23,22 @@ document.addEventListener("DOMContentLoaded", () => {
         if (historyToggle) {
             historyToggle.checked = view === "expense";
         }
+    };
 
-        if (historyToggle) {
-            const currentUrl = new URL(window.location.href);
-            currentUrl.searchParams.set("view", view);
-            window.history.replaceState({}, "", currentUrl);
+    const navigateToHistoryView = (view) => {
+        const currentUrl = new URL(window.location.href);
+        currentUrl.searchParams.set("view", view);
+        if (view === "income") {
+            currentUrl.searchParams.delete("expense_page");
+        } else {
+            currentUrl.searchParams.delete("income_page");
         }
+        window.location.assign(currentUrl.toString());
     };
 
     if (historyToggle) {
         historyToggle.addEventListener("change", () => {
-            setHistoryView(historyToggle.checked ? "expense" : "income");
+            navigateToHistoryView(historyToggle.checked ? "expense" : "income");
         });
 
         setHistoryView(historyToggle.checked ? "expense" : "income");
