@@ -496,7 +496,15 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Office Income")
         self.assertContains(response, "Office Expense")
         self.assertContains(response, "Counter Cash Collection")
-        self.assertContains(response, "Office Expense")
+        expense_response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+                "view": "expense",
+            },
+        )
+        self.assertContains(expense_response, "Office Expense")
         self.assertNotContains(response, "Add reconciliation income")
         self.assertNotContains(response, "Add reconciliation expense")
 
@@ -657,6 +665,7 @@ class TrackerViewsTests(TestCase):
             {
                 "start_date": date.today().isoformat(),
                 "end_date": date.today().isoformat(),
+                "view": "expense",
             },
         )
 
@@ -715,6 +724,7 @@ class TrackerViewsTests(TestCase):
             {
                 "start_date": date.today().isoformat(),
                 "end_date": date.today().isoformat(),
+                "view": "expense",
             },
         )
 
@@ -729,8 +739,8 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["expense_total"], Decimal("450.00"))
         self.assertEqual(response.context["reconciliation_closing_balance"], Decimal("-120.00"))
         self.assertEqual(response.context["next_day_opening_balance"], Decimal("-120.00"))
-        self.assertContains(response, "Cash expense")
-        self.assertContains(response, "Card / other expense")
+        self.assertContains(response, "Cash Expense")
+        self.assertContains(response, "Card / Other Expense")
         self.assertNotContains(response, "Purchase paid")
 
     def test_reconciliation_legacy_entry_post_does_not_create_records(self):
@@ -947,7 +957,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["reconciliation_opening_balance"], Decimal("1000.00"))
         self.assertEqual(response.context["income_total"], Decimal("1750.00"))
         self.assertEqual(response.context["reconciliation_closing_balance"], Decimal("1750.00"))
-        self.assertContains(response, "Split card balance")
+        self.assertContains(response, "Split Card Balance")
 
     def test_reconciliation_page_ignores_legacy_separate_entry_models(self):
         self.client.force_login(self.user)
@@ -996,9 +1006,21 @@ class TrackerViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Main Income Entry")
-        self.assertContains(response, "Main Expense Entry")
         self.assertNotContains(response, "Legacy Separate Income")
         self.assertNotContains(response, "Legacy Separate Expense")
+
+        expense_response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": today.isoformat(),
+                "end_date": today.isoformat(),
+                "view": "expense",
+            },
+        )
+
+        self.assertEqual(expense_response.status_code, 200)
+        self.assertContains(expense_response, "Main Expense Entry")
+        self.assertNotContains(expense_response, "Legacy Separate Expense")
 
     def test_expense_add_page_includes_suppliers_from_same_role(self):
         peer_admin = get_user_model().objects.create_superuser(
@@ -1201,7 +1223,9 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["income_count"], 25)
         self.assertEqual(response.context["expense_count"], 22)
         self.assertEqual(len(response.context["income_records"]), 20)
-        self.assertEqual(len(response.context["expense_records"]), 20)
+        self.assertEqual(len(response.context["expense_records"]), 0)
+        self.assertTrue(response.context["income_history_loaded"])
+        self.assertFalse(response.context["expense_history_loaded"])
         self.assertEqual(response.context["income_page_obj"].number, 1)
         self.assertEqual(response.context["expense_page_obj"].number, 1)
         self.assertIn("income_page=2", response.context["income_next_page_url"])
@@ -1229,6 +1253,24 @@ class TrackerViewsTests(TestCase):
         self.assertContains(page_two_response, "Income Row 25")
         self.assertNotContains(page_two_response, "Income Row 01")
         self.assertContains(page_two_response, "Showing 21 to 25 of 25 records.")
+
+        expense_view_response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": start_date.isoformat(),
+                "end_date": today.isoformat(),
+                "view": "expense",
+            },
+        )
+
+        self.assertEqual(expense_view_response.status_code, 200)
+        self.assertEqual(len(expense_view_response.context["income_records"]), 0)
+        self.assertEqual(len(expense_view_response.context["expense_records"]), 20)
+        self.assertFalse(expense_view_response.context["income_history_loaded"])
+        self.assertTrue(expense_view_response.context["expense_history_loaded"])
+        self.assertContains(expense_view_response, "Expense Row 01")
+        self.assertContains(expense_view_response, "Expense Row 20")
+        self.assertNotContains(expense_view_response, "Expense Row 21")
 
     def test_expense_category_page_creates_category(self):
         self.client.force_login(self.user)

@@ -164,7 +164,8 @@
                 <span class="recent-item active">{{ income_count }} records</span>
             </div>
 
-            {% if income_records %}
+            {% if income_history_loaded %}
+                {% if income_records %}
                 <div class="table-shell">
                     <table class="data-table expense-history-table reconciliation-table">
                         <thead>
@@ -221,8 +222,11 @@
                         </nav>
                     {% endif %}
                 </div>
-            {% else %}
+                {% else %}
                 <div class="empty-state reconciliation-empty-state">No income or settlement history found for the selected dates.</div>
+                {% endif %}
+            {% else %}
+                <div class="empty-state reconciliation-empty-state">Switch to income view to load this history.</div>
             {% endif %}
         </article>
 
@@ -240,7 +244,8 @@
                 <span class="recent-item active">{{ expense_count }} records</span>
             </div>
 
-            {% if expense_records %}
+            {% if expense_history_loaded %}
+                {% if expense_records %}
                 <div class="table-shell">
                     <table class="data-table expense-history-table reconciliation-table">
                         <thead>
@@ -297,8 +302,11 @@
                         </nav>
                     {% endif %}
                 </div>
-            {% else %}
+                {% else %}
                 <div class="empty-state reconciliation-empty-state">No expense or purchase history found for the selected dates.</div>
+                {% endif %}
+            {% else %}
+                <div class="empty-state reconciliation-empty-state">Switch to expense view to load this history.</div>
             {% endif %}
         </article>
     </div>
