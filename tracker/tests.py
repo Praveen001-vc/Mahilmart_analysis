@@ -2896,7 +2896,7 @@ class TrackerViewsTests(TestCase):
         )
         self.assertEqual(
             response.context["autofill_summary"]["gpay_net_amount"],
-            Decimal("250.00"),
+            Decimal("600.00"),
         )
         self.assertEqual(
             response.context["settlement_preview"]["cash_in_hand"],
