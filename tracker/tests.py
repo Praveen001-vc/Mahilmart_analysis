@@ -2892,18 +2892,18 @@ class TrackerViewsTests(TestCase):
         )
         self.assertEqual(
             response.context["autofill_summary"]["gpay_expense_amount"],
-            Decimal("40.00"),
+            Decimal("0.00"),
         )
         self.assertEqual(
             response.context["autofill_summary"]["gpay_net_amount"],
-            Decimal("210.00"),
+            Decimal("250.00"),
         )
         self.assertEqual(
             response.context["settlement_preview"]["cash_in_hand"],
             Decimal("550.00"),
         )
         self.assertContains(response, "Gpay/UPI income")
-        self.assertContains(response, 'id="gpay-expense-display"', html=False)
+        self.assertNotContains(response, 'id="gpay-expense-display"', html=False)
         self.assertContains(response, 'id="gpay-income-amount" value="250.00"', html=False)
 
     def test_daily_settlement_post_adds_counter_income_to_saved_cash_in_hand(self):

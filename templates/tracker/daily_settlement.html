@@ -113,16 +113,10 @@
                         <span class="settlement-payment-stat">
                             Gpay/UPI income = <strong id="gpay-income-display">Rs. {{ autofill_summary.gpay_income_amount|floatformat:2 }}</strong>
                         </span>
-                        {% if autofill_summary.gpay_expense_amount > 0 %}
-                        <span class="settlement-payment-stat">
-                            Expense = <strong id="gpay-expense-display">Rs. {{ autofill_summary.gpay_expense_amount|floatformat:2 }}</strong>
-                        </span>
-                        {% endif %}
                         <span class="settlement-payment-stat">
                             Net = <strong id="gpay-net-display">Rs. {{ autofill_summary.gpay_net_amount|floatformat:2 }}</strong>
                         </span>
                         <input type="hidden" id="gpay-income-amount" value="{{ autofill_summary.gpay_income_amount }}">
-                        <input type="hidden" id="gpay-expense-amount" value="{{ autofill_summary.gpay_expense_amount }}">
                     </div>
                     <div class="form-row total-row">
                         <span class="row-label">Total amount:</span>
@@ -396,7 +390,6 @@ document.addEventListener("DOMContentLoaded", function() {
     const counterIncome = parseFloat(document.querySelector("#counter-income-amount")?.value || 0);
     const gpayInput = document.querySelector("#gpay-settled");
     const gpayIncome = parseFloat(document.querySelector("#gpay-income-amount")?.value || 0);
-    const gpayExpense = parseFloat(document.querySelector("#gpay-expense-amount")?.value || 0);
     const cashSettledInput = document.querySelector("#cash-settled");
     const closingBalanceInput = document.querySelector("#closing-balance");
     
@@ -406,7 +399,6 @@ document.addEventListener("DOMContentLoaded", function() {
     const cashInHandSpan = document.querySelector("#cash-in-hand");
     const differenceSpan = document.querySelector("#difference");
     const gpayIncomeDisplay = document.querySelector("#gpay-income-display");
-    const gpayExpenseDisplay = document.querySelector("#gpay-expense-display");
     const gpayNetDisplay = document.querySelector("#gpay-net-display");
     
     // Denomination elements
@@ -524,7 +516,6 @@ document.addEventListener("DOMContentLoaded", function() {
     const updateAll = () => {
         const total = calculateTotal();
         const cashInHand = calculateCashInHand();
-        const gpayNet = gpayIncome - gpayExpense;
         const cashSettled = toNumber(cashSettledInput?.value);
         const denominationTotal = calculateDenomTotal();
         const diff = denominationTotal - cashInHand;
@@ -539,9 +530,8 @@ document.addEventListener("DOMContentLoaded", function() {
         if (actualSalesSpan) actualSalesSpan.textContent = formatDisplayCurrency(actualSales);
         if (cashInHandSpan) cashInHandSpan.textContent = formatDisplayCurrency(cashInHand);
         if (gpayIncomeDisplay) gpayIncomeDisplay.textContent = `Rs. ${gpayIncome.toFixed(2)}`;
-        if (gpayExpenseDisplay) gpayExpenseDisplay.textContent = `Rs. ${gpayExpense.toFixed(2)}`;
         if (gpayNetDisplay) {
-            gpayNetDisplay.textContent = formatSignedDisplayCurrency(gpayNet);
+            gpayNetDisplay.textContent = formatSignedDisplayCurrency(gpayIncome);
         }
         if (closingBalanceInput) closingBalanceInput.value = closing.toFixed(2);
         if (differenceSpan) {
