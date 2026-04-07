@@ -163,6 +163,14 @@ def get_settlement_closing_balance(
     return (cash_in_hand - cash_settled) + cash_difference
 
 
+def _apply_payment_method_filter(queryset, payment_methods=None):
+    if payment_methods is None:
+        return queryset
+    if isinstance(payment_methods, str):
+        return queryset.filter(payment_method=payment_methods)
+    return queryset.filter(payment_method__in=payment_methods)
+
+
 def build_income_ledger_entries_for_period(user, start_date=None, end_date=None):
     entries = []
     income_queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user)
@@ -2262,9 +2270,7 @@ def build_sales_settlement_summary(settlement_date):
             continue
 
         effective_amount = get_effective_sales_payment_amount(record)
-        if record.payment_mode == SalesPaymentMode.CARD:
-            gpay_total += effective_amount
-        elif record.payment_mode == SalesPaymentMode.CASH:
+        if record.payment_mode == SalesPaymentMode.CASH:
             cash_total += effective_amount
 
     return {
@@ -2317,13 +2323,63 @@ def get_default_settlement_opening_balance(user, settlement_date):
     return income_total - expense_total
 
 
-def get_counter_income_total_for_date(user, settlement_date):
-    return _sum_amount(
-        filter_queryset_by_role(IncomeRecord.objects.all(), user).filter(
-            transaction_date=settlement_date,
-            category__iexact=INCOME_CATEGORY_COUNTER,
-        )
+def get_counter_income_total_for_date(user, settlement_date, payment_methods=None):
+    queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user).filter(
+        transaction_date=settlement_date,
+        category__iexact=INCOME_CATEGORY_COUNTER,
     )
+    return _sum_amount(_apply_payment_method_filter(queryset, payment_methods))
+
+
+def get_counter_expense_total_for_date(user, settlement_date, payment_methods=None):
+    queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user).filter(
+        transaction_date=settlement_date,
+        category__iexact=COUNTER_EXPENSE_CATEGORY,
+    )
+    return _sum_amount(_apply_payment_method_filter(queryset, payment_methods))
+
+
+def get_income_total_for_date(user, settlement_date, payment_methods=None):
+    queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user).filter(
+        transaction_date=settlement_date,
+    )
+    return _sum_amount(_apply_payment_method_filter(queryset, payment_methods))
+
+
+def get_expense_total_for_date(user, settlement_date, payment_methods=None):
+    queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user).filter(
+        transaction_date=settlement_date,
+    )
+    return _sum_amount(_apply_payment_method_filter(queryset, payment_methods))
+
+
+def build_settlement_payment_summary(user, settlement_date):
+    cash_income_amount = get_counter_income_total_for_date(
+        user,
+        settlement_date,
+        PaymentMethod.CASH,
+    )
+    non_cash_counter_income_amount = get_counter_income_total_for_date(
+        user,
+        settlement_date,
+        RECONCILIATION_NON_CASH_METHODS,
+    )
+    cash_expense_amount = get_counter_expense_total_for_date(
+        user,
+        settlement_date,
+        PaymentMethod.CASH,
+    )
+    non_cash_expense_amount = get_expense_total_for_date(
+        user,
+        settlement_date,
+        RECONCILIATION_NON_CASH_METHODS,
+    )
+    return {
+        "cash_income_amount": cash_income_amount,
+        "non_cash_counter_income_amount": non_cash_counter_income_amount,
+        "cash_expense_amount": cash_expense_amount,
+        "non_cash_expense_amount": non_cash_expense_amount,
+    }
 
 
 def build_settlement_autofill_summary(user, settlement_date):
@@ -2335,25 +2391,31 @@ def build_settlement_autofill_summary(user, settlement_date):
         .first()
     )
     sales_summary = build_sales_settlement_summary(settlement_date)
-    expense_queryset = filter_queryset_by_role(ExpenseRecord.objects.all(), user).filter(
+    counter_expense_queryset = filter_queryset_by_role(
+        ExpenseRecord.objects.all(),
+        user,
+    ).filter(
         transaction_date=settlement_date,
         category__iexact=COUNTER_EXPENSE_CATEGORY,
     )
+    payment_summary = build_settlement_payment_summary(user, settlement_date)
     if previous_settlement:
         opening_balance = previous_settlement.closing_balance
     else:
         opening_balance = get_default_settlement_opening_balance(user, settlement_date)
 
     sales_ledger_cash = sales_summary["cash_settled"]
-    counter_income_amount = get_counter_income_total_for_date(user, settlement_date)
+    counter_income_amount = payment_summary["cash_income_amount"]
+    gpay_income_amount = payment_summary["non_cash_counter_income_amount"]
+    gpay_settled = sales_summary["gpay_settled"]
+    gpay_expense_amount = payment_summary["non_cash_expense_amount"]
+    gpay_net_amount = gpay_income_amount - gpay_expense_amount
     if sales_summary["sales_count"] > 0:
-        gpay_settled = sales_summary["gpay_settled"]
         settlement_source = "sales"
     else:
-        gpay_settled = Decimal("0.00")
         settlement_source = "manual"
 
-    expense_amount = _sum_amount(expense_queryset)
+    expense_amount = payment_summary["cash_expense_amount"]
     cash_in_hand = get_cash_in_hand_amount(
         opening_balance,
         sales_ledger_cash,
@@ -2365,13 +2427,16 @@ def build_settlement_autofill_summary(user, settlement_date):
         "opening_balance": opening_balance,
         "sales_ledger_cash": sales_ledger_cash,
         "counter_income_amount": counter_income_amount,
+        "gpay_income_amount": gpay_income_amount,
         "gpay_settled": gpay_settled,
+        "gpay_expense_amount": gpay_expense_amount,
+        "gpay_net_amount": gpay_net_amount,
         "cash_settled": Decimal("0.00"),
         "cash_in_hand": cash_in_hand,
         "expense_amount": expense_amount,
         "upi_count": 0,
         "cash_count": 0,
-        "expense_count": expense_queryset.count(),
+        "expense_count": counter_expense_queryset.count(),
         "sales_count": sales_summary["sales_count"],
         "manual_split_count": sales_summary["manual_split_count"],
         "settlement_source": settlement_source,
@@ -2637,10 +2702,14 @@ def build_cash_denomination_summary(denominations):
 
 
 def build_daily_settlement_email_context(settlement):
-    counter_income_amount = get_counter_income_total_for_date(
+    payment_summary = build_settlement_payment_summary(
         settlement.user,
         settlement.settlement_date,
     )
+    counter_income_amount = payment_summary["cash_income_amount"]
+    gpay_income_amount = payment_summary["non_cash_counter_income_amount"]
+    gpay_expense_amount = payment_summary["non_cash_expense_amount"]
+    gpay_net_amount = gpay_income_amount - gpay_expense_amount
     sales_cash_amount = get_sales_cash_from_settlement(settlement)
     cash_denominations = settlement.cash_denominations or {}
     preview_values = {
@@ -2671,6 +2740,9 @@ def build_daily_settlement_email_context(settlement):
         "saved_on": saved_on,
         "preview": preview,
         "counter_income_amount": counter_income_amount,
+        "gpay_income_amount": gpay_income_amount,
+        "gpay_expense_amount": gpay_expense_amount,
+        "gpay_net_amount": gpay_net_amount,
         "sales_cash_amount": sales_cash_amount,
         "cash_denomination_rows": build_cash_denomination_rows(cash_denominations),
         "cash_denomination_summary": build_cash_denomination_summary(cash_denominations),
@@ -3760,7 +3832,7 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
             sales_ledger_cash = (
                 loaded_settlement.actual_sales - loaded_settlement.gpay_settled
             )
-            gpay_settled = loaded_settlement.gpay_settled
+            gpay_settled = autofill_summary["gpay_settled"]
 
         return {
             "opening_balance": loaded_settlement.opening_balance,
@@ -3790,12 +3862,11 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
             f"{closing_class} settlement-readonly".strip()
         )
 
-        if autofill_summary["settlement_source"] == "sales":
-            current_class = form.fields["gpay_settled"].widget.attrs.get("class", "")
-            form.fields["gpay_settled"].widget.attrs["readonly"] = True
-            form.fields["gpay_settled"].widget.attrs["class"] = (
-                f"{current_class} settlement-readonly".strip()
-            )
+        current_class = form.fields["gpay_settled"].widget.attrs.get("class", "")
+        form.fields["gpay_settled"].widget.attrs["readonly"] = True
+        form.fields["gpay_settled"].widget.attrs["class"] = (
+            f"{current_class} settlement-readonly".strip()
+        )
         return form
 
     def get_cash_denominations(self, params=None, loaded_settlement=None):
@@ -4583,6 +4654,24 @@ class SupplierInactiveView(ModulePermissionRequiredMixin, View):
             supplier.status = SupplierStatus.INACTIVE
             supplier.save(update_fields=["status", "updated_at"])
             messages.success(request, "Supplier marked as inactive successfully.")
+        return redirect(get_safe_next_url(request, reverse("supplier-list")))
+
+
+class SupplierActiveView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_suppliers"
+    permission_denied_message = "You do not have access to Suppliers."
+
+    def get_queryset(self):
+        return filter_queryset_by_role(Supplier.objects.all(), self.request.user)
+
+    def post(self, request, *args, **kwargs):
+        supplier = get_object_or_404(self.get_queryset(), pk=kwargs["pk"])
+        if supplier.status == SupplierStatus.ACTIVE:
+            messages.info(request, "Supplier is already active.")
+        else:
+            supplier.status = SupplierStatus.ACTIVE
+            supplier.save(update_fields=["status", "updated_at"])
+            messages.success(request, "Supplier marked as active successfully.")
         return redirect(get_safe_next_url(request, reverse("supplier-list")))
 
 

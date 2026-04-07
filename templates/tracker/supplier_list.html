@@ -144,7 +144,11 @@
                                             <button type="submit" class="expense-action-button expense-action-inactive">Inactive</button>
                                         </form>
                                     {% else %}
-                                        <span class="muted-text">Inactive</span>
+                                        <form method="post" action="{% url 'supplier-active' supplier.pk %}" class="expense-inline-form" onsubmit="return confirm('Are you sure you want to mark this supplier active again?');">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="next" value="{{ current_url }}">
+                                            <button type="submit" class="expense-action-button expense-action-active">Active</button>
+                                        </form>
                                     {% endif %}
                                 </div>
                             </td>

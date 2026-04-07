@@ -8,12 +8,13 @@ I. Daily Summary
 Opening Balance: Rs. {{ preview.opening_balance|floatformat:2 }}
 Sales Ledger Cash: Rs. {{ preview.sales_ledger_cash|floatformat:2 }}
 Gpay/UPI Total: Rs. {{ preview.gpay_settled|floatformat:2 }}
+Gpay/UPI Details: Income Rs. {{ gpay_income_amount|floatformat:2 }} | Expense Rs. {{ gpay_expense_amount|floatformat:2 }} | Net Rs. {{ gpay_net_amount|floatformat:2 }}
 Total Amount: Rs. {{ preview.total_amount|floatformat:2 }}
 Actual Total Sale Amount: Rs. {{ preview.actual_sales|floatformat:2 }}
 
 II. Cash Handling
-Expense: Rs. {{ preview.expense_amount|floatformat:2 }}
-Income: Rs. {{ preview.counter_income_amount|floatformat:2 }}
+Cash Expense: Rs. {{ preview.expense_amount|floatformat:2 }}
+Cash Income: Rs. {{ preview.counter_income_amount|floatformat:2 }}
 Cash In Hand: Rs. {{ preview.cash_in_hand|floatformat:2 }}
 Cash Denomination Total: Rs. {{ settlement.cash_denomination_total|floatformat:2 }}
 Difference: Rs. {{ settlement.cash_difference|floatformat:2 }}

@@ -84,6 +84,10 @@
                                                 <td class="stats-value" style="padding:9px 0; text-align:right; font-size:15px; line-height:1.5; font-weight:700;">Rs. {{ preview.gpay_settled|floatformat:2 }}</td>
                                             </tr>
                                             <tr class="stats-row">
+                                                <td style="padding:9px 0; font-size:15px; line-height:1.5;">Gpay/UPI Details</td>
+                                                <td class="stats-value" style="padding:9px 0; text-align:right; font-size:15px; line-height:1.5; font-weight:700;">Income Rs. {{ gpay_income_amount|floatformat:2 }} | Expense Rs. {{ gpay_expense_amount|floatformat:2 }} | Net Rs. {{ gpay_net_amount|floatformat:2 }}</td>
+                                            </tr>
+                                            <tr class="stats-row">
                                                 <td style="padding:9px 0; border-top:1px solid #d9cdb7; font-size:15px; line-height:1.5;">Total Amount</td>
                                                 <td class="stats-value" style="padding:9px 0; border-top:1px solid #d9cdb7; text-align:right; font-size:15px; line-height:1.5; font-weight:700; color:#163b6d;">Rs. {{ preview.total_amount|floatformat:2 }}</td>
                                             </tr>
@@ -103,11 +107,11 @@
                                         <div style="margin:8px 0 16px; font-size:18px; line-height:1.3; font-weight:700; color:#163b6d;">Cash Handling</div>
                                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                                             <tr class="stats-row">
-                                                <td style="padding:9px 0; font-size:15px; line-height:1.5;">Expense</td>
+                                                <td style="padding:9px 0; font-size:15px; line-height:1.5;">Cash Expense</td>
                                                 <td class="stats-value" style="padding:9px 0; text-align:right; font-size:15px; line-height:1.5; font-weight:700;">Rs. {{ preview.expense_amount|floatformat:2 }}</td>
                                             </tr>
                                             <tr class="stats-row">
-                                                <td style="padding:9px 0; font-size:15px; line-height:1.5;">Income</td>
+                                                <td style="padding:9px 0; font-size:15px; line-height:1.5;">Cash Income</td>
                                                 <td class="stats-value" style="padding:9px 0; text-align:right; font-size:15px; line-height:1.5; font-weight:700;">Rs. {{ preview.counter_income_amount|floatformat:2 }}</td>
                                             </tr>
                                             <tr class="stats-row">
