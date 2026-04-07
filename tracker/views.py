@@ -2413,8 +2413,8 @@ def build_settlement_autofill_summary(user, settlement_date):
     counter_income_amount = payment_summary["cash_income_amount"]
     gpay_income_amount = payment_summary["non_cash_counter_income_amount"]
     gpay_settled = sales_summary["gpay_settled"]
-    gpay_expense_amount = payment_summary["non_cash_expense_amount"]
-    gpay_net_amount = gpay_income_amount - gpay_expense_amount
+    gpay_expense_amount = Decimal("0.00")
+    gpay_net_amount = gpay_income_amount
     if sales_summary["sales_count"] > 0:
         settlement_source = "sales"
     else:
@@ -2713,8 +2713,8 @@ def build_daily_settlement_email_context(settlement):
     )
     counter_income_amount = payment_summary["cash_income_amount"]
     gpay_income_amount = payment_summary["non_cash_counter_income_amount"]
-    gpay_expense_amount = payment_summary["non_cash_expense_amount"]
-    gpay_net_amount = gpay_income_amount - gpay_expense_amount
+    gpay_expense_amount = Decimal("0.00")
+    gpay_net_amount = gpay_income_amount
     sales_cash_amount = get_sales_cash_from_settlement(settlement)
     cash_denominations = settlement.cash_denominations or {}
     preview_values = {

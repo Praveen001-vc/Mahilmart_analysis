@@ -8,7 +8,7 @@ I. Daily Summary
 Opening Balance: Rs. {{ preview.opening_balance|floatformat:2 }}
 Sales Ledger Cash: Rs. {{ preview.sales_ledger_cash|floatformat:2 }}
 Gpay/UPI Total: Rs. {{ preview.gpay_settled|floatformat:2 }}
-Gpay/UPI Details: Income Rs. {{ gpay_income_amount|floatformat:2 }} | Expense Rs. {{ gpay_expense_amount|floatformat:2 }} | Net Rs. {{ gpay_net_amount|floatformat:2 }}
+Gpay/UPI Details: Income Rs. {{ gpay_income_amount|floatformat:2 }} | Net Rs. {{ gpay_net_amount|floatformat:2 }}
 Total Amount: Rs. {{ preview.total_amount|floatformat:2 }}
 Actual Total Sale Amount: Rs. {{ preview.actual_sales|floatformat:2 }}
 
