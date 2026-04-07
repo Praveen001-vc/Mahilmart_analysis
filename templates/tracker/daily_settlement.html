@@ -516,6 +516,8 @@ document.addEventListener("DOMContentLoaded", function() {
     const updateAll = () => {
         const total = calculateTotal();
         const cashInHand = calculateCashInHand();
+        const gpaySettled = toNumber(gpayInput?.value);
+        const gpayNet = gpaySettled + gpayIncome;
         const cashSettled = toNumber(cashSettledInput?.value);
         const denominationTotal = calculateDenomTotal();
         const diff = denominationTotal - cashInHand;
@@ -531,7 +533,7 @@ document.addEventListener("DOMContentLoaded", function() {
         if (cashInHandSpan) cashInHandSpan.textContent = formatDisplayCurrency(cashInHand);
         if (gpayIncomeDisplay) gpayIncomeDisplay.textContent = `Rs. ${gpayIncome.toFixed(2)}`;
         if (gpayNetDisplay) {
-            gpayNetDisplay.textContent = formatSignedDisplayCurrency(gpayIncome);
+            gpayNetDisplay.textContent = formatSignedDisplayCurrency(gpayNet);
         }
         if (closingBalanceInput) closingBalanceInput.value = closing.toFixed(2);
         if (differenceSpan) {
