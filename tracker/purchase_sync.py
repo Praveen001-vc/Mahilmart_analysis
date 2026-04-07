@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.utils.dateparse import parse_date
 
-from .models import PurchaseRecord, Supplier
+from .models import PurchasePayment, PurchaseRecord, Supplier
 from .purchase_helpers import sync_purchase_to_expense
 from .sales_sync import (
     build_sqlserver_connection_string,
@@ -118,41 +118,97 @@ def normalize_lookup_key(value):
     return normalized_value.casefold()
 
 
+def normalize_source_purchase_numbers(values):
+    normalized_numbers = []
+    seen_numbers = set()
+    for value in values or []:
+        try:
+            number = int(str(value).strip())
+        except (TypeError, ValueError):
+            continue
+        if number <= 0 or number in seen_numbers:
+            continue
+        normalized_numbers.append(number)
+        seen_numbers.add(number)
+    return normalized_numbers
+
+
+def extract_source_purchase_number(source_reference):
+    source_reference = normalize_source_text(source_reference)
+    if not source_reference.startswith(SQLSERVER_PURCHASE_SOURCE_PREFIX):
+        return None
+    suffix = source_reference[len(SQLSERVER_PURCHASE_SOURCE_PREFIX) :]
+    normalized_numbers = normalize_source_purchase_numbers([suffix])
+    return normalized_numbers[0] if normalized_numbers else None
+
+
+def get_pending_purchase_source_numbers_for_resync(user):
+    pending_references = (
+        filter_queryset_by_role(PurchaseRecord.objects.all(), user)
+        .filter(
+            source_reference__startswith=SQLSERVER_PURCHASE_SOURCE_PREFIX,
+            pending_amount__gt=Decimal("0.00"),
+        )
+        .order_by("source_reference")
+        .values_list("source_reference", flat=True)
+    )
+    source_numbers = normalize_source_purchase_numbers(
+        extract_source_purchase_number(reference)
+        for reference in pending_references
+    )
+    return sorted(source_numbers)
+
+
 def build_purchase_sync_query(
     date_from=None,
     date_to=None,
     supplier_name="",
     invoice_number="",
+    source_purchase_numbers=None,
 ):
     date_from, date_to = normalize_date_range(date_from=date_from, date_to=date_to)
+    source_purchase_numbers = normalize_source_purchase_numbers(source_purchase_numbers)
     query_parts = [PURCHASE_SYNC_SELECT]
     parameters = []
+    main_clauses = []
+    query_clauses = []
 
     if date_from is not None:
-        query_parts.append(
-            "AND CAST(ISNULL(PurMas_VouDate, PurMas_Date) AS date) >= "
+        main_clauses.append(
+            "CAST(ISNULL(PurMas_VouDate, PurMas_Date) AS date) >= "
             f"{format_sqlserver_date_literal(date_from)}"
         )
     if date_to is not None:
-        query_parts.append(
-            "AND CAST(ISNULL(PurMas_VouDate, PurMas_Date) AS date) <= "
+        main_clauses.append(
+            "CAST(ISNULL(PurMas_VouDate, PurMas_Date) AS date) <= "
             f"{format_sqlserver_date_literal(date_to)}"
         )
 
     supplier_name = normalize_source_text(supplier_name)
     if supplier_name:
-        query_parts.append("AND LTRIM(RTRIM(ISNULL(PurMas_Add1, ''))) LIKE ?")
+        main_clauses.append("LTRIM(RTRIM(ISNULL(PurMas_Add1, ''))) LIKE ?")
         parameters.append(f"%{supplier_name}%")
 
     invoice_number = normalize_source_text(invoice_number)
     if invoice_number:
-        query_parts.append(
-            "AND ("
+        main_clauses.append(
+            "("
             "LTRIM(RTRIM(ISNULL(PurMas_BillNo, ''))) LIKE ? "
             "OR LTRIM(RTRIM(ISNULL(PurMas_VouNo, ''))) LIKE ?"
             ")"
         )
         parameters.extend((f"%{invoice_number}%", f"%{invoice_number}%"))
+
+    if main_clauses:
+        query_clauses.append("(" + " AND ".join(main_clauses) + ")")
+
+    if source_purchase_numbers:
+        query_clauses.append(
+            "PurMas_SNo IN (" + ", ".join(str(number) for number in source_purchase_numbers) + ")"
+        )
+
+    if query_clauses:
+        query_parts.append("AND (" + " OR ".join(query_clauses) + ")")
 
     query_parts.append(
         "ORDER BY CAST(ISNULL(PurMas_VouDate, PurMas_Date) AS date) DESC, PurMas_SNo DESC"
@@ -223,6 +279,10 @@ def sync_purchases_from_rows(rows, user):
     purchases_by_source_reference = {
         purchase.source_reference: purchase for purchase in visible_purchases
     }
+    purchase_ids_with_local_payments = set(
+        PurchasePayment.objects.filter(purchase__in=visible_purchases)
+        .values_list("purchase_id", flat=True)
+    )
 
     with transaction.atomic():
         for row in rows:
@@ -292,6 +352,14 @@ def sync_purchases_from_rows(rows, user):
                 purchases_by_source_reference[source_reference] = purchase
                 stats.inserted_count += 1
             else:
+                if (
+                    existing_purchase.pk in purchase_ids_with_local_payments
+                    and (existing_purchase.pending_amount or Decimal("0.00")) <= Decimal("0.00")
+                    and (existing_purchase.paid_amount or Decimal("0.00")) > source_paid_amount
+                ):
+                    stats.skipped_count += 1
+                    continue
+
                 if matched_supplier is not None or not existing_purchase.supplier_id:
                     existing_purchase.supplier = matched_supplier
                 existing_purchase.purchase_type = purchase_type
@@ -342,13 +410,6 @@ def sync_purchases_from_sqlserver(
             "pyodbc is not installed. Add pyodbc to the environment before syncing purchases."
         )
 
-    query, parameters = build_purchase_sync_query(
-        date_from=date_from,
-        date_to=date_to,
-        supplier_name=supplier_name,
-        invoice_number=invoice_number,
-    )
-
     try:
         connection = pyodbc.connect(
             connection_string,
@@ -358,8 +419,16 @@ def sync_purchases_from_sqlserver(
         raise PurchaseSyncError(f"Could not connect to SQL Server: {exc}") from exc
 
     stats = PurchaseSyncStats()
+    pending_purchase_numbers = get_pending_purchase_source_numbers_for_resync(user)
     try:
         cursor = connection.cursor()
+        query, parameters = build_purchase_sync_query(
+            date_from=date_from,
+            date_to=date_to,
+            supplier_name=supplier_name,
+            invoice_number=invoice_number,
+            source_purchase_numbers=pending_purchase_numbers,
+        )
         if parameters:
             cursor.execute(query, parameters)
         else:

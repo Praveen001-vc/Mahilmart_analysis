@@ -52,13 +52,16 @@ from .purchase_inspector import (
     inspect_purchase_sources_in_sqlserver,
     normalize_search_keywords,
 )
+from .purchase_helpers import sync_purchase_to_expense
 from .purchase_sync import (
     PurchaseSyncStats,
     SQLSERVER_PURCHASE_SOURCE_PREFIX,
     build_purchase_sync_query,
     classify_purchase_type,
+    get_pending_purchase_source_numbers_for_resync,
     get_source_paid_amount,
     sync_purchases_from_rows,
+    sync_purchases_from_sqlserver,
 )
 from .sales_sync import (
     SOURCE_SALE_TYPE_PAYMENT_MODE_MAP,
@@ -2167,15 +2170,27 @@ class TrackerViewsTests(TestCase):
             contact_person="Raja",
             phone_number="9998887776",
         )
+        inactive_supplier = Supplier.objects.create(
+            user=self.user,
+            name="Inactive Action Supplier",
+            contact_person="Rani",
+            phone_number="9998887777",
+            status=SupplierStatus.INACTIVE,
+        )
 
         response = self.client.get(reverse("supplier-list"))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("supplier-edit", args=[supplier.pk]))
         self.assertContains(response, reverse("supplier-inactive", args=[supplier.pk]))
+        self.assertContains(response, reverse("supplier-active", args=[inactive_supplier.pk]))
         self.assertContains(
             response,
             "Are you sure you want to mark this supplier inactive?",
+        )
+        self.assertContains(
+            response,
+            "Are you sure you want to mark this supplier active again?",
         )
 
     def test_supplier_edit_page_prefills_saved_details(self):
@@ -2254,6 +2269,26 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.url, reverse("supplier-list"))
         supplier.refresh_from_db()
         self.assertEqual(supplier.status, SupplierStatus.INACTIVE)
+
+    def test_supplier_active_post_marks_supplier_active(self):
+        self.client.force_login(self.user)
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Active Supplier",
+            contact_person="Prabhu",
+            phone_number="9777711112",
+            status=SupplierStatus.INACTIVE,
+        )
+
+        response = self.client.post(
+            reverse("supplier-active", args=[supplier.pk]),
+            {"next": reverse("supplier-list")},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("supplier-list"))
+        supplier.refresh_from_db()
+        self.assertEqual(supplier.status, SupplierStatus.ACTIVE)
 
     def test_supplier_create_redirects_back_to_next_url(self):
         self.client.force_login(self.user)
@@ -2654,6 +2689,7 @@ class TrackerViewsTests(TestCase):
             category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("125.00"),
             transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
         )
 
         response = self.client.get(reverse("daily-settlement"))
@@ -2684,6 +2720,10 @@ class TrackerViewsTests(TestCase):
             response.context["settlement_preview"]["closing_balance"],
             Decimal("0.00"),
         )
+        self.assertTrue(
+            response.context["form"].fields["gpay_settled"].widget.attrs.get("readonly")
+        )
+        self.assertNotContains(response, 'id="gpay-expense-display"', html=False)
         self.assertContains(response, "Daily Cash Settlement")
         self.assertNotContains(response, 'name="opening_balance"', html=False)
         self.assertNotContains(response, 'name="expense_amount"', html=False)
@@ -2725,6 +2765,7 @@ class TrackerViewsTests(TestCase):
             category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("125.00"),
             transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
         )
 
         response = self.client.get(reverse("daily-settlement"))
@@ -2738,8 +2779,123 @@ class TrackerViewsTests(TestCase):
             response.context["settlement_preview"]["cash_in_hand"],
             Decimal("816.00"),
         )
-        self.assertContains(response, "Expense =")
-        self.assertContains(response, "Income =")
+        self.assertContains(response, "Cash Expense =")
+        self.assertContains(response, "Cash Income =")
+
+    def test_daily_settlement_shows_non_cash_counter_payment_breakdown(self):
+        self.client.force_login(self.user)
+        yesterday = date.today() - timedelta(days=1)
+        DailyCashSettlement.objects.create(
+            user=self.user,
+            settlement_date=yesterday,
+            opening_balance=Decimal("0.00"),
+            gpay_settled=Decimal("0.00"),
+            cash_settled=Decimal("0.00"),
+            expense_amount=Decimal("0.00"),
+            closing_balance=Decimal("500.00"),
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Cash Counter Sale",
+            source="Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("120.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Card Counter Sale",
+            source="Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("250.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CARD,
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Office UPI Sale",
+            source="Office",
+            category=INCOME_CATEGORY_OFFICE,
+            amount=Decimal("90.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.UPI,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=4801,
+            bill_no="SAL-4801",
+            sale_date=date.today(),
+            customer_name="Split Card Customer",
+            net_amount=Decimal("300.00"),
+            received_amount=Decimal("300.00"),
+            balance_amount=Decimal("0.00"),
+            split_cash_amount=Decimal("0.00"),
+            split_card_amount=Decimal("300.00"),
+            payment_mode=SalesPaymentMode.CASH,
+        )
+        SalesLedgerRecord.objects.create(
+            source_sale_no=4802,
+            bill_no="SAL-4802",
+            sale_date=date.today(),
+            customer_name="Full Card Customer",
+            net_amount=Decimal("50.00"),
+            received_amount=Decimal("50.00"),
+            balance_amount=Decimal("0.00"),
+            payment_mode=SalesPaymentMode.CARD,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Cash Expense",
+            vendor="Vendor A",
+            category=COUNTER_EXPENSE_CATEGORY,
+            amount=Decimal("70.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Bank Transfer Expense",
+            vendor="Vendor B",
+            category="General",
+            amount=Decimal("40.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.BANK_TRANSFER,
+        )
+
+        response = self.client.get(reverse("daily-settlement"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["autofill_summary"]["counter_income_amount"],
+            Decimal("120.00"),
+        )
+        self.assertEqual(
+            response.context["autofill_summary"]["expense_amount"],
+            Decimal("70.00"),
+        )
+        self.assertEqual(
+            response.context["autofill_summary"]["gpay_settled"],
+            Decimal("300.00"),
+        )
+        self.assertEqual(
+            response.context["autofill_summary"]["gpay_income_amount"],
+            Decimal("250.00"),
+        )
+        self.assertEqual(
+            response.context["autofill_summary"]["gpay_expense_amount"],
+            Decimal("40.00"),
+        )
+        self.assertEqual(
+            response.context["autofill_summary"]["gpay_net_amount"],
+            Decimal("210.00"),
+        )
+        self.assertEqual(
+            response.context["settlement_preview"]["cash_in_hand"],
+            Decimal("550.00"),
+        )
+        self.assertContains(response, "Gpay/UPI income")
+        self.assertContains(response, 'id="gpay-expense-display"', html=False)
+        self.assertContains(response, 'id="gpay-income-amount" value="250.00"', html=False)
 
     def test_daily_settlement_post_adds_counter_income_to_saved_cash_in_hand(self):
         self.client.force_login(self.user)
@@ -2769,6 +2925,7 @@ class TrackerViewsTests(TestCase):
             category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("200.00"),
             transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
         )
         today_value = date.today().isoformat()
 
@@ -2972,7 +3129,7 @@ class TrackerViewsTests(TestCase):
             sale_date=date.today(),
             customer_name="Cash Customer",
             net_amount=Decimal("100.00"),
-            received_amount=Decimal("80.00"),
+            received_amount=Decimal("100.00"),
             balance_amount=Decimal("0.00"),
             payment_mode=SalesPaymentMode.CASH,
         )
@@ -2983,6 +3140,7 @@ class TrackerViewsTests(TestCase):
             category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("50.00"),
             transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
         )
 
         response = self.client.get(reverse("daily-settlement"))
@@ -2991,10 +3149,10 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["autofill_summary"]["settlement_source"], "sales")
         self.assertEqual(response.context["autofill_summary"]["sales_count"], 3)
         self.assertEqual(response.context["autofill_summary"]["manual_split_count"], 1)
-        self.assertEqual(response.context["autofill_summary"]["gpay_settled"], Decimal("350.00"))
+        self.assertEqual(response.context["autofill_summary"]["gpay_settled"], Decimal("150.00"))
         self.assertEqual(response.context["autofill_summary"]["sales_ledger_cash"], Decimal("400.00"))
         self.assertEqual(response.context["settlement_preview"]["cash_in_hand"], Decimal("1050.00"))
-        self.assertEqual(response.context["settlement_preview"]["actual_sales"], Decimal("750.00"))
+        self.assertEqual(response.context["settlement_preview"]["actual_sales"], Decimal("550.00"))
         self.assertContains(response, "Sales Ledger Cash")
         self.assertContains(response, "Cash Denomination Total")
         self.assertContains(response, "Cash Denomination")
@@ -3072,6 +3230,7 @@ class TrackerViewsTests(TestCase):
             category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("200.00"),
             transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
         )
         today_value = date.today().isoformat()
 
@@ -3123,6 +3282,7 @@ class TrackerViewsTests(TestCase):
             category=COUNTER_EXPENSE_CATEGORY,
             amount=Decimal("200.00"),
             transaction_date=date.today(),
+            payment_method=PaymentMethod.CASH,
         )
         today_value = date.today().isoformat()
 
@@ -3207,11 +3367,13 @@ class TrackerViewsTests(TestCase):
             source_sale_no=5001,
             bill_no="SAL-5001",
             sale_date=date.today(),
-            customer_name="Card Customer",
+            customer_name="Split Card Customer",
             net_amount=Decimal("275.00"),
             received_amount=Decimal("275.00"),
             balance_amount=Decimal("0.00"),
-            payment_mode=SalesPaymentMode.CARD,
+            split_cash_amount=Decimal("0.00"),
+            split_card_amount=Decimal("275.00"),
+            payment_mode=SalesPaymentMode.CASH,
         )
 
         today_value = date.today().isoformat()
@@ -5334,6 +5496,19 @@ class PurchaseSyncUnitTests(TestCase):
         self.assertIn("CAST(ISNULL(PurMas_VouDate, PurMas_Date) AS date) <= {d '2026-03-20'}", query)
         self.assertEqual(params, ["%Fresh%", "%INV-55%", "%INV-55%"])
 
+    def test_build_purchase_sync_query_includes_pending_purchase_numbers_for_resync(self):
+        query, params = build_purchase_sync_query(
+            date_from=date(2026, 3, 1),
+            date_to=date(2026, 3, 20),
+            source_purchase_numbers=[777, "888", 777, "bad"],
+        )
+
+        self.assertIn("CAST(ISNULL(PurMas_VouDate, PurMas_Date) AS date) >= {d '2026-03-01'}", query)
+        self.assertIn("CAST(ISNULL(PurMas_VouDate, PurMas_Date) AS date) <= {d '2026-03-20'}", query)
+        self.assertIn("PurMas_SNo IN (777, 888)", query)
+        self.assertIn(" OR ", query)
+        self.assertEqual(params, [])
+
     def test_classify_purchase_type_and_paid_amount_from_source_type(self):
         self.assertEqual(classify_purchase_type(1), "Cash")
         self.assertEqual(classify_purchase_type(2), "Credit")
@@ -5444,6 +5619,162 @@ class PurchaseSyncUnitTests(TestCase):
         self.assertEqual(existing_purchase.transaction_date, date(2026, 3, 26))
         self.assertEqual(expense.amount, Decimal("700.00"))
         self.assertIn("Pending Amount: 400.00", expense.notes)
+
+    def test_get_pending_purchase_source_numbers_for_resync_skips_fully_paid_local_bills(self):
+        pending_purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Pending Supplier",
+            purchase_type="Credit",
+            invoice_number="PENDING-801",
+            total_amount=Decimal("900.00"),
+            paid_amount=Decimal("0.00"),
+            transaction_date=date.today(),
+            source_reference=f"{SQLSERVER_PURCHASE_SOURCE_PREFIX}801",
+        )
+        partial_local_payment_purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Partial Supplier",
+            purchase_type="Credit",
+            invoice_number="PARTIAL-802",
+            total_amount=Decimal("500.00"),
+            paid_amount=Decimal("200.00"),
+            transaction_date=date.today(),
+            source_reference=f"{SQLSERVER_PURCHASE_SOURCE_PREFIX}802",
+        )
+        fully_paid_local_purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Paid Supplier",
+            purchase_type="Credit",
+            invoice_number="PAID-803",
+            total_amount=Decimal("400.00"),
+            paid_amount=Decimal("400.00"),
+            transaction_date=date.today(),
+            source_reference=f"{SQLSERVER_PURCHASE_SOURCE_PREFIX}803",
+        )
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Manual Supplier",
+            purchase_type="Manual",
+            invoice_number="MANUAL-804",
+            total_amount=Decimal("600.00"),
+            paid_amount=Decimal("0.00"),
+            transaction_date=date.today(),
+            source_reference="MANUAL:804",
+        )
+        PurchasePayment.objects.create(
+            purchase=partial_local_payment_purchase,
+            user=self.user,
+            amount=Decimal("200.00"),
+        )
+        PurchasePayment.objects.create(
+            purchase=fully_paid_local_purchase,
+            user=self.user,
+            amount=Decimal("400.00"),
+        )
+
+        self.assertEqual(
+            get_pending_purchase_source_numbers_for_resync(self.user),
+            [801, 802],
+        )
+        self.assertEqual(pending_purchase.pending_amount, Decimal("900.00"))
+
+    def test_sync_purchases_from_rows_skips_refresh_when_bill_is_already_paid_locally(self):
+        existing_purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Existing Supplier",
+            purchase_type="Credit",
+            invoice_number="LOCAL-INV",
+            total_amount=Decimal("700.00"),
+            paid_amount=Decimal("700.00"),
+            transaction_date=date(2026, 3, 1),
+            notes="Kept from local payment",
+            source_reference=f"{SQLSERVER_PURCHASE_SOURCE_PREFIX}778",
+        )
+        PurchasePayment.objects.create(
+            purchase=existing_purchase,
+            user=self.user,
+            amount=Decimal("700.00"),
+            payment_date=date(2026, 3, 2),
+            notes="Paid locally in tracker",
+        )
+        sync_purchase_to_expense(existing_purchase)
+
+        stats = sync_purchases_from_rows(
+            [
+                SimpleNamespace(
+                    PurMas_SNo=778,
+                    PurMas_Party="88",
+                    SupplierName="Updated Supplier",
+                    PurMas_BillNo="SQL-INV-778",
+                    PurMas_VouNo="VOU-778",
+                    PurMas_Type=2,
+                    PurchaseDate=date(2026, 3, 26),
+                    PurMas_NetAmt=Decimal("700.00"),
+                    PurMas_Remarks="SQL row still pending",
+                )
+            ],
+            self.user,
+        )
+
+        existing_purchase.refresh_from_db()
+        expense = ExpenseRecord.objects.get(
+            user=self.user,
+            source_reference=f"PURCHASE:{existing_purchase.source_reference}",
+        )
+
+        self.assertEqual(stats.fetched_count, 1)
+        self.assertEqual(stats.inserted_count, 0)
+        self.assertEqual(stats.refreshed_count, 0)
+        self.assertEqual(stats.skipped_count, 1)
+        self.assertEqual(existing_purchase.invoice_number, "LOCAL-INV")
+        self.assertEqual(existing_purchase.purchase_type, "Credit")
+        self.assertEqual(existing_purchase.paid_amount, Decimal("700.00"))
+        self.assertEqual(existing_purchase.pending_amount, Decimal("0.00"))
+        self.assertEqual(existing_purchase.notes, "Kept from local payment")
+        self.assertIn("Paid Amount: 700.00", expense.notes)
+
+    @patch("tracker.purchase_sync.build_sqlserver_connection_string", return_value="Driver=stub;")
+    @patch("tracker.purchase_sync.get_pending_purchase_source_numbers_for_resync", return_value=[901])
+    def test_sync_purchases_from_sqlserver_rechecks_old_pending_purchase_bills(
+        self,
+        _pending_purchase_numbers_mock,
+        _connection_string_mock,
+    ):
+        class FakeCursor:
+            def __init__(self):
+                self.executed_query = ""
+
+            def execute(self, query, params=None):
+                self.executed_query = query
+                return self
+
+            def fetchmany(self, _batch_size):
+                return []
+
+        class FakeConnection:
+            def __init__(self):
+                self.cursor_instance = FakeCursor()
+                self.closed = False
+
+            def cursor(self):
+                return self.cursor_instance
+
+            def close(self):
+                self.closed = True
+
+        fake_connection = FakeConnection()
+        fake_pyodbc = SimpleNamespace(connect=lambda *_args, **_kwargs: fake_connection)
+
+        with patch("tracker.purchase_sync.pyodbc", fake_pyodbc):
+            stats = sync_purchases_from_sqlserver(
+                user=self.user,
+                date_from=date(2026, 3, 26),
+                date_to=date(2026, 3, 26),
+            )
+
+        self.assertEqual(stats.fetched_count, 0)
+        self.assertIn("PurMas_SNo IN (901)", fake_connection.cursor_instance.executed_query)
+        self.assertTrue(fake_connection.closed)
 
 
 class UserSyncUnitTests(TestCase):
