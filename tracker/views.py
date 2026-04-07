@@ -109,6 +109,9 @@ RECONCILIATION_NON_CASH_METHODS = (
     PaymentMethod.BANK_TRANSFER,
     PaymentMethod.OTHER,
 )
+SETTLEMENT_NON_CASH_EXPENSE_METHODS = tuple(
+    method for method in RECONCILIATION_NON_CASH_METHODS if method != PaymentMethod.CARD
+)
 RECONCILIATION_NON_CASH_METHOD_CASEFOLD = tuple(
     method.casefold() for method in RECONCILIATION_NON_CASH_METHODS
 )
@@ -2270,7 +2273,9 @@ def build_sales_settlement_summary(settlement_date):
             continue
 
         effective_amount = get_effective_sales_payment_amount(record)
-        if record.payment_mode == SalesPaymentMode.CASH:
+        if record.payment_mode == SalesPaymentMode.CARD:
+            gpay_total += effective_amount
+        elif record.payment_mode == SalesPaymentMode.CASH:
             cash_total += effective_amount
 
     return {
@@ -2372,7 +2377,7 @@ def build_settlement_payment_summary(user, settlement_date):
     non_cash_expense_amount = get_expense_total_for_date(
         user,
         settlement_date,
-        RECONCILIATION_NON_CASH_METHODS,
+        SETTLEMENT_NON_CASH_EXPENSE_METHODS,
     )
     return {
         "cash_income_amount": cash_income_amount,
