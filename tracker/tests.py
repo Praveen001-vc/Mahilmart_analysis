@@ -2861,6 +2861,15 @@ class TrackerViewsTests(TestCase):
             transaction_date=date.today(),
             payment_method=PaymentMethod.BANK_TRANSFER,
         )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Card Expense",
+            vendor="Vendor C",
+            category="General",
+            amount=Decimal("511.00"),
+            transaction_date=date.today(),
+            payment_method=PaymentMethod.CARD,
+        )
 
         response = self.client.get(reverse("daily-settlement"))
 
@@ -2875,7 +2884,7 @@ class TrackerViewsTests(TestCase):
         )
         self.assertEqual(
             response.context["autofill_summary"]["gpay_settled"],
-            Decimal("300.00"),
+            Decimal("350.00"),
         )
         self.assertEqual(
             response.context["autofill_summary"]["gpay_income_amount"],
@@ -3149,10 +3158,10 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(response.context["autofill_summary"]["settlement_source"], "sales")
         self.assertEqual(response.context["autofill_summary"]["sales_count"], 3)
         self.assertEqual(response.context["autofill_summary"]["manual_split_count"], 1)
-        self.assertEqual(response.context["autofill_summary"]["gpay_settled"], Decimal("150.00"))
+        self.assertEqual(response.context["autofill_summary"]["gpay_settled"], Decimal("350.00"))
         self.assertEqual(response.context["autofill_summary"]["sales_ledger_cash"], Decimal("400.00"))
         self.assertEqual(response.context["settlement_preview"]["cash_in_hand"], Decimal("1050.00"))
-        self.assertEqual(response.context["settlement_preview"]["actual_sales"], Decimal("550.00"))
+        self.assertEqual(response.context["settlement_preview"]["actual_sales"], Decimal("750.00"))
         self.assertContains(response, "Sales Ledger Cash")
         self.assertContains(response, "Cash Denomination Total")
         self.assertContains(response, "Cash Denomination")
@@ -3367,13 +3376,11 @@ class TrackerViewsTests(TestCase):
             source_sale_no=5001,
             bill_no="SAL-5001",
             sale_date=date.today(),
-            customer_name="Split Card Customer",
+            customer_name="Card Customer",
             net_amount=Decimal("275.00"),
             received_amount=Decimal("275.00"),
             balance_amount=Decimal("0.00"),
-            split_cash_amount=Decimal("0.00"),
-            split_card_amount=Decimal("275.00"),
-            payment_mode=SalesPaymentMode.CASH,
+            payment_mode=SalesPaymentMode.CARD,
         )
 
         today_value = date.today().isoformat()
