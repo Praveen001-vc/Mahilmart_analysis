@@ -2812,6 +2812,21 @@ def create_purchase_payment(
     return payment
 
 
+def update_purchase_payment(payment, amount, notes=""):
+    previous_amount = payment.amount
+    payment.amount = amount
+    payment.notes = notes.strip()
+    payment.save(update_fields=["amount", "notes", "updated_at"])
+
+    amount_delta = amount - previous_amount
+    if amount_delta:
+        purchase = payment.purchase
+        purchase.paid_amount += amount_delta
+        purchase.save(update_fields=["paid_amount", "pending_amount", "updated_at"])
+
+    return payment
+
+
 def build_purchase_payment_history(purchase):
     history = []
     tracked_total = Decimal("0.00")
@@ -2826,6 +2841,7 @@ def build_purchase_payment_history(purchase):
                 "entry_type": "purchase",
                 "label": "Purchase Created",
                 "amount": format_money(purchase.total_amount),
+                "payment_id": None,
                 "payment_date": purchase_date.strftime("%d-%m-%Y"),
                 "recorded_on": purchase.created_at.strftime("%d-%m-%Y %I:%M %p"),
                 "recorded_time": purchase.created_at.strftime("%I:%M %p"),
@@ -2833,6 +2849,10 @@ def build_purchase_payment_history(purchase):
                 "notes": purchase.notes.strip() or "Purchase record created.",
                 "running_paid": format_money(running_paid),
                 "running_pending": format_money(purchase.total_amount - running_paid),
+                "can_edit": False,
+                "edit_url": "",
+                "raw_amount": "",
+                "max_editable_amount": "",
             },
         )
     )
@@ -2852,6 +2872,7 @@ def build_purchase_payment_history(purchase):
                     "entry_type": "payment",
                     "label": "Payment Entry",
                     "amount": format_money(payment.amount),
+                    "payment_id": payment.pk,
                     "payment_date": payment.payment_date.strftime("%d-%m-%Y"),
                     "recorded_on": payment.created_at.strftime("%d-%m-%Y %I:%M %p"),
                     "recorded_time": payment.created_at.strftime("%I:%M %p"),
@@ -2859,6 +2880,12 @@ def build_purchase_payment_history(purchase):
                     "notes": payment.notes.strip(),
                     "running_paid": format_money(running_paid),
                     "running_pending": format_money(purchase.total_amount - running_paid),
+                    "can_edit": True,
+                    "edit_url": reverse("purchase-payment-edit", args=[payment.pk]),
+                    "raw_amount": format_money(payment.amount),
+                    "max_editable_amount": format_money(
+                        purchase.pending_amount + payment.amount
+                    ),
                 },
             )
         )
@@ -2874,6 +2901,7 @@ def build_purchase_payment_history(purchase):
                     "entry_type": "opening",
                     "label": "Opening Paid Amount",
                     "amount": format_money(legacy_balance),
+                    "payment_id": None,
                     "payment_date": purchase_date.strftime("%d-%m-%Y"),
                     "recorded_on": purchase.created_at.strftime("%d-%m-%Y %I:%M %p"),
                     "recorded_time": purchase.created_at.strftime("%I:%M %p"),
@@ -2881,6 +2909,10 @@ def build_purchase_payment_history(purchase):
                     "notes": "Saved with the original purchase record.",
                     "running_paid": format_money(running_paid),
                     "running_pending": format_money(purchase.total_amount - running_paid),
+                    "can_edit": False,
+                    "edit_url": "",
+                    "raw_amount": "",
+                    "max_editable_amount": "",
                 },
             )
         )
@@ -4473,7 +4505,7 @@ class PurchasePaymentCreateView(ModulePermissionRequiredMixin, View):
                     for error in field_errors
                 )
                 messages.error(request, error_text or "Could not save the payment entry.")
-                return redirect(self.success_url)
+                return redirect(get_safe_next_url(request, self.success_url))
 
             create_purchase_payment(
                 purchase=purchase,
@@ -4487,7 +4519,53 @@ class PurchasePaymentCreateView(ModulePermissionRequiredMixin, View):
             request,
             f"Payment of Rs. {format_money(form.cleaned_data['amount'])} saved for invoice {purchase.invoice_number}.",
         )
-        return redirect(self.success_url)
+        return redirect(get_safe_next_url(request, self.success_url))
+
+
+class PurchasePaymentUpdateView(ModulePermissionRequiredMixin, View):
+    permission_field = "allow_purchases"
+    permission_denied_message = "You do not have access to Purchases."
+    success_url = reverse_lazy("purchase-list")
+
+    def post(self, request, pk, *args, **kwargs):
+        with transaction.atomic():
+            locked_queryset = filter_queryset_by_role(
+                PurchasePayment.objects.select_related("purchase").select_for_update(),
+                request.user,
+                field_name="purchase__user",
+            )
+            payment = get_object_or_404(
+                locked_queryset,
+                pk=pk,
+            )
+            form = PurchasePaymentForm(
+                request.POST,
+                purchase=payment.purchase,
+                existing_payment=payment,
+            )
+            if not form.is_valid():
+                error_text = " ".join(
+                    error
+                    for field_errors in form.errors.values()
+                    for error in field_errors
+                )
+                messages.error(request, error_text or "Could not update the payment entry.")
+                return redirect(get_safe_next_url(request, self.success_url))
+
+            update_purchase_payment(
+                payment=payment,
+                amount=form.cleaned_data["amount"],
+                notes=form.cleaned_data["notes"],
+            )
+            sync_purchase_to_expense(payment.purchase)
+
+        messages.success(
+            request,
+            "Payment entry updated to "
+            f"Rs. {format_money(form.cleaned_data['amount'])} for invoice "
+            f"{payment.purchase.invoice_number}.",
+        )
+        return redirect(get_safe_next_url(request, self.success_url))
 
 
 class SupplierListView(ModulePermissionRequiredMixin, ListView):

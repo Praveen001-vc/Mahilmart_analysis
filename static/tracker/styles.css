@@ -2291,10 +2291,22 @@ body.modal-open {
     text-align: right;
 }
 
+.payment-entry-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+}
+
 .payment-entry-meta small {
     display: block;
     margin-top: 6px;
     color: var(--muted);
+}
+
+.payment-entry-action {
+    min-width: auto;
+    padding: 8px 14px;
 }
 
 .payment-entry-body {
@@ -4743,6 +4755,10 @@ body.modal-open {
 
     .payment-entry-meta {
         text-align: left;
+    }
+
+    .payment-entry-controls {
+        align-items: stretch;
     }
 }
 

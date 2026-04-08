@@ -4380,6 +4380,42 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(payload["payment_history"][1]["label"], "Opening Paid Amount")
         self.assertEqual(payload["payment_history"][1]["amount"], "250.00")
         self.assertEqual(payload["payment_history"][1]["running_paid"], "250.00")
+        self.assertFalse(payload["payment_history"][1]["can_edit"])
+
+    def test_purchase_detail_endpoint_marks_real_payment_entries_as_editable(self):
+        self.client.force_login(self.user)
+        purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Editable Supplier",
+            purchase_type="Cash",
+            invoice_number="EDITABLE-100",
+            total_amount=Decimal("950.00"),
+            paid_amount=Decimal("250.00"),
+        )
+        payment = PurchasePayment.objects.create(
+            purchase=purchase,
+            user=self.user,
+            amount=Decimal("250.00"),
+            notes="Initial tracker payment",
+        )
+
+        response = self.client.get(reverse("purchase-detail", args=[purchase.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        payment_entry = next(
+            entry
+            for entry in payload["payment_history"]
+            if entry["entry_type"] == "payment"
+        )
+        self.assertTrue(payment_entry["can_edit"])
+        self.assertEqual(payment_entry["payment_id"], payment.pk)
+        self.assertEqual(
+            payment_entry["edit_url"],
+            reverse("purchase-payment-edit", args=[payment.pk]),
+        )
+        self.assertEqual(payment_entry["raw_amount"], "250.00")
+        self.assertEqual(payment_entry["max_editable_amount"], "950.00")
 
     def test_purchase_detail_endpoint_uses_source_date_for_synced_purchase_saved_on(self):
         self.client.force_login(self.user)
@@ -4432,6 +4468,57 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(purchase.paid_amount, Decimal("550.00"))
         self.assertEqual(purchase.pending_amount, Decimal("450.00"))
         self.assertEqual(expense.amount, Decimal("1000.00"))
+        self.assertIn("Paid Amount: 550.00", expense.notes)
+        self.assertIn("Pending Amount: 450.00", expense.notes)
+
+    def test_purchase_payment_edit_post_updates_purchase_totals(self):
+        self.client.force_login(self.user)
+        purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Edit Balance Supplier",
+            purchase_type="Retail",
+            invoice_number="PAY-EDIT-100",
+            total_amount=Decimal("1000.00"),
+            paid_amount=Decimal("500.00"),
+        )
+        payment = PurchasePayment.objects.create(
+            purchase=purchase,
+            user=self.user,
+            amount=Decimal("200.00"),
+            notes="Wrong amount entered",
+        )
+        PurchasePayment.objects.create(
+            purchase=purchase,
+            user=self.admin_user,
+            amount=Decimal("300.00"),
+            notes="Another payment",
+        )
+        next_url = (
+            f"{reverse('purchase-list')}?date_from={date.today().isoformat()}"
+            f"&date_to={date.today().isoformat()}"
+        )
+
+        response = self.client.post(
+            reverse("purchase-payment-edit", args=[payment.pk]),
+            {
+                "amount": "250.00",
+                "notes": "Corrected amount",
+                "next": next_url,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, next_url)
+        payment.refresh_from_db()
+        purchase.refresh_from_db()
+        expense = ExpenseRecord.objects.get(
+            user=self.user,
+            source_reference=f"PURCHASE:{purchase.source_reference}",
+        )
+        self.assertEqual(payment.amount, Decimal("250.00"))
+        self.assertEqual(payment.notes, "Corrected amount")
+        self.assertEqual(purchase.paid_amount, Decimal("550.00"))
+        self.assertEqual(purchase.pending_amount, Decimal("450.00"))
         self.assertIn("Paid Amount: 550.00", expense.notes)
         self.assertIn("Pending Amount: 450.00", expense.notes)
 
