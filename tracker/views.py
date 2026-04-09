@@ -2106,24 +2106,25 @@ def get_purchase_expense_source_references_for_date_range(
     user,
     start_date=None,
     end_date=None,
+    payment_method="",
 ):
-    if start_date is None and end_date is None:
+    payment_method = (payment_method or "").strip()
+    if start_date is None and end_date is None and not payment_method:
         return []
 
-    purchase_date_query = Q()
-    payment_date_query = Q()
+    payment_date_query = Q(payments__pk__isnull=False)
     if start_date:
-        purchase_date_query &= Q(transaction_date__gte=start_date)
         payment_date_query &= Q(payments__payment_date__gte=start_date)
     if end_date:
-        purchase_date_query &= Q(transaction_date__lte=end_date)
         payment_date_query &= Q(payments__payment_date__lte=end_date)
+    if payment_method and payment_method != "All":
+        payment_date_query &= Q(payments__payment_method=payment_method)
 
     return [
         f"{PURCHASE_EXPENSE_SOURCE_PREFIX}{source_reference}"
         for source_reference in (
             get_purchase_base_queryset(user)
-            .filter(purchase_date_query | payment_date_query)
+            .filter(payment_date_query)
             .values_list("source_reference", flat=True)
             .distinct()
         )
@@ -2139,34 +2140,39 @@ def apply_expense_filters(queryset, filter_values, user=None):
 
     if start_date and end_date and start_date > end_date:
         start_date, end_date = end_date, start_date
-    if start_date or end_date:
-        expense_date_query = Q()
-        if start_date:
-            expense_date_query &= Q(transaction_date__gte=start_date)
-        if end_date:
-            expense_date_query &= Q(transaction_date__lte=end_date)
+    expense_filter_query = Q()
+    has_expense_filter = False
+    if start_date:
+        expense_filter_query &= Q(transaction_date__gte=start_date)
+        has_expense_filter = True
+    if end_date:
+        expense_filter_query &= Q(transaction_date__lte=end_date)
+        has_expense_filter = True
+    if payment_method and payment_method != "All":
+        expense_filter_query &= Q(payment_method=payment_method)
+        has_expense_filter = True
 
-        purchase_expense_source_references = []
-        if user is not None:
-            purchase_expense_source_references = (
-                get_purchase_expense_source_references_for_date_range(
-                    user,
-                    start_date=start_date,
-                    end_date=end_date,
-                )
+    purchase_expense_source_references = []
+    if user is not None and (start_date or end_date or payment_method):
+        purchase_expense_source_references = (
+            get_purchase_expense_source_references_for_date_range(
+                user,
+                start_date=start_date,
+                end_date=end_date,
+                payment_method=payment_method,
             )
+        )
 
+    if has_expense_filter:
         if purchase_expense_source_references:
             queryset = queryset.filter(
-                expense_date_query
+                expense_filter_query
                 | Q(source_reference__in=purchase_expense_source_references)
             )
         else:
-            queryset = queryset.filter(expense_date_query)
+            queryset = queryset.filter(expense_filter_query)
     if category and category != "All":
         queryset = queryset.filter(category__iexact=category)
-    if payment_method and payment_method != "All":
-        queryset = queryset.filter(payment_method=payment_method)
     return queryset
 
 
@@ -2847,6 +2853,7 @@ def create_purchase_payment(
     user,
     amount,
     notes="",
+    payment_method=PaymentMethod.CASH,
     payment_date=None,
     update_totals=True,
 ):
@@ -2854,6 +2861,7 @@ def create_purchase_payment(
         purchase=purchase,
         user=user,
         amount=amount,
+        payment_method=payment_method,
         payment_date=payment_date or date.today(),
         notes=notes.strip(),
     )
@@ -2863,11 +2871,19 @@ def create_purchase_payment(
     return payment
 
 
-def update_purchase_payment(payment, amount, notes=""):
+def update_purchase_payment(
+    payment,
+    amount,
+    notes="",
+    payment_method=PaymentMethod.CASH,
+):
     previous_amount = payment.amount
     payment.amount = amount
+    payment.payment_method = payment_method
     payment.notes = notes.strip()
-    payment.save(update_fields=["amount", "notes", "updated_at"])
+    payment.save(
+        update_fields=["amount", "payment_method", "notes", "updated_at"]
+    )
 
     amount_delta = amount - previous_amount
     if amount_delta:
@@ -2900,6 +2916,7 @@ def build_purchase_payment_history(purchase):
                 "recorded_time": purchase.created_at.strftime("%I:%M %p"),
                 "recorded_at_value": purchase.created_at,
                 "recorded_by": purchase.user.username,
+                "payment_method": "",
                 "notes": purchase.notes.strip() or "Purchase record created.",
                 "running_paid": format_money(running_paid),
                 "running_paid_value": running_paid,
@@ -2936,6 +2953,7 @@ def build_purchase_payment_history(purchase):
                     "recorded_time": payment.created_at.strftime("%I:%M %p"),
                     "recorded_at_value": payment.created_at,
                     "recorded_by": payment.user.username,
+                    "payment_method": payment.payment_method,
                     "notes": payment.notes.strip(),
                     "running_paid": format_money(running_paid),
                     "running_paid_value": running_paid,
@@ -2970,6 +2988,7 @@ def build_purchase_payment_history(purchase):
                     "recorded_time": purchase.created_at.strftime("%I:%M %p"),
                     "recorded_at_value": purchase.created_at,
                     "recorded_by": purchase.user.username,
+                    "payment_method": PaymentMethod.OTHER,
                     "notes": "Saved with the original purchase record.",
                     "running_paid": format_money(running_paid),
                     "running_paid_value": running_paid,
@@ -3008,6 +3027,7 @@ def is_date_within_range(value, start_date=None, end_date=None):
 def build_expense_history_rows(records, user, filter_values):
     records = list(records)
     start_date, end_date = get_expense_filter_date_bounds(filter_values)
+    payment_method_filter = (filter_values.get("payment_method") or "").strip()
     purchase_source_references = [
         source_reference[len(PURCHASE_EXPENSE_SOURCE_PREFIX) :]
         for source_reference in (
@@ -3075,6 +3095,9 @@ def build_expense_history_rows(records, user, filter_values):
                     end_date=end_date,
                 ):
                     continue
+            if payment_method_filter and payment_method_filter != "All":
+                if (entry.get("payment_method") or "").strip() != payment_method_filter:
+                    continue
             added_payment_row = True
             display_rows.append(
                 SimpleNamespace(
@@ -3085,7 +3108,7 @@ def build_expense_history_rows(records, user, filter_values):
                     category=record.category,
                     title=record.title,
                     supplier_display=record.supplier_display,
-                    payment_method=record.payment_method,
+                    payment_method=entry.get("payment_method") or record.payment_method,
                     display_net_amount=purchase.total_amount,
                     display_paid_amount=entry["amount_value"],
                     display_pending_amount=entry["running_pending_value"],
@@ -4526,6 +4549,7 @@ class PurchaseListView(ModulePermissionRequiredMixin, AutoLoadPaginatedListView)
         context["page_total"] = filtered_summary["total_amount"]
         context["paid_total"] = filtered_summary["paid_amount"]
         context["pending_total"] = filtered_summary["pending_amount"]
+        context["purchase_payment_method_options"] = PaymentMethod.choices
         context["synced_purchase_count"] = synced_purchase_queryset.count()
         context["recent_records"] = list(records[:8])
         context["previous_page_url"] = ""
@@ -4731,6 +4755,7 @@ class PurchaseCreateView(ModulePermissionRequiredMixin, CreateView):
                 user=self.request.user,
                 amount=self.object.paid_amount,
                 notes="Initial paid amount saved with the purchase record.",
+                payment_method=PaymentMethod.OTHER,
                 payment_date=self.object.transaction_date,
                 update_totals=False,
             )
@@ -4790,6 +4815,7 @@ class PurchasePaymentCreateView(ModulePermissionRequiredMixin, View):
                 user=request.user,
                 amount=form.cleaned_data["amount"],
                 notes=form.cleaned_data["notes"],
+                payment_method=form.cleaned_data["payment_method"],
             )
             sync_purchase_to_expense(purchase)
 
@@ -4834,6 +4860,7 @@ class PurchasePaymentUpdateView(ModulePermissionRequiredMixin, View):
                 payment=payment,
                 amount=form.cleaned_data["amount"],
                 notes=form.cleaned_data["notes"],
+                payment_method=form.cleaned_data["payment_method"],
             )
             sync_purchase_to_expense(payment.purchase)
 

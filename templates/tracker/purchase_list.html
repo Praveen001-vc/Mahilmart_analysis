@@ -398,6 +398,18 @@
                         required
                     >
                 </div>
+                <div class="field-block">
+                    <label for="purchase-pay-payment-method">Payment Method</label>
+                    <select
+                        id="purchase-pay-payment-method"
+                        name="payment_method"
+                        class="input-control"
+                    >
+                        {% for option_value, option_label in purchase_payment_method_options %}
+                            <option value="{{ option_value }}"{% if option_value == "Cash" %} selected{% endif %}>{{ option_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div class="field-block span-2">
                     <label for="purchase-pay-notes">Notes</label>
                     <textarea
@@ -437,6 +449,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const payModalCopy = payModal.querySelector("[data-payment-modal-copy]");
     const payBalanceLabel = payModal.querySelector("[data-pay-balance-label]");
     const payAmountInput = payForm.querySelector('input[name="amount"]');
+    const payMethodInput = payForm.querySelector('select[name="payment_method"]');
     const payNotesInput = payForm.querySelector('textarea[name="notes"]');
     const payNextInput = payForm.querySelector("[data-pay-next]");
     const paySubmitButton = payForm.querySelector("[data-pay-submit]");
@@ -510,7 +523,10 @@ document.addEventListener("DOMContentLoaded", () => {
                             </div>
                         </div>
                         <div class="payment-entry-body">
-                            <small>Saved by ${escapeHtml(payment.recorded_by)}</small>
+                            <small>
+                                Saved by ${escapeHtml(payment.recorded_by)}
+                                ${payment.payment_method ? ` | Method: ${escapeHtml(payment.payment_method)}` : ""}
+                            </small>
                             <div class="payment-progress-row">
                                 <span>Paid Till This Entry: Rs. ${escapeHtml(payment.running_paid)}</span>
                                 <span>Balance After This Entry: Rs. ${escapeHtml(payment.running_pending)}</span>
@@ -577,6 +593,7 @@ document.addEventListener("DOMContentLoaded", () => {
             payForm.action = paymentEntry.edit_url;
             payAmountInput.max = paymentEntry.max_editable_amount;
             payAmountInput.value = paymentEntry.raw_amount || paymentEntry.amount || "";
+            payMethodInput.value = paymentEntry.payment_method || "Cash";
             payNotesInput.value = paymentEntry.notes || "";
             paySubmitButton.textContent = "Update Payment";
         } else {
@@ -588,6 +605,7 @@ document.addEventListener("DOMContentLoaded", () => {
             payForm.action = currentPurchase.pay_url;
             payAmountInput.max = currentPurchase.pending_amount;
             payAmountInput.value = "";
+            payMethodInput.value = "Cash";
             payNotesInput.value = "";
             paySubmitButton.textContent = "Save Payment";
         }
