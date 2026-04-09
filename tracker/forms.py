@@ -524,6 +524,15 @@ class PurchasePaymentForm(forms.Form):
             }
         ),
     )
+    payment_method = forms.ChoiceField(
+        choices=PaymentMethod.choices,
+        widget=forms.Select(
+            attrs={
+                "class": "input-control",
+            }
+        ),
+        initial=PaymentMethod.CASH,
+    )
     notes = forms.CharField(
         required=False,
         widget=forms.Textarea(
@@ -539,6 +548,10 @@ class PurchasePaymentForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.purchase = purchase
         self.existing_payment = existing_payment
+        if not self.is_bound and self.existing_payment is not None:
+            self.fields["payment_method"].initial = (
+                self.existing_payment.payment_method or PaymentMethod.CASH
+            )
 
     def clean_amount(self):
         amount = self.cleaned_data["amount"]

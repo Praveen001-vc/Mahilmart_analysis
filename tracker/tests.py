@@ -1905,6 +1905,47 @@ class TrackerViewsTests(TestCase):
             Decimal("1000.00"),
         )
 
+    def test_expense_list_uses_purchase_payment_method_for_purchase_rows(self):
+        self.client.force_login(self.user)
+        payment_date = date.today()
+        purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Method Supplier",
+            purchase_type="Credit",
+            invoice_number="EXP-METHOD-100",
+            total_amount=Decimal("1200.00"),
+            paid_amount=Decimal("0.00"),
+            transaction_date=payment_date,
+        )
+        sync_purchase_to_expense(purchase)
+        PurchasePayment.objects.create(
+            purchase=purchase,
+            user=self.user,
+            amount=Decimal("400.00"),
+            payment_method=PaymentMethod.UPI,
+            payment_date=payment_date,
+            notes="UPI payment",
+        )
+        purchase.paid_amount = Decimal("400.00")
+        purchase.pending_amount = Decimal("800.00")
+        purchase.save(update_fields=["paid_amount", "pending_amount", "updated_at"])
+        sync_purchase_to_expense(purchase)
+
+        response = self.client.get(
+            reverse("expense-list"),
+            {
+                "start_date": payment_date.isoformat(),
+                "end_date": payment_date.isoformat(),
+                "payment_method": PaymentMethod.UPI,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["page_count"], 1)
+        expense_record = response.context["records"][0]
+        self.assertEqual(expense_record.title, "Purchase - EXP-METHOD-100")
+        self.assertEqual(expense_record.payment_method, PaymentMethod.UPI)
+
     def test_expense_list_inline_save_creates_record(self):
         self.client.force_login(self.user)
 
@@ -4619,6 +4660,7 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(payload["payment_history"][1]["label"], "Opening Paid Amount")
         self.assertEqual(payload["payment_history"][1]["amount"], "250.00")
         self.assertEqual(payload["payment_history"][1]["running_paid"], "250.00")
+        self.assertEqual(payload["payment_history"][1]["payment_method"], PaymentMethod.OTHER)
         self.assertFalse(payload["payment_history"][1]["can_edit"])
 
     def test_purchase_detail_endpoint_marks_real_payment_entries_as_editable(self):
@@ -4655,6 +4697,7 @@ class TrackerViewsTests(TestCase):
         )
         self.assertEqual(payment_entry["raw_amount"], "250.00")
         self.assertEqual(payment_entry["max_editable_amount"], "950.00")
+        self.assertEqual(payment_entry["payment_method"], PaymentMethod.CASH)
 
     def test_purchase_detail_endpoint_uses_source_date_for_synced_purchase_saved_on(self):
         self.client.force_login(self.user)
@@ -4690,6 +4733,7 @@ class TrackerViewsTests(TestCase):
             reverse("purchase-pay", args=[purchase.pk]),
             {
                 "amount": "250.00",
+                "payment_method": PaymentMethod.UPI,
                 "notes": "Second payment today",
             },
         )
@@ -4702,13 +4746,16 @@ class TrackerViewsTests(TestCase):
             source_reference=f"PURCHASE:{purchase.source_reference}",
         )
         self.assertEqual(payment.amount, Decimal("250.00"))
+        self.assertEqual(payment.payment_method, PaymentMethod.UPI)
         self.assertEqual(payment.payment_date, date.today())
         self.assertEqual(payment.notes, "Second payment today")
         self.assertEqual(purchase.paid_amount, Decimal("550.00"))
         self.assertEqual(purchase.pending_amount, Decimal("450.00"))
         self.assertEqual(expense.amount, Decimal("1000.00"))
+        self.assertEqual(expense.payment_method, PaymentMethod.UPI)
         self.assertIn("Paid Amount: 550.00", expense.notes)
         self.assertIn("Pending Amount: 450.00", expense.notes)
+        self.assertIn("Last Payment Method: UPI", expense.notes)
 
     def test_purchase_payment_edit_post_updates_purchase_totals(self):
         self.client.force_login(self.user)
@@ -4741,6 +4788,7 @@ class TrackerViewsTests(TestCase):
             reverse("purchase-payment-edit", args=[payment.pk]),
             {
                 "amount": "250.00",
+                "payment_method": PaymentMethod.CARD,
                 "notes": "Corrected amount",
                 "next": next_url,
             },
@@ -4755,6 +4803,7 @@ class TrackerViewsTests(TestCase):
             source_reference=f"PURCHASE:{purchase.source_reference}",
         )
         self.assertEqual(payment.amount, Decimal("250.00"))
+        self.assertEqual(payment.payment_method, PaymentMethod.CARD)
         self.assertEqual(payment.notes, "Corrected amount")
         self.assertEqual(purchase.paid_amount, Decimal("550.00"))
         self.assertEqual(purchase.pending_amount, Decimal("450.00"))
