@@ -364,9 +364,9 @@
     <div class="modal-card modal-card-narrow premium-panel" role="dialog" aria-modal="true" aria-labelledby="purchase-pay-title">
         <div class="modal-header">
             <div>
-                <span class="eyebrow">Record Payment</span>
-                <h2 id="purchase-pay-title">Today Payment Entry</h2>
-                <p class="muted-text">Payment date is saved automatically as today.</p>
+                <span class="eyebrow" data-payment-modal-eyebrow>Record Payment</span>
+                <h2 id="purchase-pay-title" data-payment-modal-title>Today Payment Entry</h2>
+                <p class="muted-text" data-payment-modal-copy>Payment date is saved automatically as today.</p>
             </div>
             <button type="button" class="ghost-button" data-modal-close>Close</button>
         </div>
@@ -377,13 +377,14 @@
                 <strong data-pay-invoice-number>-</strong>
             </div>
             <div class="detail-card">
-                <span>Pending Amount</span>
+                <span data-pay-balance-label>Pending Amount</span>
                 <strong class="negative" data-pay-pending-amount>Rs. 0.00</strong>
             </div>
         </div>
 
         <form method="post" data-pay-form class="financial-form">
             {% csrf_token %}
+            <input type="hidden" name="next" value="" data-pay-next>
             <div class="form-grid">
                 <div class="field-block">
                     <label for="purchase-pay-amount">Amount</label>
@@ -410,7 +411,7 @@
             </div>
             <div class="form-actions">
                 <button type="button" class="secondary-button" data-modal-close>Cancel</button>
-                <button type="submit" class="primary-button">Save Payment</button>
+                <button type="submit" class="primary-button" data-pay-submit>Save Payment</button>
             </div>
         </form>
     </div>
@@ -431,8 +432,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const detailFileLink = detailModal.querySelector("[data-detail-file]");
     const openPayButton = detailModal.querySelector("[data-open-pay-modal]");
     const payForm = payModal.querySelector("[data-pay-form]");
+    const payModalEyebrow = payModal.querySelector("[data-payment-modal-eyebrow]");
+    const payModalTitle = payModal.querySelector("[data-payment-modal-title]");
+    const payModalCopy = payModal.querySelector("[data-payment-modal-copy]");
+    const payBalanceLabel = payModal.querySelector("[data-pay-balance-label]");
     const payAmountInput = payForm.querySelector('input[name="amount"]');
     const payNotesInput = payForm.querySelector('textarea[name="notes"]');
+    const payNextInput = payForm.querySelector("[data-pay-next]");
+    const paySubmitButton = payForm.querySelector("[data-pay-submit]");
     let currentPurchase = null;
 
     const escapeHtml = (value) => {
@@ -474,6 +481,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 const noteMarkup = payment.notes
                     ? `<p>${escapeHtml(payment.notes)}</p>`
                     : '<p class="muted-text">No note added.</p>';
+                const editActionMarkup = payment.can_edit
+                    ? `
+                        <button
+                            type="button"
+                            class="secondary-button payment-entry-action"
+                            data-payment-edit-trigger
+                            data-payment-id="${escapeHtml(payment.payment_id)}"
+                        >
+                            Edit Payment
+                        </button>
+                    `
+                    : "";
 
                 return `
                     <article class="payment-entry-card">
@@ -482,9 +501,12 @@ document.addEventListener("DOMContentLoaded", () => {
                                 <span>${escapeHtml(payment.label)}</span>
                                 <strong>Rs. ${escapeHtml(payment.amount)}</strong>
                             </div>
-                            <div class="payment-entry-meta">
-                                <span>${escapeHtml(payment.payment_date)}</span>
-                                <small>Recorded ${escapeHtml(payment.recorded_on)}</small>
+                            <div class="payment-entry-controls">
+                                <div class="payment-entry-meta">
+                                    <span>${escapeHtml(payment.payment_date)}</span>
+                                    <small>Recorded ${escapeHtml(payment.recorded_on)}</small>
+                                </div>
+                                ${editActionMarkup}
                             </div>
                         </div>
                         <div class="payment-entry-body">
@@ -537,20 +559,43 @@ document.addEventListener("DOMContentLoaded", () => {
         currentPurchase = null;
     };
 
-    const openPaymentModal = () => {
+    const openPaymentModal = (mode = "create", paymentEntry = null) => {
         if (!currentPurchase) {
             return;
         }
 
+        const nextUrl = `${window.location.pathname}${window.location.search}`;
+        payNextInput.value = nextUrl;
         payModal.querySelector("[data-pay-invoice-number]").textContent = currentPurchase.invoice_number;
-        payModal.querySelector("[data-pay-pending-amount]").textContent = `Rs. ${currentPurchase.pending_amount}`;
-        payForm.action = currentPurchase.pay_url;
-        payAmountInput.max = currentPurchase.pending_amount;
-        payAmountInput.value = "";
-        payNotesInput.value = "";
+
+        if (mode === "edit" && paymentEntry) {
+            payModalEyebrow.textContent = "Edit Payment";
+            payModalTitle.textContent = "Edit Payment Entry";
+            payModalCopy.textContent = "Update the amount or notes. The original payment date stays the same.";
+            payBalanceLabel.textContent = "Max Editable Amount";
+            payModal.querySelector("[data-pay-pending-amount]").textContent = `Rs. ${paymentEntry.max_editable_amount}`;
+            payForm.action = paymentEntry.edit_url;
+            payAmountInput.max = paymentEntry.max_editable_amount;
+            payAmountInput.value = paymentEntry.raw_amount || paymentEntry.amount || "";
+            payNotesInput.value = paymentEntry.notes || "";
+            paySubmitButton.textContent = "Update Payment";
+        } else {
+            payModalEyebrow.textContent = "Record Payment";
+            payModalTitle.textContent = "Today Payment Entry";
+            payModalCopy.textContent = "Payment date is saved automatically as today.";
+            payBalanceLabel.textContent = "Pending Amount";
+            payModal.querySelector("[data-pay-pending-amount]").textContent = `Rs. ${currentPurchase.pending_amount}`;
+            payForm.action = currentPurchase.pay_url;
+            payAmountInput.max = currentPurchase.pending_amount;
+            payAmountInput.value = "";
+            payNotesInput.value = "";
+            paySubmitButton.textContent = "Save Payment";
+        }
+
         closeModal(detailModal);
         openModal(payModal);
         payAmountInput.focus();
+        payAmountInput.select();
     };
 
     document.addEventListener("click", async (event) => {
@@ -608,6 +653,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (event.target.closest("[data-open-pay-modal]")) {
             openPaymentModal();
+            return;
+        }
+
+        const editPaymentTrigger = event.target.closest("[data-payment-edit-trigger]");
+        if (editPaymentTrigger && currentPurchase) {
+            const paymentEntry = (currentPurchase.payment_history || []).find((entry) => (
+                String(entry.payment_id || "") === editPaymentTrigger.dataset.paymentId
+            ));
+            if (paymentEntry && paymentEntry.can_edit) {
+                openPaymentModal("edit", paymentEntry);
+            }
             return;
         }
 

@@ -535,9 +535,10 @@ class PurchasePaymentForm(forms.Form):
         ),
     )
 
-    def __init__(self, *args, purchase=None, **kwargs):
+    def __init__(self, *args, purchase=None, existing_payment=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.purchase = purchase
+        self.existing_payment = existing_payment
 
     def clean_amount(self):
         amount = self.cleaned_data["amount"]
@@ -552,13 +553,18 @@ class PurchasePaymentForm(forms.Form):
         if self.purchase is None or amount is None:
             return cleaned_data
 
-        if self.purchase.pending_amount <= 0:
+        available_amount = self.purchase.pending_amount
+        if self.existing_payment is not None:
+            available_amount += self.existing_payment.amount
+
+        if self.existing_payment is None and self.purchase.pending_amount <= 0:
             raise ValidationError("This purchase is already fully paid.")
 
-        if amount > self.purchase.pending_amount:
+        if amount > available_amount:
             self.add_error(
                 "amount",
-                f"Payment amount cannot be greater than the pending amount of Rs. {self.purchase.pending_amount}.",
+                "Payment amount cannot be greater than the available amount of "
+                f"Rs. {available_amount}.",
             )
 
         return cleaned_data
