@@ -3056,6 +3056,9 @@ def build_expense_history_rows(records, user, filter_values):
             )
             continue
 
+        if purchase.paid_amount <= 0:
+            continue
+
         payment_entries = [
             entry
             for entry in build_purchase_payment_history(purchase)
@@ -3096,39 +3099,6 @@ def build_expense_history_rows(records, user, filter_values):
                 )
             )
 
-        if added_payment_row or payment_entries:
-            continue
-
-        if start_date or end_date:
-            if not is_date_within_range(
-                purchase.transaction_date,
-                start_date=start_date,
-                end_date=end_date,
-            ):
-                continue
-        display_rows.append(
-            SimpleNamespace(
-                pk=f"purchase-{purchase.pk}-pending",
-                source_record_pk=record.pk,
-                purchase_pk=purchase.pk,
-                transaction_date=purchase.transaction_date,
-                category=record.category,
-                title=record.title,
-                supplier_display=record.supplier_display,
-                payment_method=record.payment_method,
-                display_net_amount=purchase.total_amount,
-                display_paid_amount=Decimal("0.00"),
-                display_pending_amount=purchase.pending_amount,
-                display_paid_date=None,
-                purchase_list_url=build_purchase_redirect_url(
-                    {"invoice_number": purchase.invoice_number}
-                ),
-                can_manage_expense=False,
-                sort_date=purchase.transaction_date,
-                sort_timestamp=purchase.created_at,
-            )
-        )
-
     display_rows.sort(
         key=lambda item: (item.sort_date, item.sort_timestamp, str(item.pk)),
         reverse=True,
@@ -3155,10 +3125,17 @@ def summarize_expense_history_rows(rows):
         purchase_pk = getattr(row, "purchase_pk", None)
         if purchase_pk is None:
             continue
-        purchase_totals[purchase_pk] = {
-            "total_amount": row.display_net_amount,
-            "pending_amount": row.display_pending_amount,
-        }
+        existing_totals = purchase_totals.get(purchase_pk)
+        if existing_totals is None:
+            purchase_totals[purchase_pk] = {
+                "total_amount": row.display_net_amount,
+                "pending_amount": row.display_pending_amount,
+            }
+            continue
+        existing_totals["pending_amount"] = min(
+            existing_totals["pending_amount"],
+            row.display_pending_amount,
+        )
 
     credit_amount = sum(
         (totals["pending_amount"] for totals in purchase_totals.values()),
