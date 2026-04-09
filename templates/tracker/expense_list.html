@@ -24,45 +24,45 @@
         <h2>This Month</h2>
         <div class="expense-summary-row">
             <span>Paid Amount</span>
-            <strong>Rs {{ month_total }}</strong>
+            <strong>Rs {{ month_summary.paid_amount }}</strong>
         </div>
         <div class="expense-summary-row">
             <span>Credit Amount</span>
-            <strong class="expense-credit-amount">Rs 0.0</strong>
+            <strong class="expense-credit-amount">Rs {{ month_summary.credit_amount }}</strong>
         </div>
         <div class="expense-summary-row expense-summary-total">
             <span>Total</span>
-            <strong>Rs {{ month_total }}</strong>
+            <strong>Rs {{ month_summary.total_amount }}</strong>
         </div>
     </article>
     <article class="premium-panel expense-summary-card">
         <h2>Today</h2>
         <div class="expense-summary-row">
             <span>Paid Amount</span>
-            <strong>Rs {{ today_total }}</strong>
+            <strong>Rs {{ today_summary.paid_amount }}</strong>
         </div>
         <div class="expense-summary-row">
             <span>Credit Amount</span>
-            <strong class="expense-credit-amount">Rs 0.0</strong>
+            <strong class="expense-credit-amount">Rs {{ today_summary.credit_amount }}</strong>
         </div>
         <div class="expense-summary-row expense-summary-total">
             <span>Total</span>
-            <strong>Rs {{ today_total }}</strong>
+            <strong>Rs {{ today_summary.total_amount }}</strong>
         </div>
     </article>
     <article class="premium-panel expense-summary-card">
         <h2>Filtered</h2>
         <div class="expense-summary-row">
             <span>Paid Amount</span>
-            <strong class="negative">Rs {{ filtered_total }}</strong>
+            <strong>Rs {{ filtered_summary.paid_amount }}</strong>
         </div>
         <div class="expense-summary-row">
             <span>Credit Amount</span>
-            <strong class="expense-credit-amount">Rs 0.0</strong>
+            <strong class="expense-credit-amount">Rs {{ filtered_summary.credit_amount }}</strong>
         </div>
         <div class="expense-summary-row expense-summary-total">
             <span>Total</span>
-            <strong>Rs {{ filtered_total }}</strong>
+            <strong>Rs {{ filtered_summary.total_amount }}</strong>
         </div>
     </article>
 </section>
@@ -221,7 +221,9 @@
                         <th>Category</th>
                         <th>Purpose</th>
                         <th>Payment</th>
-                        <th>Amount</th>
+                        <th>Net Amount</th>
+                        <th>Paid Amount</th>
+                        <th>Pending Amount</th>
                         <th>Paid Date</th>
                         <th>Action</th>
                     </tr>
@@ -238,26 +240,45 @@
                                 {% endif %}
                             </td>
                             <td>{{ record.payment_method }}</td>
-                            <td>Rs {{ record.amount }}</td>
-                            <td>{{ record.transaction_date|date:"Y-m-d" }}</td>
+                            <td data-label="Net Amount">Rs {{ record.display_net_amount|floatformat:2 }}</td>
+                            <td data-label="Paid Amount">Rs {{ record.display_paid_amount|floatformat:2 }}</td>
+                            <td data-label="Pending Amount" class="negative">Rs {{ record.display_pending_amount|floatformat:2 }}</td>
+                            <td>
+                                {% if record.display_paid_date %}
+                                    {{ record.display_paid_date|date:"Y-m-d" }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
                             <td>
                                 <div class="expense-history-actions">
-                                    <a
-                                        class="expense-action-button expense-action-edit"
-                                        href="{% url 'expense-list' %}{% if filter_query %}?{{ filter_query }}&edit={{ record.pk }}{% else %}?edit={{ record.pk }}{% endif %}"
-                                    >
-                                        Edit
-                                    </a>
-                                    <form method="post" action="{% url 'expense-list' %}" class="expense-inline-form">
-                                        {% csrf_token %}
-                                        <input type="hidden" name="action" value="delete">
-                                        <input type="hidden" name="record_id" value="{{ record.pk }}">
-                                        <input type="hidden" name="start_date" value="{{ expense_filters.start_date }}">
-                                        <input type="hidden" name="end_date" value="{{ expense_filters.end_date }}">
-                                        <input type="hidden" name="category" value="{{ expense_filters.category }}">
-                                        <input type="hidden" name="payment_method" value="{{ expense_filters.payment_method }}">
-                                        <button type="submit" class="expense-action-button expense-action-delete">Delete</button>
-                                    </form>
+                                    {% if record.can_manage_expense %}
+                                        <a
+                                            class="expense-action-button expense-action-edit"
+                                            href="{% url 'expense-list' %}{% if filter_query %}?{{ filter_query }}&edit={{ record.source_record_pk }}{% else %}?edit={{ record.source_record_pk }}{% endif %}"
+                                        >
+                                            Edit
+                                        </a>
+                                        <form method="post" action="{% url 'expense-list' %}" class="expense-inline-form">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="action" value="delete">
+                                            <input type="hidden" name="record_id" value="{{ record.source_record_pk }}">
+                                            <input type="hidden" name="start_date" value="{{ expense_filters.start_date }}">
+                                            <input type="hidden" name="end_date" value="{{ expense_filters.end_date }}">
+                                            <input type="hidden" name="category" value="{{ expense_filters.category }}">
+                                            <input type="hidden" name="payment_method" value="{{ expense_filters.payment_method }}">
+                                            <button type="submit" class="expense-action-button expense-action-delete">Delete</button>
+                                        </form>
+                                    {% elif record.purchase_list_url %}
+                                        <a
+                                            class="expense-action-button expense-action-edit"
+                                            href="{{ record.purchase_list_url }}"
+                                        >
+                                            Open Purchase
+                                        </a>
+                                    {% else %}
+                                        <span class="muted-text">Locked</span>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
