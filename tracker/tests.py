@@ -1807,6 +1807,39 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(expense_record.display_pending_amount, Decimal("600.00"))
         self.assertEqual(expense_record.display_paid_date, payment_date)
 
+    def test_expense_list_skips_purchase_when_paid_amount_is_zero(self):
+        self.client.force_login(self.user)
+        purchase = PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Zero Paid Supplier",
+            purchase_type="Credit",
+            invoice_number="EXP-ZERO-100",
+            total_amount=Decimal("1200.00"),
+            paid_amount=Decimal("0.00"),
+            transaction_date=date.today(),
+        )
+        sync_purchase_to_expense(purchase)
+
+        response = self.client.get(
+            reverse("expense-list"),
+            {
+                "start_date": date.today().isoformat(),
+                "end_date": date.today().isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["page_count"], 0)
+        self.assertEqual(len(response.context["records"]), 0)
+        self.assertEqual(
+            response.context["filtered_summary"]["paid_amount"],
+            Decimal("0.00"),
+        )
+        self.assertEqual(
+            response.context["filtered_summary"]["credit_amount"],
+            Decimal("0.00"),
+        )
+
     def test_expense_list_shows_separate_rows_for_each_purchase_payment_date(self):
         self.client.force_login(self.user)
         first_payment_date = date.today() - timedelta(days=1)
@@ -1862,6 +1895,14 @@ class TrackerViewsTests(TestCase):
         self.assertEqual(
             [record.title for record in response.context["records"]],
             ["Purchase - EXP-SPLIT-100", "Purchase - EXP-SPLIT-100"],
+        )
+        self.assertEqual(
+            response.context["filtered_summary"]["paid_amount"],
+            Decimal("1000.00"),
+        )
+        self.assertEqual(
+            response.context["filtered_summary"]["credit_amount"],
+            Decimal("1000.00"),
         )
 
     def test_expense_list_inline_save_creates_record(self):
