@@ -7,6 +7,7 @@ from .models import (
     ExpenseRecord,
     IncomeRecord,
     IncomePurpose,
+    OfficeDailySettlement,
     PurchasePayment,
     PurchaseRecord,
     ReconciliationExpenseEntry,
@@ -134,6 +135,20 @@ class DailyCashSettlementAdmin(admin.ModelAdmin):
     )
     list_filter = ("settlement_date",)
     search_fields = ("user__username", "cash_settled_to", "notes")
+
+
+@admin.register(OfficeDailySettlement)
+class OfficeDailySettlementAdmin(admin.ModelAdmin):
+    list_display = (
+        "settlement_date",
+        "user",
+        "opening_balance",
+        "income_amount",
+        "expense_amount",
+        "closing_balance",
+    )
+    list_filter = ("settlement_date",)
+    search_fields = ("user__username", "notes")
 
 
 @admin.register(UserAccountProfile)

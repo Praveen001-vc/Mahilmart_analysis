@@ -5,6 +5,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Mahilmart Tracker{% endblock %}</title>
+    <meta name="theme-color" content="#c1121f">
+    <link rel="icon" type="image/svg+xml" href="{% static 'tracker/favicon.svg' %}">
+    <link rel="shortcut icon" href="{% static 'tracker/favicon.svg' %}">
     <link rel="stylesheet" href="{% static 'tracker/styles.css' %}">
 </head>
 <body class="{% block body_class %}app-shell{% endblock %}{% if request.user.is_authenticated %} app-authenticated{% endif %}">
@@ -36,9 +39,16 @@
                     {% endif %}
                     {% if perm.allow_daily_settlement %}
                         <a href="{% url 'daily-settlement' %}">Daily Settlement</a>
+                        <a href="{% url 'office-daily-settlement' %}">Office Settlement</a>
                     {% endif %}
                     {% if perm.allow_income %}
                         <a href="{% url 'income-list' %}">Income</a>
+                    {% endif %}
+                    {% if perm.allow_expenses %}
+                        <a href="{% url 'expense-list' %}">Expenses</a>
+                    {% endif %}
+                    {% if perm.allow_reports %}                        
+                        <a href="{% url 'reconciliation' %}">Reconciliation History</a>
                     {% endif %}
                     {% if perm.allow_purchases %}
                         <a href="{% url 'purchase-list' %}">Purchases</a>
@@ -46,12 +56,10 @@
                     {% if perm.allow_suppliers %}
                         <a href="{% url 'supplier-list' %}">Suppliers</a>
                     {% endif %}
-                    {% if perm.allow_expenses %}
-                        <a href="{% url 'expense-list' %}">Expenses</a>
-                    {% endif %}
+                    
                     {% if perm.allow_reports %}
                         <a href="{% url 'reports' %}">Reports</a>
-                        <a href="{% url 'reconciliation' %}">Reconciliation History</a>
+                    
                     {% endif %}
                     {% if request.user.is_superuser %}
                         <a href="{% url 'user-list' %}">Users</a>

@@ -30,6 +30,7 @@ from .models import (
     ExpenseRecord,
     IncomeRecord,
     IncomePurpose,
+    OfficeDailySettlement,
     PaymentMethod,
     PurchasePayment,
     PurchaseRecord,
@@ -684,6 +685,69 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "PUR-1001")
         self.assertContains(response, "Stock Purchase")
         self.assertContains(response, "Recon Purchase Supplier")
+
+    def test_reconciliation_expense_history_shows_net_and_paid_amount_columns(self):
+        self.client.force_login(self.user)
+        today = date.today()
+        supplier = Supplier.objects.create(
+            user=self.user,
+            name="Recon Amount Supplier",
+            contact_person="Selvam",
+            phone_number="9876500035",
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Office Tea",
+            vendor="Tea Supplier",
+            category=OFFICE_EXPENSE_CATEGORY,
+            amount=Decimal("200.00"),
+            transaction_date=today,
+            payment_method=PaymentMethod.CASH,
+        )
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier=supplier,
+            supplier_name="",
+            purchase_type="Stock Purchase",
+            invoice_number="PUR-1002",
+            total_amount=Decimal("875.00"),
+            paid_amount=Decimal("400.00"),
+            transaction_date=today,
+        )
+
+        response = self.client.get(
+            reverse("reconciliation"),
+            {
+                "start_date": today.isoformat(),
+                "end_date": today.isoformat(),
+                "view": "expense",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "<th>Net Amount</th>", html=False)
+        self.assertContains(response, "<th>Paid Amount</th>", html=False)
+        self.assertNotContains(response, "<th>Amount</th>", html=False)
+        self.assertContains(
+            response,
+            '<td data-label="Net Amount" class="negative">Rs. 875.00</td>',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            '<td data-label="Paid Amount" class="negative">Rs. 400.00</td>',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            '<td data-label="Net Amount" class="negative">Rs. 200.00</td>',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            '<td data-label="Paid Amount" class="negative">Rs. 200.00</td>',
+            html=False,
+        )
 
     def test_reconciliation_expense_summary_splits_cash_card_and_purchase_totals(self):
         self.client.force_login(self.user)
@@ -3799,6 +3863,151 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Target Counter")
         self.assertNotContains(response, "Other Counter")
 
+    def test_office_daily_settlement_shows_only_office_income_and_expense(self):
+        self.client.force_login(self.user)
+        target_date = date.today()
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Office Rent Income",
+            source="Head Office",
+            category=INCOME_CATEGORY_OFFICE,
+            amount=Decimal("1000.00"),
+            transaction_date=target_date,
+            payment_method=PaymentMethod.CASH,
+        )
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Counter Sale Income",
+            source="Counter",
+            category=INCOME_CATEGORY_COUNTER,
+            amount=Decimal("500.00"),
+            transaction_date=target_date,
+            payment_method=PaymentMethod.CASH,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Office Tea",
+            vendor="Office Vendor",
+            category=OFFICE_EXPENSE_CATEGORY,
+            amount=Decimal("300.00"),
+            transaction_date=target_date,
+            payment_method=PaymentMethod.CASH,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Counter Bag",
+            vendor="Counter Vendor",
+            category=COUNTER_EXPENSE_CATEGORY,
+            amount=Decimal("200.00"),
+            transaction_date=target_date,
+            payment_method=PaymentMethod.CASH,
+        )
+
+        response = self.client.get(
+            reverse("office-daily-settlement"),
+            {"selected_date": target_date.isoformat()},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["office_income_total"], Decimal("1000.00"))
+        self.assertEqual(response.context["office_expense_total"], Decimal("300.00"))
+        self.assertEqual(response.context["office_net_total"], Decimal("700.00"))
+        self.assertEqual(response.context["office_income_count"], 1)
+        self.assertEqual(response.context["office_expense_count"], 1)
+        self.assertContains(response, "Office Daily Settlement")
+        self.assertContains(response, "Office Rent Income")
+        self.assertContains(response, "Office Vendor")
+        self.assertNotContains(response, "Counter Sale Income")
+        self.assertNotContains(response, "Counter Vendor")
+
+    def test_office_daily_settlement_save_stores_daily_snapshot(self):
+        self.client.force_login(self.user)
+        target_date = date.today()
+        IncomeRecord.objects.create(
+            user=self.user,
+            title="Office Transfer",
+            source="Head Office",
+            category=INCOME_CATEGORY_OFFICE,
+            amount=Decimal("1500.00"),
+            transaction_date=target_date,
+            payment_method=PaymentMethod.CASH,
+        )
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Office Internet",
+            vendor="Provider",
+            category=OFFICE_EXPENSE_CATEGORY,
+            amount=Decimal("400.00"),
+            transaction_date=target_date,
+            payment_method=PaymentMethod.CASH,
+        )
+
+        response = self.client.post(
+            reverse("office-daily-settlement"),
+            {
+                "settlement_date": target_date.isoformat(),
+                "selected_date": target_date.isoformat(),
+                "opening_balance": "250.00",
+                "closing_balance": "0.00",
+                "notes": "Office settlement note",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        settlement = OfficeDailySettlement.objects.get(
+            user=self.user,
+            settlement_date=target_date,
+        )
+        self.assertEqual(settlement.opening_balance, Decimal("250.00"))
+        self.assertEqual(settlement.income_amount, Decimal("1500.00"))
+        self.assertEqual(settlement.expense_amount, Decimal("400.00"))
+        self.assertEqual(settlement.cash_income_amount, Decimal("1500.00"))
+        self.assertEqual(settlement.cash_expense_amount, Decimal("400.00"))
+        self.assertEqual(settlement.closing_balance, Decimal("1350.00"))
+        self.assertEqual(settlement.notes, "Office settlement note")
+
+    def test_office_daily_settlement_includes_purchase_paid_amount_in_expense(self):
+        self.client.force_login(self.user)
+        target_date = date.today()
+        ExpenseRecord.objects.create(
+            user=self.user,
+            title="Office Internet",
+            vendor="Provider",
+            category=OFFICE_EXPENSE_CATEGORY,
+            amount=Decimal("300.00"),
+            transaction_date=target_date,
+            payment_method=PaymentMethod.CASH,
+        )
+        PurchaseRecord.objects.create(
+            user=self.user,
+            supplier_name="Office Purchase Supplier",
+            purchase_type=PaymentMethod.CASH,
+            invoice_number="OFF-PUR-1001",
+            total_amount=Decimal("1000.00"),
+            paid_amount=Decimal("250.00"),
+            transaction_date=target_date,
+        )
+
+        response = self.client.get(
+            reverse("office-daily-settlement"),
+            {"selected_date": target_date.isoformat()},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["office_purchase_expense_total"],
+            Decimal("250.00"),
+        )
+        self.assertEqual(response.context["office_expense_total"], Decimal("550.00"))
+        self.assertEqual(
+            response.context["office_cash_expense_total"],
+            Decimal("550.00"),
+        )
+        self.assertContains(response, "Purchase paid amount:")
+        self.assertContains(response, "OFF-PUR-1001")
+        self.assertContains(response, "Office Purchase Supplier")
+        self.assertContains(response, "Purchase Paid")
+
     def test_daily_settlement_filter_restores_saved_counts_and_snapshot(self):
         self.client.force_login(self.user)
         target_date = date.today() - timedelta(days=1)
@@ -4109,6 +4318,15 @@ class TrackerViewsTests(TestCase):
         self.assertContains(response, "Reconciliation History")
         self.assertContains(response, reverse("reconciliation"))
 
+    def test_navigation_shows_office_settlement_when_daily_settlement_is_allowed(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("dashboard"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Office Settlement")
+        self.assertContains(response, reverse("office-daily-settlement"))
+
     def test_reports_page_does_not_show_old_reconciliation_link(self):
         self.client.force_login(self.user)
 
@@ -4161,6 +4379,7 @@ class TrackerViewsTests(TestCase):
         self.assertNotContains(response, reverse("sales-list"))
         self.assertNotContains(response, reverse("income-add"))
         self.assertNotContains(response, reverse("daily-settlement"))
+        self.assertNotContains(response, reverse("office-daily-settlement"))
         self.assertNotContains(response, reverse("expense-add"))
         self.assertNotContains(response, reverse("supplier-add"))
         self.assertNotContains(response, reverse("reports"))

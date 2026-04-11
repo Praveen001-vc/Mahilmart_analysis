@@ -69,6 +69,7 @@ from .forms import (
     ExpensePurposeForm,
     IncomeForm,
     IncomePurposeForm,
+    OfficeDailySettlementForm,
     PurchaseForm,
     PurchasePaymentForm,
     ReconciliationOpeningBalanceForm,
@@ -82,6 +83,7 @@ from .models import (
     ExpenseRecord,
     IncomeRecord,
     IncomePurpose,
+    OfficeDailySettlement,
     PaymentMethod,
     PurchasePayment,
     PurchaseRecord,
@@ -1378,6 +1380,8 @@ def build_reconciliation_expense_entries(
                 "category": record.category,
                 "payment_method": record.payment_method,
                 "amount": record.amount,
+                "net_amount": record.amount,
+                "paid_amount": record.amount,
                 "entry_type": "expense",
                 "sort_date": record.transaction_date,
                 "sort_timestamp": record.created_at,
@@ -1414,6 +1418,8 @@ def build_reconciliation_expense_entries(
                     "category": purchase.purchase_type or "Purchase",
                     "payment_method": purchase_payment_method,
                     "amount": purchase.paid_amount,
+                    "net_amount": purchase.total_amount,
+                    "paid_amount": purchase.paid_amount,
                     "entry_type": "purchase",
                     "sort_date": purchase.transaction_date,
                     "sort_timestamp": purchase.created_at,
@@ -2185,6 +2191,356 @@ def build_settlement_redirect_url(settlement_date):
         f"{reverse('daily-settlement')}?"
         f"{urlencode({'selected_date': settlement_date.isoformat(), 'entry_date': settlement_date.isoformat()})}"
     )
+
+
+def build_office_daily_settlement_url(selected_date):
+    return (
+        f"{reverse('office-daily-settlement')}?"
+        f"{urlencode({'selected_date': selected_date.isoformat()})}"
+    )
+
+
+def build_office_settlement_redirect_url(settlement_date):
+    return build_office_daily_settlement_url(settlement_date)
+
+
+def get_office_settlement_filter_values(params):
+    selected_date = parse_date(
+        (params.get("selected_date") or params.get("entry_date") or "").strip()
+    ) or date.today()
+    return {
+        "selected_date": selected_date,
+    }
+
+
+def get_office_income_queryset(user, selected_date=None):
+    queryset = filter_queryset_by_role(IncomeRecord.objects.all(), user).filter(
+        category__iexact=INCOME_CATEGORY_OFFICE,
+    )
+    if selected_date is not None:
+        queryset = queryset.filter(transaction_date=selected_date)
+    return queryset
+
+
+def get_office_expense_queryset(user, selected_date=None):
+    queryset = (
+        filter_queryset_by_role(ExpenseRecord.objects.all(), user)
+        .select_related("supplier")
+        .filter(category__iexact=OFFICE_EXPENSE_CATEGORY)
+    )
+    if selected_date is not None:
+        queryset = queryset.filter(transaction_date=selected_date)
+    return queryset
+
+
+def get_purchase_record_payment_method(purchase, fallback=PaymentMethod.OTHER):
+    normalized_purchase_type = " ".join(str(purchase.purchase_type or "").split())
+    if not normalized_purchase_type:
+        return fallback
+    for method_value, _method_label in PaymentMethod.choices:
+        if normalized_purchase_type.casefold() == method_value.casefold():
+            return method_value
+    return fallback
+
+
+def get_office_purchase_entries_for_date(user, selected_date):
+    purchase_entries = []
+    purchases = (
+        get_purchase_base_queryset(user)
+        .filter(transaction_date__lte=selected_date)
+        .select_related("supplier")
+        .prefetch_related("payments__user")
+        .order_by("-transaction_date", "-created_at", "-pk")
+    )
+
+    for purchase in purchases:
+        for entry in build_purchase_payment_history(purchase):
+            if entry["entry_type"] not in {"opening", "payment"}:
+                continue
+            if entry.get("payment_date_value") != selected_date:
+                continue
+
+            payment_method = entry.get("payment_method") or PaymentMethod.OTHER
+            if entry["entry_type"] == "opening":
+                payment_method = get_purchase_record_payment_method(
+                    purchase,
+                    fallback=payment_method,
+                )
+
+            purchase_entries.append(
+                {
+                    "transaction_date": entry["payment_date_value"],
+                    "title": f"Purchase - {purchase.invoice_number}",
+                    "detail": purchase.supplier_name
+                    or (purchase.supplier.name if purchase.supplier_id else "-"),
+                    "category": "Purchase",
+                    "payment_method": payment_method,
+                    "amount": entry["amount_value"],
+                    "net_amount": purchase.total_amount,
+                    "paid_amount": entry["amount_value"],
+                    "pending_amount": entry["running_pending_value"],
+                    "entry_type": "expense",
+                    "type_label": "Purchase Paid",
+                    "entry_note": (
+                        f"Paid Rs. {format_money(entry['amount_value'])} | "
+                        f"Pending Rs. {format_money(entry['running_pending_value'])}"
+                    ),
+                    "sort_timestamp": entry["recorded_at_value"],
+                    "sort_pk": f"purchase-{purchase.pk}-{entry['payment_id'] or 'opening'}",
+                }
+            )
+
+    purchase_entries.sort(
+        key=lambda item: (
+            item["transaction_date"],
+            item["sort_timestamp"],
+            str(item["sort_pk"]),
+        ),
+        reverse=True,
+    )
+    return purchase_entries
+
+
+def build_office_related_records(income_queryset, expense_queryset, purchase_entries=None):
+    records = []
+    purchase_entries = purchase_entries or []
+
+    for record in income_queryset.order_by("-transaction_date", "-created_at", "-pk"):
+        records.append(
+            {
+                "transaction_date": record.transaction_date,
+                "title": record.title,
+                "detail": record.source or "Office Income",
+                "category": record.category,
+                "payment_method": record.payment_method,
+                "amount": record.amount,
+                "entry_type": "income",
+                "type_label": "Office Income",
+                "sort_timestamp": record.created_at,
+                "sort_pk": record.pk,
+            }
+        )
+
+    for record in expense_queryset.order_by("-transaction_date", "-created_at", "-pk"):
+        records.append(
+            {
+                "transaction_date": record.transaction_date,
+                "title": record.title,
+                "detail": record.supplier_display,
+                "category": record.category,
+                "payment_method": record.payment_method,
+                "amount": record.amount,
+                "entry_type": "expense",
+                "type_label": "Office Expense",
+                "entry_note": "",
+                "sort_timestamp": record.created_at,
+                "sort_pk": record.pk,
+            }
+        )
+
+    records.extend(purchase_entries)
+
+    records.sort(
+        key=lambda item: (
+            item["transaction_date"],
+            item["sort_timestamp"],
+            str(item["sort_pk"]),
+        ),
+        reverse=True,
+    )
+    for record in records:
+        record.pop("sort_timestamp", None)
+        record.pop("sort_pk", None)
+    return records
+
+
+def get_default_office_settlement_opening_balance(user, settlement_date):
+    previous_settlement = (
+        filter_queryset_by_role(OfficeDailySettlement.objects.all(), user)
+        .filter(settlement_date__lt=settlement_date)
+        .order_by("-settlement_date", "-updated_at", "-pk")
+        .first()
+    )
+    if previous_settlement:
+        return previous_settlement.closing_balance
+
+    income_total = _sum_amount(
+        get_office_income_queryset(user).filter(transaction_date__lt=settlement_date)
+    )
+    expense_total = _sum_amount(
+        get_office_expense_queryset(user).filter(transaction_date__lt=settlement_date)
+    )
+    return income_total - expense_total
+
+
+def build_office_settlement_recent_days(user, limit=8):
+    return list(
+        filter_queryset_by_role(OfficeDailySettlement.objects.all(), user)
+        .order_by("-settlement_date", "-updated_at", "-pk")[:limit]
+    )
+
+
+def build_office_settlement_summary(user, selected_date):
+    income_queryset = get_office_income_queryset(user, selected_date)
+    expense_queryset = get_office_expense_queryset(user, selected_date)
+    purchase_entries = get_office_purchase_entries_for_date(user, selected_date)
+    office_income_total = _sum_amount(income_queryset)
+    office_manual_expense_total = _sum_amount(expense_queryset)
+    office_purchase_expense_total = sum(
+        (entry["amount"] for entry in purchase_entries),
+        Decimal("0.00"),
+    )
+    office_expense_total = (
+        office_manual_expense_total + office_purchase_expense_total
+    )
+    office_cash_income_total = _sum_amount(
+        income_queryset.filter(payment_method=PaymentMethod.CASH)
+    )
+    office_manual_cash_expense_total = _sum_amount(
+        expense_queryset.filter(payment_method=PaymentMethod.CASH)
+    )
+    office_purchase_cash_expense_total = sum(
+        (
+            entry["amount"]
+            for entry in purchase_entries
+            if entry["payment_method"] == PaymentMethod.CASH
+        ),
+        Decimal("0.00"),
+    )
+    office_cash_expense_total = (
+        office_manual_cash_expense_total + office_purchase_cash_expense_total
+    )
+    office_non_cash_income_total = office_income_total - office_cash_income_total
+    office_manual_non_cash_expense_total = (
+        office_manual_expense_total - office_manual_cash_expense_total
+    )
+    office_purchase_non_cash_expense_total = (
+        office_purchase_expense_total - office_purchase_cash_expense_total
+    )
+    office_non_cash_expense_total = (
+        office_manual_non_cash_expense_total + office_purchase_non_cash_expense_total
+    )
+    office_expense_records = [
+        {
+            "transaction_date": record.transaction_date,
+            "title": record.title,
+            "detail": record.supplier_display,
+            "category": record.category,
+            "payment_method": record.payment_method,
+            "amount": record.amount,
+            "net_amount": record.amount,
+            "paid_amount": record.amount,
+            "pending_amount": Decimal("0.00"),
+            "type_label": "Office Expense",
+            "entry_note": "",
+            "sort_timestamp": record.created_at,
+            "sort_pk": record.pk,
+        }
+        for record in expense_queryset.order_by(
+            "-transaction_date",
+            "-created_at",
+            "-pk",
+        )
+    ]
+    office_expense_records.extend(dict(entry) for entry in purchase_entries)
+    office_expense_records.sort(
+        key=lambda item: (
+            item["transaction_date"],
+            item["sort_timestamp"],
+            str(item["sort_pk"]),
+        ),
+        reverse=True,
+    )
+    for record in office_expense_records:
+        record.pop("sort_timestamp", None)
+        record.pop("sort_pk", None)
+
+    return {
+        "income_queryset": income_queryset,
+        "expense_queryset": expense_queryset,
+        "income_records": income_queryset.order_by(
+            "-transaction_date",
+            "-created_at",
+            "-pk",
+        ),
+        "expense_records": office_expense_records,
+        "office_records": build_office_related_records(
+            income_queryset,
+            expense_queryset,
+            purchase_entries=purchase_entries,
+        ),
+        "office_income_total": office_income_total,
+        "office_manual_expense_total": office_manual_expense_total,
+        "office_purchase_expense_total": office_purchase_expense_total,
+        "office_expense_total": office_expense_total,
+        "office_net_total": office_income_total - office_expense_total,
+        "office_cash_income_total": office_cash_income_total,
+        "office_manual_cash_expense_total": office_manual_cash_expense_total,
+        "office_purchase_cash_expense_total": office_purchase_cash_expense_total,
+        "office_cash_expense_total": office_cash_expense_total,
+        "office_cash_balance": office_cash_income_total - office_cash_expense_total,
+        "office_non_cash_income_total": office_non_cash_income_total,
+        "office_manual_non_cash_expense_total": office_manual_non_cash_expense_total,
+        "office_purchase_non_cash_expense_total": office_purchase_non_cash_expense_total,
+        "office_non_cash_expense_total": office_non_cash_expense_total,
+        "office_non_cash_balance": (
+            office_non_cash_income_total - office_non_cash_expense_total
+        ),
+        "office_income_count": income_queryset.count(),
+        "office_manual_expense_count": expense_queryset.count(),
+        "office_purchase_expense_count": len(purchase_entries),
+        "office_expense_count": len(office_expense_records),
+        "office_related_count": income_queryset.count() + len(office_expense_records),
+    }
+
+
+def build_office_settlement_autofill_summary(user, selected_date):
+    office_summary = build_office_settlement_summary(user, selected_date)
+    opening_balance = get_default_office_settlement_opening_balance(
+        user,
+        selected_date,
+    )
+    cash_in_hand = (
+        opening_balance
+        + office_summary["office_cash_income_total"]
+        - office_summary["office_cash_expense_total"]
+    )
+    closing_balance = (
+        opening_balance
+        + office_summary["office_income_total"]
+        - office_summary["office_expense_total"]
+    )
+
+    return {
+        **office_summary,
+        "opening_balance": opening_balance,
+        "cash_in_hand": cash_in_hand,
+        "closing_balance": closing_balance,
+    }
+
+
+def build_office_settlement_preview(values):
+    opening_balance = parse_money_value(values.get("opening_balance"))
+    income_amount = parse_money_value(values.get("income_amount"))
+    expense_amount = parse_money_value(values.get("expense_amount"))
+    cash_income_amount = parse_money_value(values.get("cash_income_amount"))
+    cash_expense_amount = parse_money_value(values.get("cash_expense_amount"))
+    total_amount = opening_balance + income_amount
+    net_amount = income_amount - expense_amount
+    cash_in_hand = opening_balance + cash_income_amount - cash_expense_amount
+    closing_balance = opening_balance + net_amount
+
+    return {
+        "opening_balance": opening_balance,
+        "income_amount": income_amount,
+        "expense_amount": expense_amount,
+        "cash_income_amount": cash_income_amount,
+        "cash_expense_amount": cash_expense_amount,
+        "total_amount": total_amount,
+        "net_amount": net_amount,
+        "cash_in_hand": cash_in_hand,
+        "closing_balance": closing_balance,
+    }
 
 
 def get_expense_redirect_params(params):
@@ -4471,6 +4827,237 @@ class DailySettlementView(ModulePermissionRequiredMixin, TemplateView):
                 selected_entry_date=selected_entry_date,
                 loaded_settlement=loaded_settlement,
                 cash_denominations=cash_denominations,
+            )
+        )
+
+
+class OfficeDailySettlementView(ModulePermissionRequiredMixin, TemplateView):
+    permission_field = "allow_daily_settlement"
+    permission_denied_message = "You do not have access to Office Daily Settlement."
+    template_name = "tracker/office_daily_settlement.html"
+
+    def get_selected_entry_date(self, params, filter_values):
+        return filter_values["selected_date"]
+
+    def get_loaded_settlement(self, settlement_date):
+        return filter_queryset_by_role(
+            OfficeDailySettlement.objects.all(),
+            self.request.user,
+        ).filter(settlement_date=settlement_date).first()
+
+    def get_recent_settlement_queryset(self):
+        return build_office_settlement_recent_days(self.request.user)
+
+    def get_loaded_settlement_preview_values(self, loaded_settlement, autofill_summary):
+        live_income_total = (
+            autofill_summary["office_income_total"]
+            if autofill_summary["office_income_count"] > 0
+            else loaded_settlement.income_amount
+        )
+        live_expense_total = (
+            autofill_summary["office_expense_total"]
+            if autofill_summary["office_expense_count"] > 0
+            else loaded_settlement.expense_amount
+        )
+        live_cash_income_total = (
+            autofill_summary["office_cash_income_total"]
+            if autofill_summary["office_income_count"] > 0
+            else loaded_settlement.cash_income_amount
+        )
+        live_cash_expense_total = (
+            autofill_summary["office_cash_expense_total"]
+            if autofill_summary["office_expense_count"] > 0
+            else loaded_settlement.cash_expense_amount
+        )
+        return {
+            "opening_balance": loaded_settlement.opening_balance,
+            "income_amount": live_income_total,
+            "expense_amount": live_expense_total,
+            "cash_income_amount": live_cash_income_total,
+            "cash_expense_amount": live_cash_expense_total,
+        }
+
+    def configure_settlement_form(self, form):
+        closing_class = form.fields["closing_balance"].widget.attrs.get("class", "")
+        form.fields["closing_balance"].widget.attrs["readonly"] = True
+        form.fields["closing_balance"].widget.attrs["class"] = (
+            f"{closing_class} settlement-readonly".strip()
+        )
+        return form
+
+    def build_form(self, selected_entry_date, loaded_settlement, autofill_summary):
+        if loaded_settlement:
+            preview_values = self.get_loaded_settlement_preview_values(
+                loaded_settlement,
+                autofill_summary,
+            )
+            preview = build_office_settlement_preview(preview_values)
+            form = OfficeDailySettlementForm(
+                instance=loaded_settlement,
+                initial={
+                    "opening_balance": preview_values["opening_balance"],
+                    "closing_balance": preview["closing_balance"],
+                },
+            )
+        else:
+            preview = build_office_settlement_preview(
+                {
+                    "opening_balance": autofill_summary["opening_balance"],
+                    "income_amount": autofill_summary["office_income_total"],
+                    "expense_amount": autofill_summary["office_expense_total"],
+                    "cash_income_amount": autofill_summary["office_cash_income_total"],
+                    "cash_expense_amount": autofill_summary["office_cash_expense_total"],
+                }
+            )
+            form = OfficeDailySettlementForm(
+                initial={
+                    "settlement_date": selected_entry_date,
+                    "opening_balance": autofill_summary["opening_balance"],
+                    "closing_balance": preview["closing_balance"],
+                }
+            )
+        return self.configure_settlement_form(form)
+
+    def get_preview_source(self, form, loaded_settlement, autofill_summary):
+        if form.is_bound:
+            return {
+                "opening_balance": form["opening_balance"].value(),
+                "income_amount": autofill_summary["office_income_total"],
+                "expense_amount": autofill_summary["office_expense_total"],
+                "cash_income_amount": autofill_summary["office_cash_income_total"],
+                "cash_expense_amount": autofill_summary["office_cash_expense_total"],
+            }
+        if loaded_settlement:
+            return self.get_loaded_settlement_preview_values(
+                loaded_settlement,
+                autofill_summary,
+            )
+        return {
+            "opening_balance": autofill_summary["opening_balance"],
+            "income_amount": autofill_summary["office_income_total"],
+            "expense_amount": autofill_summary["office_expense_total"],
+            "cash_income_amount": autofill_summary["office_cash_income_total"],
+            "cash_expense_amount": autofill_summary["office_cash_expense_total"],
+        }
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        filter_values = kwargs.pop(
+            "filter_values",
+            get_office_settlement_filter_values(self.request.GET),
+        )
+        selected_entry_date = kwargs.pop(
+            "selected_entry_date",
+            self.get_selected_entry_date(self.request.GET, filter_values),
+        )
+        loaded_settlement = kwargs.pop(
+            "loaded_settlement",
+            self.get_loaded_settlement(selected_entry_date),
+        )
+        autofill_summary = build_office_settlement_autofill_summary(
+            self.request.user,
+            selected_entry_date,
+        )
+        form = kwargs.pop("form", None)
+        if form is None:
+            form = self.build_form(
+                selected_entry_date,
+                loaded_settlement,
+                autofill_summary,
+            )
+        else:
+            form = self.configure_settlement_form(form)
+        settlement_preview = build_office_settlement_preview(
+            self.get_preview_source(form, loaded_settlement, autofill_summary)
+        )
+        settlement_records = self.get_recent_settlement_queryset()
+
+        if loaded_settlement and not form.is_bound:
+            autofill_summary = {
+                **autofill_summary,
+                "opening_balance": loaded_settlement.opening_balance,
+                "closing_balance": settlement_preview["closing_balance"],
+                "cash_in_hand": settlement_preview["cash_in_hand"],
+            }
+
+        context.update(
+            {
+                "form": form,
+                "office_filters": filter_values,
+                "selected_entry_date": selected_entry_date,
+                "office_label": f"{selected_entry_date:%d-%m-%Y}",
+                "selected_settlement": loaded_settlement,
+                "settlement_preview": settlement_preview,
+                "settlement_records": settlement_records,
+                "settlement_count": len(settlement_records),
+                **autofill_summary,
+            }
+        )
+        return context
+
+    def post(self, request, *args, **kwargs):
+        filter_values = get_office_settlement_filter_values(request.POST)
+        selected_entry_date = self.get_selected_entry_date(request.POST, filter_values)
+        loaded_settlement = self.get_loaded_settlement(selected_entry_date)
+        autofill_summary = build_office_settlement_autofill_summary(
+            request.user,
+            selected_entry_date,
+        )
+        post_data = request.POST.copy()
+        if not (post_data.get("opening_balance") or "").strip():
+            post_data["opening_balance"] = str(
+                loaded_settlement.opening_balance
+                if loaded_settlement
+                else autofill_summary["opening_balance"]
+            )
+        if not (post_data.get("closing_balance") or "").strip():
+            post_data["closing_balance"] = str(autofill_summary["closing_balance"])
+
+        form = OfficeDailySettlementForm(post_data, instance=loaded_settlement)
+        if form.is_valid():
+            settlement = form.save(commit=False)
+            if settlement.pk is None:
+                settlement.user = request.user
+            settlement.settlement_date = selected_entry_date
+            settlement_preview = build_office_settlement_preview(
+                {
+                    "opening_balance": form.cleaned_data["opening_balance"],
+                    "income_amount": autofill_summary["office_income_total"],
+                    "expense_amount": autofill_summary["office_expense_total"],
+                    "cash_income_amount": autofill_summary["office_cash_income_total"],
+                    "cash_expense_amount": autofill_summary["office_cash_expense_total"],
+                }
+            )
+            settlement._expected_income_amount = settlement_preview["income_amount"]
+            settlement._expected_expense_amount = settlement_preview["expense_amount"]
+            settlement._expected_cash_income_amount = settlement_preview[
+                "cash_income_amount"
+            ]
+            settlement._expected_cash_expense_amount = settlement_preview[
+                "cash_expense_amount"
+            ]
+            settlement._expected_closing_balance = settlement_preview[
+                "closing_balance"
+            ]
+            settlement.save()
+            messages.success(
+                request,
+                f"Office daily settlement saved for {settlement.settlement_date:%d-%m-%Y}.",
+            )
+            return redirect(
+                build_office_settlement_redirect_url(settlement.settlement_date)
+            )
+
+        messages.error(
+            request,
+            "Please correct the highlighted office settlement details.",
+        )
+        return self.render_to_response(
+            self.get_context_data(
+                form=form,
+                filter_values=filter_values,
+                selected_entry_date=selected_entry_date,
+                loaded_settlement=loaded_settlement,
             )
         )
 

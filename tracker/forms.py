@@ -10,6 +10,7 @@ from .models import (
     ExpenseRecord,
     IncomeRecord,
     IncomePurpose,
+    OfficeDailySettlement,
     PaymentMethod,
     PurchaseRecord,
     ReconciliationExpenseEntry,
@@ -318,6 +319,31 @@ class DailyCashSettlementForm(StyledModelForm):
             if amount is not None and amount < 0:
                 self.add_error(field_name, "Amount cannot be less than zero.")
         return cleaned_data
+
+
+class OfficeDailySettlementForm(StyledModelForm):
+    class Meta:
+        model = OfficeDailySettlement
+        fields = [
+            "settlement_date",
+            "opening_balance",
+            "closing_balance",
+            "notes",
+        ]
+        widgets = {
+            "settlement_date": StyledModelForm.date_widget,
+            "opening_balance": StyledModelForm.money_widget,
+            "closing_balance": StyledModelForm.money_widget,
+            "notes": StyledModelForm.note_widget,
+        }
+        labels = {
+            "settlement_date": "Date",
+            "opening_balance": "Opening Balance",
+            "closing_balance": "Closing Balance",
+        }
+        help_texts = {
+            "notes": "Optional. Add office settlement notes or daily remarks.",
+        }
 
 
 class ReconciliationIncomeForm(StyledModelForm):

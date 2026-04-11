@@ -255,7 +255,8 @@
                                 <th>Vendor</th>
                                 <th>Category</th>
                                 <th>Payment</th>
-                                <th>Amount</th>
+                                <th>Net Amount</th>
+                                <th>Paid Amount</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -271,7 +272,8 @@
                                     <td>{{ record.vendor|default:"-" }}</td>
                                     <td>{{ record.category|default:"-" }}</td>
                                     <td>{{ record.payment_method }}</td>
-                                    <td class="negative">Rs. {{ record.amount }}</td>
+                                    <td data-label="Net Amount" class="negative">Rs. {{ record.net_amount|floatformat:2 }}</td>
+                                    <td data-label="Paid Amount" class="negative">Rs. {{ record.paid_amount|floatformat:2 }}</td>
                                 </tr>
                             {% endfor %}
                         </tbody>
