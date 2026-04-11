@@ -1,0 +1,923 @@
+{% extends "base.html" %}
+
+{% block title %}Office Daily Settlement | Mahilmart{% endblock %}
+{% block body_class %}app-shell daily-settlement-shell office-settlement-shell{% endblock %}
+
+{% block content %}
+<div class="header-bar">
+    <h1>Office Daily Settlement</h1>
+    <a href="{% url 'expense-list' %}" class="back-btn">&larr; Back to Expense</a>
+</div>
+
+<div class="date-strip">
+    <div class="date-range">
+        <span class="date-label">{{ office_filters.selected_date|date:"d-m-Y" }}</span>
+    </div>
+    <form method="get" action="{% url 'office-daily-settlement' %}" class="date-form">
+        <input type="date" name="selected_date" value="{{ office_filters.selected_date|date:'Y-m-d' }}">
+        <button type="submit">Apply</button>
+        <a href="{% url 'office-daily-settlement' %}">Reset</a>
+    </form>
+</div>
+
+<div class="main-layout">
+    <div class="form-column">
+        <form method="post" action="{% url 'office-daily-settlement' %}" class="settlement-form" id="office-settlement-form">
+            {% csrf_token %}
+            <input type="hidden" name="settlement_date" value="{{ selected_entry_date|date:'Y-m-d' }}">
+            <input type="hidden" name="selected_date" value="{{ office_filters.selected_date|date:'Y-m-d' }}">
+
+            {% if form.non_field_errors or form.settlement_date.errors %}
+                <div class="field-error">
+                    {% for error in form.non_field_errors %}
+                        <div>{{ error }}</div>
+                    {% endfor %}
+                    {% for error in form.settlement_date.errors %}
+                        <div>{{ error }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <div class="date-header">
+                <div class="current-date">
+                    <span class="day">{{ selected_entry_date|date:"l" }}</span>
+                    <span class="full-date">{{ selected_entry_date|date:"d F Y" }}</span>
+                </div>
+
+                <div class="recent-mini">
+                    <span class="recent-label">Recent:</span>
+                    {% if settlement_records %}
+                        {% for record in settlement_records|slice:":3" %}
+                            <a href="{% url 'office-daily-settlement' %}?selected_date={{ record.settlement_date|date:'Y-m-d' }}"
+                               class="recent-item {% if record.settlement_date == selected_entry_date %}active{% endif %}">
+                                {{ record.settlement_date|date:"d/m" }} Rs. {{ record.closing_balance|floatformat:0 }}
+                            </a>
+                        {% endfor %}
+                    {% else %}
+                        <span class="no-records">No recent</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="summary-sections-grid">
+                <div class="form-section summary-section">
+                    <div class="section-head">
+                        <span class="section-num">I</span>
+                        <h2>Daily Summary</h2>
+                    </div>
+
+                    <div class="section-body">
+                        <div class="form-row">
+                            <span class="row-label">Opening balance:</span>
+                            <input
+                                type="number"
+                                name="opening_balance"
+                                id="opening-balance"
+                                class="row-input"
+                                step="0.01"
+                                value="{{ form.opening_balance.value|default:settlement_preview.opening_balance }}"
+                            >
+                        </div>
+                        {% if form.opening_balance.errors %}
+                            <div class="field-error">{{ form.opening_balance.errors|join:", " }}</div>
+                        {% endif %}
+
+                        <div class="form-row">
+                            <span class="row-label">Office income total:</span>
+                            <span class="row-value">Rs. {{ settlement_preview.income_amount|floatformat:2 }}</span>
+                            <input type="hidden" id="office-income-total" value="{{ settlement_preview.income_amount }}">
+                        </div>
+
+                        <div class="form-row">
+                            <span class="row-label">Office expense total:</span>
+                            <span class="row-value">Rs. {{ settlement_preview.expense_amount|floatformat:2 }}</span>
+                            <input type="hidden" id="office-expense-total" value="{{ settlement_preview.expense_amount }}">
+                        </div>
+
+                        <div class="form-row">
+                            <span class="row-label">Purchase paid amount:</span>
+                            <span class="row-value negative">Rs. {{ office_purchase_expense_total|floatformat:2 }}</span>
+                        </div>
+
+                        <div class="form-row total-row">
+                            <span class="row-label">Total amount:</span>
+                            <span class="row-value highlight" id="total-amount">Rs. 0.00</span>
+                        </div>
+
+                        <div class="form-row actual-row">
+                            <span class="row-label">Office net amount:</span>
+                            <span class="row-value highlight" id="net-amount">Rs. 0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section summary-section">
+                    <div class="section-head">
+                        <span class="section-num">II</span>
+                        <h2>Cash Handling</h2>
+                    </div>
+
+                    <div class="section-body">
+                        <div class="form-row expense-income-row">
+                            <span class="expense-income-stat">
+                                Cash Expense = <strong>Rs. {{ office_cash_expense_total|floatformat:2 }}</strong>
+                            </span>
+                            <span class="expense-income-stat income-inline-value">
+                                Cash Income = <strong>Rs. {{ office_cash_income_total|floatformat:2 }}</strong>
+                            </span>
+                            <input type="hidden" id="office-cash-income" value="{{ office_cash_income_total }}">
+                            <input type="hidden" id="office-cash-expense" value="{{ office_cash_expense_total }}">
+                        </div>
+
+                        <div class="form-row cash-row">
+                            <span class="row-label">Cash in hand:</span>
+                            <span class="row-value highlight" id="cash-in-hand">Rs. 0.00</span>
+                        </div>
+
+                        <div class="form-row">
+                            <span class="row-label">Card / Other income:</span>
+                            <span class="row-value positive">Rs. {{ office_non_cash_income_total|floatformat:2 }}</span>
+                        </div>
+
+                        <div class="form-row">
+                            <span class="row-label">Card / Other expense:</span>
+                            <span class="row-value negative">Rs. {{ office_non_cash_expense_total|floatformat:2 }}</span>
+                        </div>
+
+                        <div class="form-row">
+                            <span class="row-label">Closing balance:</span>
+                            <input
+                                type="number"
+                                name="closing_balance"
+                                id="closing-balance"
+                                class="row-input row-input-readonly"
+                                step="0.01"
+                                readonly
+                                value="{{ form.closing_balance.value|default:settlement_preview.closing_balance }}"
+                            >
+                        </div>
+                        {% if form.closing_balance.errors %}
+                            <div class="field-error">{{ form.closing_balance.errors|join:", " }}</div>
+                        {% endif %}
+
+                        <div class="form-row diff-row">
+                            <span class="row-label">Related office entries:</span>
+                            <span class="row-value diff-neutral">{{ office_related_count }} row{{ office_related_count|pluralize }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-buttons">
+                <a href="{% url 'office-daily-settlement' %}?selected_date={{ selected_entry_date|date:'Y-m-d' }}" class="btn-clear">Clear</a>
+                <button type="submit" class="btn-save">
+                    {% if selected_settlement %}Update{% else %}Save Settlement{% endif %}
+                </button>
+            </div>
+
+            <div class="form-section">
+                <div class="section-head">
+                    <span class="section-num">III</span>
+                    <h2>Notes & Office Related Details</h2>
+                </div>
+
+                <div class="section-body">
+                    <div class="form-row">
+                        <span class="row-label">Notes:</span>
+                        <textarea name="notes" rows="2" class="row-textarea">{{ form.notes.value|default:'' }}</textarea>
+                    </div>
+                    {% if form.notes.errors %}
+                        <div class="field-error">{{ form.notes.errors|join:", " }}</div>
+                    {% endif %}
+
+                    <div class="daily-credit-head">
+                        <strong>Office related details for {{ selected_entry_date|date:"d-m-Y" }}</strong>
+                        <span>{{ office_income_count }} income | {{ office_manual_expense_count }} office expense | {{ office_purchase_expense_count }} purchase</span>
+                    </div>
+
+                    {% if office_records %}
+                        <div class="table-shell daily-credit-table-shell">
+                            <table class="data-table daily-credit-table office-related-table">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Title</th>
+                                        <th>Source / Paid To</th>
+                                        <th>Payment</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for record in office_records %}
+                                        <tr>
+                                            <td>
+                                                <span class="office-entry-pill office-entry-{{ record.entry_type }}">{{ record.type_label }}</span>
+                                            </td>
+                                            <td>
+                                                <strong>{{ record.title }}</strong>
+                                                <div class="expense-table-note">{{ record.category|default:"-" }}</div>
+                                                {% if record.entry_note %}
+                                                    <div class="expense-table-note">{{ record.entry_note }}</div>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ record.detail|default:"-" }}</td>
+                                            <td>{{ record.payment_method }}</td>
+                                            <td class="{% if record.entry_type == 'income' %}positive{% else %}negative{% endif %}">
+                                                Rs. {{ record.amount|floatformat:2 }}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="daily-credit-empty">
+                            No office income or office expense entries found for this date.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="calculator-column">
+        <div class="cash-count-card">
+            <h3>Office Breakdown</h3>
+
+            <div class="office-breakdown-list">
+                <div class="office-breakdown-row">
+                    <span>Cash Income</span>
+                    <strong class="positive">Rs. {{ office_cash_income_total|floatformat:2 }}</strong>
+                </div>
+                <div class="office-breakdown-row">
+                    <span>Purchase Paid Amount</span>
+                    <strong class="negative">Rs. {{ office_purchase_expense_total|floatformat:2 }}</strong>
+                </div>
+                <div class="office-breakdown-row">
+                    <span>Cash Expense</span>
+                    <strong class="negative">Rs. {{ office_cash_expense_total|floatformat:2 }}</strong>
+                </div>
+                <div class="office-breakdown-row">
+                    <span>Card / Other Income</span>
+                    <strong class="positive">Rs. {{ office_non_cash_income_total|floatformat:2 }}</strong>
+                </div>
+                <div class="office-breakdown-row">
+                    <span>Card / Other Expense</span>
+                    <strong class="negative">Rs. {{ office_non_cash_expense_total|floatformat:2 }}</strong>
+                </div>
+                <div class="office-breakdown-row">
+                    <span>Cash Balance</span>
+                    <strong class="{% if office_cash_balance < 0 %}negative{% else %}positive{% endif %}">
+                        Rs. {{ office_cash_balance|floatformat:2 }}
+                    </strong>
+                </div>
+            </div>
+
+            <div class="count-total">
+                <span>Office Net Balance:</span>
+                <strong id="side-net-balance" class="{% if office_net_total < 0 %}negative{% else %}positive{% endif %}">
+                    Rs. {{ office_net_total|floatformat:2 }}
+                </strong>
+            </div>
+
+            <div class="office-action-grid">
+                <a href="{% url 'income-add' %}" class="btn-clear-count">Add Office Income</a>
+                <a href="{% url 'expense-add' %}" class="btn-clear-count">Add Office Expense</a>
+            </div>
+        </div>
+
+        <div class="recent-card">
+            <h3>Recent Settlements</h3>
+            {% if settlement_records %}
+                <div class="recent-list">
+                    {% for record in settlement_records %}
+                        <a href="{% url 'office-daily-settlement' %}?selected_date={{ record.settlement_date|date:'Y-m-d' }}"
+                           class="recent-record {% if record.settlement_date == selected_entry_date %}active{% endif %}">
+                            <span class="rec-date">{{ record.settlement_date|date:"d/m/Y" }}</span>
+                            <span class="rec-amount">Rs. {{ record.closing_balance|floatformat:2 }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="no-records">No settlements found</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const openingBalanceInput = document.querySelector("#opening-balance");
+    const incomeTotal = parseFloat(document.querySelector("#office-income-total")?.value || 0);
+    const expenseTotal = parseFloat(document.querySelector("#office-expense-total")?.value || 0);
+    const cashIncome = parseFloat(document.querySelector("#office-cash-income")?.value || 0);
+    const cashExpense = parseFloat(document.querySelector("#office-cash-expense")?.value || 0);
+    const totalAmountSpan = document.querySelector("#total-amount");
+    const netAmountSpan = document.querySelector("#net-amount");
+    const cashInHandSpan = document.querySelector("#cash-in-hand");
+    const closingBalanceInput = document.querySelector("#closing-balance");
+    const sideNetBalance = document.querySelector("#side-net-balance");
+
+    const toNumber = (value) => {
+        const parsed = parseFloat(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const formatCurrency = (value) => `Rs. ${value.toFixed(2)}`;
+
+    const setSignedClass = (element, value) => {
+        if (!element) {
+            return;
+        }
+        element.classList.remove("positive", "negative");
+        if (value < 0) {
+            element.classList.add("negative");
+        } else {
+            element.classList.add("positive");
+        }
+    };
+
+    const updateAll = () => {
+        const openingBalance = toNumber(openingBalanceInput?.value);
+        const totalAmount = openingBalance + incomeTotal;
+        const netAmount = incomeTotal - expenseTotal;
+        const cashInHand = openingBalance + cashIncome - cashExpense;
+        const closingBalance = openingBalance + netAmount;
+
+        if (totalAmountSpan) {
+            totalAmountSpan.textContent = formatCurrency(totalAmount);
+            setSignedClass(totalAmountSpan, totalAmount);
+        }
+        if (netAmountSpan) {
+            netAmountSpan.textContent = formatCurrency(netAmount);
+            setSignedClass(netAmountSpan, netAmount);
+        }
+        if (cashInHandSpan) {
+            cashInHandSpan.textContent = formatCurrency(cashInHand);
+            setSignedClass(cashInHandSpan, cashInHand);
+        }
+        if (closingBalanceInput) {
+            closingBalanceInput.value = closingBalance.toFixed(2);
+        }
+        if (sideNetBalance) {
+            sideNetBalance.textContent = formatCurrency(netAmount);
+            setSignedClass(sideNetBalance, netAmount);
+        }
+    };
+
+    if (openingBalanceInput) {
+        openingBalanceInput.addEventListener("input", updateAll);
+    }
+
+    updateAll();
+});
+</script>
+
+<style>
+body {
+    background: #f5f5f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.header-bar h1 {
+    font-size: 28px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0;
+}
+
+.back-btn {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 6px;
+    background: #eff6ff;
+}
+
+.back-btn:hover {
+    background: #dbeafe;
+}
+
+.date-strip {
+    background: white;
+    border-radius: 8px;
+    padding: 12px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.date-range {
+    font-size: 16px;
+    font-weight: 500;
+    color: #334155;
+}
+
+.date-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.date-form input[type="date"] {
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.date-form button {
+    padding: 6px 16px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.date-form a {
+    color: #64748b;
+    text-decoration: none;
+    font-size: 14px;
+    padding: 6px 12px;
+}
+
+.main-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 24px;
+}
+
+.form-column {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.date-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.current-date .day {
+    font-size: 20px;
+    font-weight: 600;
+    color: #0f172a;
+    margin-right: 8px;
+}
+
+.current-date .full-date {
+    color: #64748b;
+    font-size: 16px;
+}
+
+.recent-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.recent-label {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.recent-item {
+    padding: 4px 10px;
+    background: #f1f5f9;
+    border-radius: 20px;
+    font-size: 13px;
+    color: #334155;
+    text-decoration: none;
+}
+
+.recent-item.active {
+    background: #3b82f6;
+    color: white;
+}
+
+.summary-sections-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+    margin-bottom: 28px;
+}
+
+.form-section {
+    margin-bottom: 28px;
+}
+
+.summary-section {
+    margin-bottom: 0;
+}
+
+.summary-section .section-body {
+    padding-left: 0;
+}
+
+.summary-section .form-row {
+    grid-template-columns: minmax(130px, 152px) 1fr;
+    gap: 14px;
+}
+
+.summary-section .row-input {
+    width: 100%;
+    max-width: 220px;
+}
+
+.expense-income-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+    align-items: center;
+}
+
+.expense-income-stat {
+    color: #0f172a;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.expense-income-stat strong {
+    font-weight: 600;
+}
+
+.income-inline-value {
+    color: #059669;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.section-num {
+    width: 32px;
+    height: 32px;
+    background: #1e293b;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.section-head h2 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0;
+}
+
+.section-body {
+    padding-left: 44px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+
+.form-row:last-child {
+    border-bottom: none;
+}
+
+.row-label {
+    font-weight: 500;
+    color: #475569;
+    font-size: 15px;
+}
+
+.row-value {
+    font-weight: 500;
+    color: #0f172a;
+    font-size: 16px;
+}
+
+.row-value.highlight {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.row-input {
+    width: 200px;
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 15px;
+}
+
+.row-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.row-input-readonly {
+    background: #f8fafc;
+    color: #334155;
+    font-weight: 600;
+}
+
+.row-textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.cash-row .row-value,
+.total-row .row-value,
+.actual-row .row-value {
+    color: #2563eb;
+}
+
+.diff-row .row-value.diff-neutral {
+    color: #475569;
+}
+
+.form-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 2px solid #e2e8f0;
+}
+
+.btn-save {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 10px 28px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 15px;
+}
+
+.btn-save:hover {
+    background: #2563eb;
+}
+
+.btn-clear {
+    background: white;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    padding: 10px 28px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 15px;
+}
+
+.btn-clear:hover {
+    background: #f8fafc;
+}
+
+.calculator-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.cash-count-card,
+.recent-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.cash-count-card h3,
+.recent-card h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #0f172a;
+    margin: 0 0 16px 0;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.office-breakdown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.office-breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #334155;
+}
+
+.office-action-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.count-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-top: 2px solid #e2e8f0;
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 16px;
+    font-weight: 600;
+}
+
+.count-total strong {
+    font-size: 18px;
+}
+
+.btn-clear-count {
+    width: 100%;
+    padding: 10px 12px;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    color: #475569;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: center;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+
+.btn-clear-count:hover {
+    background: #e2e8f0;
+}
+
+.recent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.recent-record {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #f8fafc;
+    border-radius: 6px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.recent-record:hover {
+    background: #f1f5f9;
+}
+
+.recent-record.active {
+    background: #3b82f6;
+    color: white;
+}
+
+.rec-date {
+    font-weight: 500;
+}
+
+.rec-amount {
+    font-weight: 600;
+}
+
+.no-records {
+    color: #94a3b8;
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+}
+
+.field-error {
+    margin: 8px 0 14px;
+    color: #b91c1c;
+    font-size: 14px;
+}
+
+.daily-credit-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    margin: 18px 0 12px;
+    padding: 12px 14px;
+    border: 1px solid #dbe4f0;
+    border-radius: 12px;
+    background: #f8fbff;
+    color: #42526b;
+}
+
+.daily-credit-empty {
+    padding: 18px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 12px;
+    color: #64748b;
+    background: #f8fafc;
+}
+
+.office-entry-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.office-entry-income {
+    background: rgba(22, 163, 74, 0.12);
+    color: #15803d;
+}
+
+.office-entry-expense {
+    background: rgba(220, 38, 38, 0.12);
+    color: #b91c1c;
+}
+
+.positive {
+    color: #059669;
+}
+
+.negative {
+    color: #dc2626;
+}
+
+@media (max-width: 1024px) {
+    .main-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-sections-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .date-strip {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .summary-sections-grid {
+        gap: 16px;
+    }
+
+    .summary-section .form-row,
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .summary-section .row-input,
+    .row-input {
+        max-width: none;
+        width: 100%;
+    }
+
+    .expense-income-row {
+        gap: 10px;
+    }
+
+    .date-header {
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+    }
+}
+</style>
+{% endblock %}

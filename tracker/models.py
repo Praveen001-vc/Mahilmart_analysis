@@ -428,6 +428,56 @@ class DailyCashSettlement(models.Model):
         super().save(*args, **kwargs)
 
 
+class OfficeDailySettlement(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="office_daily_settlements",
+    )
+    settlement_date = models.DateField(default=date.today, db_index=True)
+    opening_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    income_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    expense_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    cash_income_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    cash_expense_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    closing_balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-settlement_date", "-updated_at", "-pk"]
+        unique_together = ("user", "settlement_date")
+
+    def __str__(self):
+        return f"{self.settlement_date} office settlement - {self.user}"
+
+    def save(self, *args, **kwargs):
+        expected_income_amount = getattr(self, "_expected_income_amount", None)
+        expected_expense_amount = getattr(self, "_expected_expense_amount", None)
+        expected_cash_income_amount = getattr(self, "_expected_cash_income_amount", None)
+        expected_cash_expense_amount = getattr(self, "_expected_cash_expense_amount", None)
+        expected_closing_balance = getattr(self, "_expected_closing_balance", None)
+
+        if expected_income_amount is not None:
+            self.income_amount = expected_income_amount
+        if expected_expense_amount is not None:
+            self.expense_amount = expected_expense_amount
+        if expected_cash_income_amount is not None:
+            self.cash_income_amount = expected_cash_income_amount
+        if expected_cash_expense_amount is not None:
+            self.cash_expense_amount = expected_cash_expense_amount
+
+        if expected_closing_balance is None:
+            self.closing_balance = (
+                self.opening_balance + self.income_amount - self.expense_amount
+            )
+        else:
+            self.closing_balance = expected_closing_balance
+
+        super().save(*args, **kwargs)
+
+
 class SalesLedgerRecord(models.Model):
     source_sale_no = models.IntegerField(unique=True)
     bill_no = models.CharField(max_length=60, db_index=True)
